@@ -452,5 +452,28 @@ const Processing = (() => {
     return r.gray8 ? grayToCanvas(r.gray8, r.w, r.h) : bitsToCanvas(r.bits, r.w, r.h, transparent);
   }
 
-  return { process, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate };
+  /**
+   * Motivkontur: setzt eine dünne schwarze Linie innen entlang der Grenze
+   * zwischen Motiv und Hintergrund (aus der Maske). Wo das Motiv am Rand schon
+   * dunkel ist, ändert sich nichts – sichtbar wird die Linie genau dort,
+   * wo Motiv und Hintergrund nach der Umwandlung ineinander übergehen.
+   * Die Bildränder zählen nicht als Grenze.
+   */
+  function addSubjectLine(bits, maskCanvas, w, h, widthPx) {
+    const alpha = maskAlpha(maskCanvas, w, h);
+    const bg = new Uint8Array(w * h);
+    let any = false;
+    for (let i = 0; i < bg.length; i++) {
+      if (alpha[i] < 0.5) { bg[i] = 1; any = true; }
+    }
+    if (!any) return bits;
+    const dist = distanceTransform(bg, w, h);
+    const r = Math.max(0.75, widthPx);
+    for (let i = 0; i < bits.length; i++) {
+      if (!bg[i] && dist[i] <= r) bits[i] = 1;
+    }
+    return bits;
+  }
+
+  return { process, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate, addSubjectLine };
 })();

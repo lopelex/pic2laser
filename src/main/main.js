@@ -1,10 +1,9 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, utilityProcess } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const crypto = require('crypto');
-const { Potrace } = require('potrace');
 
 const models = require('./models');
 
@@ -52,26 +51,59 @@ app.on('window-all-closed', () => {
 /* Vektorisierung                                                     */
 /* ------------------------------------------------------------------ */
 
-ipcMain.handle('trace', async (_e, pngBytes, params) => {
-  const tracer = new Potrace({
-    threshold: 128,
-    blackOnWhite: true,
-    turdSize: clamp(Number(params.turdSize) || 0, 0, 100000),
-    alphaMax: clamp(Number(params.alphaMax), 0, 1.3334),
-    optCurve: params.optCurve !== false,
-    optTolerance: clamp(Number(params.optTolerance) || 0.2, 0.01, 5),
-    turnPolicy: Potrace.TURNPOLICY_MINORITY,
-  });
+// Potrace läuft in einem eigenen Utility-Prozess, damit das Fenster nie blockiert.
+// Es läuft immer nur eine Vektorisierung; von den wartenden zählt nur die neueste
+// (ältere gehören zu überholten Einstellungen und werden verworfen).
+const tracer = {
+  proc: null,
+  nextId: 1,
+  running: null, // { id, resolve, reject }
+  pending: null, // { png, params, resolve, reject }
 
-  await new Promise((resolve, reject) => {
-    tracer.loadImage(Buffer.from(pngBytes), (err) => (err ? reject(err) : resolve()));
-  });
+  ensureProc() {
+    if (this.proc) return;
+    this.proc = utilityProcess.fork(path.join(__dirname, 'trace-worker.js'), [], { serviceName: 'Pic2Laser Vektorisierung' });
+    this.proc.on('message', (msg) => {
+      const job = this.running;
+      if (!job || job.id !== msg.id) return;
+      this.running = null;
+      if (msg.ok) job.resolve(msg.d);
+      else job.reject(new Error(msg.error));
+      this.next();
+    });
+    this.proc.on('exit', () => {
+      this.proc = null;
+      if (this.running) {
+        this.running.reject(new Error('Vektorisierung abgebrochen'));
+        this.running = null;
+      }
+      this.next();
+    });
+  },
 
-  // Nur das "d"-Attribut zurückgeben; das SVG baut der Renderer selbst (mit mm-Maßen)
-  const tag = tracer.getPathTag('#000');
-  const match = tag.match(/\sd="([^"]*)"/);
-  return match ? match[1] : '';
-});
+  next() {
+    if (this.running || !this.pending) return;
+    const job = this.pending;
+    this.pending = null;
+    this.ensureProc();
+    this.running = { id: this.nextId++, resolve: job.resolve, reject: job.reject };
+    this.proc.postMessage({ id: this.running.id, png: job.png, params: job.params });
+  },
+
+  trace(png, params) {
+    return new Promise((resolve, reject) => {
+      if (this.pending) {
+        const cancelled = new Error('cancelled');
+        cancelled.cancelled = true;
+        this.pending.reject(cancelled);
+      }
+      this.pending = { png, params, resolve, reject };
+      this.next();
+    });
+  },
+};
+
+ipcMain.handle('trace', (_e, pngBytes, params) => tracer.trace(pngBytes, params || {}));
 
 /* ------------------------------------------------------------------ */
 /* Presets (eigene Einstellungs-Vorlagen)                             */
@@ -116,11 +148,6 @@ ipcMain.handle('presets-delete', async (_e, name) => {
 
 /* KI-Modelle (Freistellen, Strichzeichnung, Vergrößerung, Tiefenkarte) */
 models.register(ipcMain);
-
-function clamp(v, min, max) {
-  if (!Number.isFinite(v)) return min;
-  return Math.min(max, Math.max(min, v));
-}
 
 /* ------------------------------------------------------------------ */
 /* Dateien öffnen / exportieren                                       */

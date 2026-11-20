@@ -45,6 +45,9 @@ const DEFAULTS = Object.freeze({
   outlineOffsetMm: 2,
   outlineCloseMm: 2,
   outlineOnly: false,
+  // Motivkontur
+  subjectLine: false,
+  subjectLineMm: 0.3,
 });
 
 const SETTINGS_STORAGE_KEY = 'pic2laser.settings';
@@ -113,6 +116,7 @@ const FORMATTERS = {
   lineWidthMm: (v) => `${Number(v).toFixed(2)} mm`,
   outlineOffsetMm: (v) => `${Number(v).toFixed(1)} mm`,
   outlineCloseMm: (v) => (Number(v) ? `${Number(v).toFixed(1)} mm` : 'aus'),
+  subjectLineMm: (v) => `${Number(v).toFixed(2)} mm`,
 };
 
 function syncControls() {
@@ -475,6 +479,69 @@ function bindDragDrop() {
 /* Verarbeitung                                                       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Web Worker für die schwere Bildverarbeitung. Läuft schon eine Berechnung,
+ * wird sie bei einem neuen Auftrag sofort abgebrochen (Worker neu gestartet),
+ * damit nur die aktuellen Einstellungen gerechnet werden.
+ */
+const Pipeline = (() => {
+  let worker = null;
+  let job = null; // { reject }
+
+  function cancelled() {
+    const err = new Error('cancelled');
+    err.cancelled = true;
+    return err;
+  }
+
+  function call(type, payload, transfer = []) {
+    if (job) {
+      worker.terminate();
+      worker = null;
+      job.reject(cancelled());
+      job = null;
+    }
+    if (!worker) worker = new Worker('pipeline-worker.js');
+    return new Promise((resolve, reject) => {
+      job = { reject };
+      const w = worker;
+      w.onmessage = (e) => {
+        job = null;
+        if (e.data.ok) resolve(e.data.result);
+        else reject(new Error(e.data.error));
+      };
+      w.onerror = (e) => {
+        e.preventDefault();
+        job = null;
+        w.terminate();
+        if (worker === w) worker = null;
+        reject(new Error(e.message || 'Fehler im Verarbeitungs-Worker'));
+      };
+      w.postMessage({ type, payload }, transfer);
+    });
+  }
+
+  return {
+    async render(source, mask, s, lineMask = null) {
+      const src = await createImageBitmap(source);
+      const m = mask ? await createImageBitmap(mask) : null;
+      const lm = lineMask ? await createImageBitmap(lineMask) : null;
+      return call('render', { source: src, mask: m, lineMask: lm, s }, [src, m, lm].filter(Boolean));
+    },
+    async cutout(source, mask, markers) {
+      const src = await createImageBitmap(source);
+      const m = mask ? await createImageBitmap(mask) : null;
+      return call('cutout', { source: src, mask: m, markers }, m ? [src, m] : [src]);
+    },
+    async colorMask(source, tolerance, border, seeds) {
+      const src = await createImageBitmap(source);
+      return call('colorMask', { source: src, tolerance, border, seeds }, [src]);
+    },
+  };
+})();
+
+const isCancelled = (err) => !!err && (err.cancelled || /cancelled$/.test(String(err.message)));
+
 let processTimer = null;
 
 function scheduleProcess(delay = 120) {
@@ -487,7 +554,6 @@ async function runProcess() {
   if (!state.source) return;
   const gen = ++state.generation;
   const s = { ...state.settings };
-  const bitmap = state.source.bitmap;
   setBusy(true);
 
   // UI erst neu zeichnen lassen, bevor gerechnet wird
@@ -513,42 +579,31 @@ async function runProcess() {
     if (stale()) return;
     hideProgress();
 
-    const { w, h, bits, gray8, alpha } = Processing.process(source, s, mask);
+    // Motivkontur ohne Freistellen: Grenze per schneller KI ermitteln, Hintergrund bleibt erhalten
+    let lineMask = null;
+    if (s.subjectLine && !mask && s.mode !== 'relief') {
+      lineMask = await contourMask(s, work);
+      if (stale()) return;
+    }
+    hideProgress();
+
+    // 4. Rasterverarbeitung im Worker (blockiert die Oberfläche nicht)
+    const { w, h, bits, gray8, tracePng, imagePng, imageB64, sil } = await Pipeline.render(source, mask, s, lineMask);
+    if (stale()) return;
     const widthMm = s.widthMm;
     const heightMm = (widthMm * h) / w;
     const mmPerPx = widthMm / w;
     const dpi = s.mode === 'dither' || s.mode === 'relief' ? s.dpi : w / (widthMm / 25.4);
-    const traceParams = { turdSize: s.turdSize, alphaMax: s.alphaMax, optTolerance: s.optTolerance };
-    const r = { w, h, bits, gray8 };
 
-    // Gravur-Inhalt
-    let fillPath = null, imagePng = null;
-    if (!(s.outline && s.outlineOnly)) {
-      if (s.mode === 'dither' || s.mode === 'relief') {
-        imagePng = await Encoders.canvasBytes(Processing.resultCanvas(r, s.transparent), 'image/png');
-      } else {
-        const png = await Encoders.canvasBytes(Processing.bitsToCanvas(bits, w, h, false), 'image/png');
-        if (stale()) return;
-        fillPath = await window.api.trace(png, traceParams);
-      }
+    // 5. Vektorisierung (Potrace im eigenen Prozess)
+    let fillPath = null;
+    if (tracePng) {
+      fillPath = await window.api.trace(tracePng, { turdSize: s.turdSize, alphaMax: s.alphaMax, optTolerance: s.optTolerance });
       if (stale()) return;
     }
-
-    // Umrisslinie (Randkontur) um das Motiv
     let outline = null;
-    if (s.outline) {
-      let src = bits;
-      if (alpha) {
-        src = new Uint8Array(alpha.length);
-        for (let i = 0; i < alpha.length; i++) src[i] = alpha[i] >= 0.5 ? 1 : 0;
-      } else if (gray8) {
-        src = new Uint8Array(gray8.length);
-        for (let i = 0; i < gray8.length; i++) src[i] = gray8[i] < 250 ? 1 : 0;
-      }
-      const sil = Processing.silhouette(src, w, h, s.outlineOffsetMm / mmPerPx, s.outlineCloseMm / mmPerPx);
-      const png = await Encoders.canvasBytes(Processing.bitsToCanvas(sil.bits, sil.w, sil.h, false), 'image/png');
-      if (stale()) return;
-      const d = await window.api.trace(png, {
+    if (sil) {
+      const d = await window.api.trace(sil.png, {
         turdSize: Math.round(sil.w * sil.h * 0.0005), // Kleinteile ignorieren
         alphaMax: 1.2,
         optTolerance: 0.5,
@@ -557,7 +612,7 @@ async function runProcess() {
       outline = { d, pad: sil.pad };
     }
 
-    const doc = { w, h, widthMm, fillPath, imagePng, outline };
+    const doc = { w, h, widthMm, fillPath, imageB64, outline };
     const svg = Encoders.svgDocument(doc);
     const previewSvg = Encoders.svgDocument({ ...doc, preview: true });
 
@@ -569,12 +624,13 @@ async function runProcess() {
     else showResult(new Blob([previewSvg], { type: 'image/svg+xml' }), false);
 
     const ms = Math.round(performance.now() - t0);
-    const kb = (new Blob([svg]).size / 1024).toFixed(0);
+    const kb = (svg.length / 1024).toFixed(0);
     $('#status').textContent =
       `${w} × ${h} px · ${round1(totalW)} × ${round1(totalH)} mm · ${Math.round(dpi)} DPI · SVG ${kb} KB · ${ms} ms`;
   } catch (err) {
+    if (isCancelled(err) || gen !== state.generation) return;
     console.error(err);
-    if (gen === state.generation) toast(`Umwandlung fehlgeschlagen: ${cleanError(err)}`, true);
+    toast(`Umwandlung fehlgeschlagen: ${cleanError(err)}`, true);
   } finally {
     if (gen === state.generation) {
       setBusy(false);
@@ -655,7 +711,7 @@ async function ensureMask(s, bitmap) {
   let canvas;
   try {
     if (method === 'color') {
-      canvas = Segmentation.colorMask(bitmap, s.bgTolerance, s.bgBorder, s.bgSeeds);
+      canvas = await Pipeline.colorMask(bitmap, s.bgTolerance, s.bgBorder, s.bgSeeds);
     } else {
       await ensureModelReady(SEG_MODEL[method]);
       showProgress(`${MODEL_NAMES[SEG_MODEL[method]]} …`, null);
@@ -670,12 +726,29 @@ async function ensureMask(s, bitmap) {
       canvas = Segmentation.aiMask(raw, bitmap, s.maskThreshold);
     }
   } catch (err) {
+    if (isCancelled(err)) throw err;
     console.error(err);
     toast(`Freistellen fehlgeschlagen: ${cleanError(err)}`, true);
     return null;
   }
   state.mask = { key, canvas };
   return canvas;
+}
+
+/** Maske nur für die Motivkontur (schnelle KI), wenn nicht freigestellt wird. */
+async function contourMask(s, bitmap) {
+  const up = s.upscale ? 'up' : 'orig';
+  try {
+    await ensureModelReady('u2netp');
+    showProgress('Motivkontur wird ermittelt …', null);
+    const raw = await cached(`seg:ai:${up}`, () => AI.segment('ai', bitmap));
+    return await cached(`contour-mask:${up}`, async () => Segmentation.aiMask(raw, bitmap, 0.5));
+  } catch (err) {
+    if (isCancelled(err)) throw err;
+    console.error(err);
+    toast(`Motivkontur fehlgeschlagen: ${cleanError(err)}`, true);
+    return null;
+  }
 }
 
 /** Bild, das tatsächlich umgewandelt wird: Original, KI-Strichzeichnung oder KI-Tiefenkarte. */
@@ -727,8 +800,8 @@ async function updateOriginalView(s, mask) {
     $('#pane-original').classList.remove('checker');
     return;
   }
-  const blob = await Segmentation.cutoutPreview(state.source.bitmap, mask, markers);
-  state.originalUrl = URL.createObjectURL(blob);
+  const png = await Pipeline.cutout(state.source.bitmap, mask, markers);
+  state.originalUrl = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
   img.src = state.originalUrl;
   $('#pane-original').classList.toggle('checker', !!mask);
 }

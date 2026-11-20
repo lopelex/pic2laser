@@ -140,12 +140,12 @@ const Encoders = (() => {
   /**
    * Baut das SVG. Maße in mm, damit LightBurn die Größe übernimmt.
    *  fillPath:  Potrace-Pfad (schwarz gefüllt)       – Modi Fläche/Linien
-   *  imagePng:  eingebettetes Rasterbild             – Modus Dithering
+   *  imageB64:  eingebettetes Rasterbild (PNG, Base64) – Modi Foto/Relief
    *  outline:   { d, pad } Umrisslinie (rot, ohne Füllung → eigene LightBurn-Ebene)
    *  preview:   Linienbreite für die Bildschirmvorschau statt Haarlinie
    * Bewusst ohne weißes Hintergrund-Rechteck: LightBurn würde es sonst als eigene Form importieren.
    */
-  function svgDocument({ w, h, widthMm, fillPath = null, imagePng = null, outline = null, preview = false }) {
+  function svgDocument({ w, h, widthMm, fillPath = null, imageB64 = null, outline = null, preview = false }) {
     const mmPerPx = widthMm / w;
     const pad = outline ? outline.pad : 0;
     const vbW = w + 2 * pad;
@@ -154,8 +154,8 @@ const Encoders = (() => {
     if (fillPath) {
       parts.push(`  <path d="${fillPath}" fill="#000" fill-rule="evenodd" stroke="none"/>`);
     }
-    if (imagePng) {
-      parts.push(`  <image width="${w}" height="${h}" style="image-rendering:pixelated" xlink:href="data:image/png;base64,${toBase64(imagePng)}"/>`);
+    if (imageB64) {
+      parts.push(`  <image width="${w}" height="${h}" style="image-rendering:pixelated" xlink:href="data:image/png;base64,${imageB64}"/>`);
     }
     if (outline && outline.d) {
       const stroke = preview
@@ -170,5 +170,5 @@ ${parts.join('\n')}
 `;
   }
 
-  return { pngWithDpi, jpgWithDpi, bmp1bit, bmp8gray, canvasBytes, svgDocument };
+  return { pngWithDpi, jpgWithDpi, bmp1bit, bmp8gray, canvasBytes, svgDocument, toBase64 };
 })();

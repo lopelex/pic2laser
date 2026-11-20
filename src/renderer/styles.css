@@ -186,6 +186,7 @@ input:disabled { opacity: .5; }
 }
 
 .panes {
+  position: relative;
   flex: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -250,7 +251,7 @@ input:disabled { opacity: .5; }
 /* ---------- Drop-Zone ---------- */
 .dropzone {
   position: absolute;
-  inset: 49px 0 0 0;
+  inset: 0;
   display: flex; align-items: center; justify-content: center;
   background: var(--bg);
   z-index: 5;

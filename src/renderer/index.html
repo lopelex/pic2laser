@@ -220,6 +220,18 @@
         </label>
       </section>
 
+      <section class="group" data-mode="vector edges dither">
+        <h3>Motivkontur</h3>
+        <label class="check"><input type="checkbox" data-key="subjectLine" /> Dünne Linie zwischen Motiv und Hintergrund</label>
+        <div data-show="subjectLine">
+          <label class="slider">
+            <span>Linienstärke <output data-for="subjectLineMm"></output></span>
+            <input type="range" data-key="subjectLineMm" min="0.1" max="2" step="0.05" />
+          </label>
+          <p class="hint">Setzt das Motiv dort ab, wo es mit dem Hintergrund verschwimmt (z.&nbsp;B. helle Haut vor hellem Hintergrund). Nutzt die Freistell-Maske – ist Freistellen aus, wird die Kontur per KI ermittelt und der Hintergrund bleibt erhalten.</p>
+        </div>
+      </section>
+
       <section class="group">
         <h3>Umrisslinie</h3>
         <label class="check"><input type="checkbox" data-key="outline" /> Randkontur um das Motiv zeichnen</label>
@@ -299,13 +311,14 @@
           <div class="pane-scroll"><img id="img-result" alt="" /></div>
           <div class="busy" id="busy"><div class="spinner"></div></div>
         </div>
-      </div>
 
-      <div class="dropzone" id="dropzone">
-        <div class="dropzone-inner">
-          <div class="drop-icon">⤓</div>
-          <div class="drop-title">Bild hierher ziehen</div>
-          <div class="drop-sub">PNG, JPG, WebP, BMP, GIF … oder <a href="#" id="drop-open">Datei auswählen</a></div>
+        <!-- Liegt innerhalb der Vorschau und deckt sie unabhängig von der Werkzeugleisten-Höhe ab -->
+        <div class="dropzone" id="dropzone">
+          <div class="dropzone-inner">
+            <div class="drop-icon">⤓</div>
+            <div class="drop-title">Bild hierher ziehen</div>
+            <div class="drop-sub">PNG, JPG, WebP, BMP, GIF … oder <a href="#" id="drop-open">Datei auswählen</a></div>
+          </div>
         </div>
       </div>
     </section>
