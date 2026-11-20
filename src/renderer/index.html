@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>Pic2Laser</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-name">Pic2Laser</span>
+      <span class="brand-sub">Bild → Schwarz-Weiß-SVG für LightBurn</span>
+    </div>
+    <div class="topbar-actions">
+      <button id="btn-open" class="btn">Bild öffnen…</button>
+      <button id="btn-save-history" class="btn" disabled>In Historie speichern</button>
+      <button id="btn-export" class="btn btn-primary" disabled>Exportieren</button>
+      <button id="btn-toggle-history" class="btn btn-ghost" title="Historie ein-/ausblenden">Historie</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Einstellungen -->
+    <aside class="panel settings" id="settings">
+      <section class="group">
+        <h3>Modus</h3>
+        <div class="segmented" id="mode">
+          <button data-value="vector" class="active" title="Flächen als Vektor (Logos, Schrift, Silhouetten)">Fläche</button>
+          <button data-value="edges" title="Kanten nachzeichnen – Linienzeichnung als Vektor">Linien</button>
+          <button data-value="dither" title="Dithering für Fotos">Foto</button>
+        </div>
+        <p class="hint" id="mode-hint"></p>
+      </section>
+
+      <section class="group">
+        <h3>Freistellen</h3>
+        <div class="segmented small" id="bgRemove">
+          <button data-value="none" class="active">Aus</button>
+          <button data-value="ai" title="Motiv automatisch per KI erkennen (lokal, offline)">KI (Auto)</button>
+          <button data-value="color" title="Hintergrund anhand der Farbe entfernen">Nach Farbe</button>
+        </div>
+        <div data-bg="ai">
+          <label class="slider">
+            <span>Maskenschwelle <output data-for="maskThreshold"></output></span>
+            <input type="range" data-key="maskThreshold" min="0.05" max="0.95" step="0.01" />
+          </label>
+          <p class="hint">Höher = engere Maske, niedriger = mehr vom Motiv bleibt erhalten.</p>
+        </div>
+        <div data-bg="color">
+          <label class="slider">
+            <span>Farbtoleranz <output data-for="bgTolerance"></output></span>
+            <input type="range" data-key="bgTolerance" min="1" max="100" step="1" />
+          </label>
+          <label class="check"><input type="checkbox" data-key="bgBorder" /> Hintergrund vom Bildrand aus entfernen</label>
+          <p class="hint">Klicke ins <b>Original</b>, um weitere Hintergrundbereiche zu entfernen.</p>
+          <button class="btn btn-small" id="btn-clear-seeds">Klickpunkte zurücksetzen</button>
+        </div>
+      </section>
+
+      <section class="group">
+        <h3>Bildanpassung</h3>
+        <label class="slider">
+          <span>Helligkeit <output data-for="brightness"></output></span>
+          <input type="range" data-key="brightness" min="-100" max="100" step="1" />
+        </label>
+        <label class="slider">
+          <span>Kontrast <output data-for="contrast"></output></span>
+          <input type="range" data-key="contrast" min="-100" max="100" step="1" />
+        </label>
+        <label class="slider">
+          <span>Gamma <output data-for="gamma"></output></span>
+          <input type="range" data-key="gamma" min="0.2" max="3" step="0.05" />
+        </label>
+        <label class="slider">
+          <span>Weichzeichnen <output data-for="blur"></output></span>
+          <input type="range" data-key="blur" min="0" max="10" step="0.5" />
+        </label>
+        <label class="slider">
+          <span>Schärfen <output data-for="sharpen"></output></span>
+          <input type="range" data-key="sharpen" min="0" max="3" step="0.1" />
+        </label>
+        <label class="check"><input type="checkbox" data-key="invert" /> Invertieren</label>
+      </section>
+
+      <section class="group" data-mode="edges">
+        <h3>Kanten nachzeichnen</h3>
+        <label class="slider">
+          <span>Empfindlichkeit <output data-for="edgeSensitivity"></output></span>
+          <input type="range" data-key="edgeSensitivity" min="1" max="100" step="1" />
+        </label>
+        <label class="slider">
+          <span>Linienstärke <output data-for="lineWidthMm"></output></span>
+          <input type="range" data-key="lineWidthMm" min="0.1" max="3" step="0.05" />
+        </label>
+        <p class="hint">Tipp: Etwas Weichzeichnen reduziert Rauschen und kurze Störlinien.</p>
+      </section>
+
+      <section class="group" data-mode="vector edges">
+        <h3>Vektorisierung</h3>
+        <label class="slider" data-mode="vector">
+          <span>Schwellwert <output data-for="threshold"></output></span>
+          <div class="row">
+            <input type="range" data-key="threshold" min="1" max="254" step="1" />
+            <button class="btn btn-small" id="btn-auto-threshold" title="Optimalen Schwellwert berechnen (Otsu)">Auto</button>
+          </div>
+        </label>
+        <label class="slider">
+          <span>Flecken entfernen <output data-for="turdSize"></output></span>
+          <input type="range" data-key="turdSize" min="0" max="200" step="1" />
+        </label>
+        <label class="slider">
+          <span>Ecken glätten <output data-for="alphaMax"></output></span>
+          <input type="range" data-key="alphaMax" min="0" max="1.33" step="0.01" />
+        </label>
+        <label class="slider">
+          <span>Kurven-Toleranz <output data-for="optTolerance"></output></span>
+          <input type="range" data-key="optTolerance" min="0.05" max="1.5" step="0.05" />
+        </label>
+        <label class="slider">
+          <span>Arbeitsauflösung <output data-for="workRes"></output></span>
+          <input type="range" data-key="workRes" min="400" max="4000" step="100" />
+        </label>
+      </section>
+
+      <section class="group" data-mode="dither">
+        <h3>Dithering</h3>
+        <label class="field">
+          <span>Verfahren</span>
+          <select data-key="ditherAlgo">
+            <option value="floyd">Floyd-Steinberg</option>
+            <option value="atkinson">Atkinson</option>
+            <option value="jarvis">Jarvis-Judice-Ninke</option>
+            <option value="stucki">Stucki</option>
+            <option value="ordered">Ordered (Bayer 8×8)</option>
+            <option value="threshold">Nur Schwellwert</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Auflösung (DPI)</span>
+          <input type="number" data-key="dpi" min="50" max="1200" step="1" />
+        </label>
+        <label class="slider" data-algo="threshold">
+          <span>Schwellwert <output data-for="threshold"></output></span>
+          <input type="range" data-key="threshold" min="1" max="254" step="1" />
+        </label>
+      </section>
+
+      <section class="group">
+        <h3>Umrisslinie</h3>
+        <label class="check"><input type="checkbox" data-key="outline" /> Randkontur um das Motiv zeichnen</label>
+        <div data-show="outline">
+          <label class="slider">
+            <span>Abstand <output data-for="outlineOffsetMm"></output></span>
+            <input type="range" data-key="outlineOffsetMm" min="0" max="20" step="0.1" />
+          </label>
+          <label class="slider">
+            <span>Lücken schließen <output data-for="outlineCloseMm"></output></span>
+            <input type="range" data-key="outlineCloseMm" min="0" max="15" step="0.1" />
+          </label>
+          <label class="check"><input type="checkbox" data-key="outlineOnly" /> Nur Umrisslinie (ohne Gravur)</label>
+          <p class="hint">Rote Linie im SVG = eigene Ebene in LightBurn, z.&nbsp;B. zum Ausschneiden. Nur im SVG enthalten.</p>
+        </div>
+      </section>
+
+      <section class="group">
+        <h3>Ausgabegröße</h3>
+        <div class="row two">
+          <label class="field">
+            <span>Breite (mm)</span>
+            <input type="number" data-key="widthMm" min="1" max="2000" step="0.1" />
+          </label>
+          <label class="field">
+            <span>Höhe (mm)</span>
+            <input type="number" id="heightMm" min="1" max="2000" step="0.1" />
+          </label>
+        </div>
+        <label class="check"><input type="checkbox" data-key="transparent" /> Weiß als transparent (PNG/SVG)</label>
+      </section>
+
+      <section class="group">
+        <h3>Exportformate</h3>
+        <div class="formats">
+          <label class="check"><input type="checkbox" data-key="fmtSvg" /> SVG</label>
+          <label class="check"><input type="checkbox" data-key="fmtPng" /> PNG</label>
+          <label class="check"><input type="checkbox" data-key="fmtJpg" /> JPG</label>
+          <label class="check"><input type="checkbox" data-key="fmtBmp" /> BMP</label>
+        </div>
+      </section>
+
+      <button class="btn btn-ghost full" id="btn-reset">Einstellungen zurücksetzen</button>
+    </aside>
+
+    <!-- Vorschau -->
+    <section class="preview" id="preview">
+      <div class="preview-toolbar">
+        <div class="segmented small" id="view-mode">
+          <button data-value="split" class="active">Geteilt</button>
+          <button data-value="result">Ergebnis</button>
+          <button data-value="original">Original</button>
+        </div>
+        <div class="zoom">
+          <button class="btn btn-small" id="zoom-out" title="Verkleinern">−</button>
+          <span id="zoom-label">100 %</span>
+          <button class="btn btn-small" id="zoom-in" title="Vergrößern">+</button>
+          <button class="btn btn-small" id="zoom-fit" title="An Fenster anpassen">Einpassen</button>
+        </div>
+        <div class="status" id="status"></div>
+      </div>
+
+      <div class="panes" id="panes">
+        <div class="pane" id="pane-original">
+          <div class="pane-label">Original</div>
+          <div class="pane-scroll"><img id="img-original" alt="" /></div>
+        </div>
+        <div class="pane checker" id="pane-result">
+          <div class="pane-label">Ergebnis</div>
+          <div class="pane-scroll"><img id="img-result" alt="" /></div>
+          <div class="busy" id="busy"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <div class="dropzone" id="dropzone">
+        <div class="dropzone-inner">
+          <div class="drop-icon">⤓</div>
+          <div class="drop-title">Bild hierher ziehen</div>
+          <div class="drop-sub">PNG, JPG, WebP, BMP, GIF … oder <a href="#" id="drop-open">Datei auswählen</a></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Historie -->
+    <aside class="panel history" id="history">
+      <div class="history-head">
+        <h3>Historie</h3>
+        <button class="btn btn-small btn-ghost" id="btn-clear-history" title="Gesamte Historie löschen">Leeren</button>
+      </div>
+      <input type="search" id="history-search" placeholder="Suchen…" />
+      <ul class="history-list" id="history-list"></ul>
+      <p class="hint" id="history-empty">Noch keine Umwandlungen gespeichert. Exportierte Bilder landen automatisch hier.</p>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="processing.js"></script>
+  <script src="segmentation.js"></script>
+  <script src="encoders.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+{
+  "name": "pic2laser",
+  "version": "1.0.0",
+  "description": "Bilder in Schwarz-Wei\u00df-SVGs f\u00fcr LightBurn umwandeln",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac --arm64 && electron-builder --mac --x64 --config build/mac-x64.config.js"
+  },
+  "license": "MIT",
+  "build": {
+    "appId": "de.pic2laser.app",
+    "productName": "Pic2Laser",
+    "files": [
+      "src/**/*",
+      "models/**/*",
+      "package.json",
+      "!node_modules/onnxruntime-web/lib/**",
+      "!node_modules/onnxruntime-web/dist/!(ort.node.min.js|ort-wasm-simd-threaded.wasm|ort-wasm-simd-threaded.mjs)"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "files": [
+        "!node_modules/onnxruntime-node/bin/napi-v*/linux/**",
+        "!node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
+        "!node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**"
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.graphics-design",
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+      "files": [
+        "!node_modules/onnxruntime-node/bin/napi-v*/linux/**",
+        "!node_modules/onnxruntime-node/bin/napi-v*/win32/**"
+      ]
+    },
+    "linux": {
+      "target": "AppImage"
+    },
+    "asarUnpack": [
+      "models/**/*",
+      "node_modules/onnxruntime-web/**"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "icon": "build/icon.png",
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "shortcutName": "Pic2Laser"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    }
+  },
+  "dependencies": {
+    "onnxruntime-node": "^1.31.1",
+    "onnxruntime-web": "^1.31.1",
+    "potrace": "^2.1.8"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "allowScripts": {
+    "electron@45.4.1": true,
+    "onnxruntime-node": false,
+    "electron-winstaller": false
+  },
+  "author": "Pic2Laser"
+}

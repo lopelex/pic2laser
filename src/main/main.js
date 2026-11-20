@@ -1,0 +1,310 @@
+'use strict';
+
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
+const path = require('path');
+const fs = require('fs/promises');
+const crypto = require('crypto');
+const { Potrace } = require('potrace');
+
+// Das KI-Modell liegt außerhalb des asar-Archivs (siehe "asarUnpack" in package.json)
+const MODEL_PATH = path
+  .join(__dirname, '..', '..', 'models', 'u2netp.onnx')
+  .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+
+const HISTORY_DIR = () => path.join(app.getPath('userData'), 'history');
+const ID_PATTERN = /^[a-f0-9-]{36}$/;
+
+let mainWindow;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    minWidth: 1000,
+    minHeight: 640,
+    backgroundColor: '#16181d',
+    title: 'Pic2Laser',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+
+  // Links nie im App-Fenster öffnen
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
+}
+
+app.whenReady().then(() => {
+  if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
+  createWindow();
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+/* ------------------------------------------------------------------ */
+/* Vektorisierung                                                     */
+/* ------------------------------------------------------------------ */
+
+ipcMain.handle('trace', async (_e, pngBytes, params) => {
+  const tracer = new Potrace({
+    threshold: 128,
+    blackOnWhite: true,
+    turdSize: clamp(Number(params.turdSize) || 0, 0, 100000),
+    alphaMax: clamp(Number(params.alphaMax), 0, 1.3334),
+    optCurve: params.optCurve !== false,
+    optTolerance: clamp(Number(params.optTolerance) || 0.2, 0.01, 5),
+    turnPolicy: Potrace.TURNPOLICY_MINORITY,
+  });
+
+  await new Promise((resolve, reject) => {
+    tracer.loadImage(Buffer.from(pngBytes), (err) => (err ? reject(err) : resolve()));
+  });
+
+  // Nur das "d"-Attribut zurückgeben; das SVG baut der Renderer selbst (mit mm-Maßen)
+  const tag = tracer.getPathTag('#000');
+  const match = tag.match(/\sd="([^"]*)"/);
+  return match ? match[1] : '';
+});
+
+/* ------------------------------------------------------------------ */
+/* Freistellen (KI): U²-Net (u2netp), läuft lokal und offline           */
+/* ------------------------------------------------------------------ */
+
+let segSession = null; // Promise<{ ort, session }>
+
+/**
+ * Bevorzugt die native Laufzeit (onnxruntime-node, schnell). Wo es keine nativen
+ * Binärdateien gibt (z. B. Intel-Macs), wird onnxruntime-web (WebAssembly) genutzt.
+ */
+async function createSegSession() {
+  try {
+    const ort = require('onnxruntime-node');
+    return { ort, session: await ort.InferenceSession.create(MODEL_PATH) };
+  } catch (nativeErr) {
+    console.warn('onnxruntime-node nicht verfügbar, nutze WebAssembly:', nativeErr.message);
+    const ort = require('onnxruntime-web');
+    ort.env.wasm.numThreads = Math.max(1, Math.min(4, require('os').cpus().length));
+    const model = await fs.readFile(MODEL_PATH);
+    return { ort, session: await ort.InferenceSession.create(model, { executionProviders: ['wasm'] }) };
+  }
+}
+
+function getSegSession() {
+  if (!segSession) {
+    segSession = createSegSession().catch((err) => {
+      segSession = null;
+      throw err;
+    });
+  }
+  return segSession;
+}
+
+/** input: Float32Array 1×3×320×320 (bereits normalisiert). Rückgabe: Float32Array 320×320, Werte 0..1. */
+ipcMain.handle('segment', async (_e, input) => {
+  const { ort, session } = await getSegSession();
+  const tensor = new ort.Tensor('float32', Float32Array.from(input), [1, 3, 320, 320]);
+  const out = await session.run({ [session.inputNames[0]]: tensor });
+  const data = out[session.outputNames[0]].data;
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] < min) min = data[i];
+    if (data[i] > max) max = data[i];
+  }
+  const range = max - min || 1;
+  const mask = new Float32Array(data.length);
+  for (let i = 0; i < data.length; i++) mask[i] = (data[i] - min) / range;
+  return mask;
+});
+
+function clamp(v, min, max) {
+  if (!Number.isFinite(v)) return min;
+  return Math.min(max, Math.max(min, v));
+}
+
+/* ------------------------------------------------------------------ */
+/* Dateien öffnen / exportieren                                       */
+/* ------------------------------------------------------------------ */
+
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'avif', 'ico'];
+
+ipcMain.handle('open-image', async () => {
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: 'Bild öffnen',
+    properties: ['openFile'],
+    filters: [{ name: 'Bilder', extensions: IMAGE_EXTS }],
+  });
+  if (res.canceled || !res.filePaths[0]) return null;
+  const filePath = res.filePaths[0];
+  const data = await fs.readFile(filePath);
+  return { name: path.basename(filePath), data };
+});
+
+/**
+ * files: [{ ext: 'svg'|'png'|'jpg'|'bmp', data: string|ArrayBuffer }]
+ * Der Benutzer wählt einmal Ordner + Basisnamen, alle Formate werden daneben gespeichert.
+ */
+ipcMain.handle('export-files', async (_e, { baseName, files }) => {
+  if (!files || files.length === 0) return null;
+  const first = files[0];
+  const res = await dialog.showSaveDialog(mainWindow, {
+    title: 'Exportieren',
+    defaultPath: path.join(app.getPath('pictures'), `${sanitize(baseName)}.${first.ext}`),
+    filters: [{ name: first.ext.toUpperCase(), extensions: [first.ext] }],
+  });
+  if (res.canceled || !res.filePath) return null;
+
+  const parsed = path.parse(res.filePath);
+  const written = [];
+  for (const f of files) {
+    const target = path.join(parsed.dir, `${parsed.name}.${f.ext}`);
+    await fs.writeFile(target, typeof f.data === 'string' ? f.data : Buffer.from(f.data));
+    written.push(target);
+  }
+  return written;
+});
+
+ipcMain.handle('show-in-folder', (_e, filePath) => {
+  if (typeof filePath === 'string') shell.showItemInFolder(filePath);
+});
+
+function sanitize(name) {
+  return String(name || 'bild').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 120) || 'bild';
+}
+
+/* ------------------------------------------------------------------ */
+/* Historie                                                           */
+/* ------------------------------------------------------------------ */
+
+function entryDir(id) {
+  if (!ID_PATTERN.test(id)) throw new Error('Ungültige ID');
+  return path.join(HISTORY_DIR(), id);
+}
+
+async function readMeta(id) {
+  const raw = await fs.readFile(path.join(entryDir(id), 'meta.json'), 'utf8');
+  return JSON.parse(raw);
+}
+
+ipcMain.handle('history-list', async () => {
+  await fs.mkdir(HISTORY_DIR(), { recursive: true });
+  const ids = (await fs.readdir(HISTORY_DIR())).filter((d) => ID_PATTERN.test(d));
+  const entries = [];
+  for (const id of ids) {
+    try {
+      const meta = await readMeta(id);
+      let thumb = null;
+      try {
+        const buf = await fs.readFile(path.join(entryDir(id), 'thumb.png'));
+        thumb = `data:image/png;base64,${buf.toString('base64')}`;
+      } catch { /* kein Vorschaubild */ }
+      entries.push({ ...meta, thumb });
+    } catch { /* defekter Eintrag – überspringen */ }
+  }
+  entries.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  return entries;
+});
+
+/**
+ * entry: { id?, name, originalName, original: {ext, data}?, settings, svg, raster: {ext,data}?, thumb: ArrayBuffer, width, height }
+ * Mit vorhandener id wird der Eintrag aktualisiert (Original bleibt erhalten).
+ */
+ipcMain.handle('history-save', async (_e, entry) => {
+  const isNew = !entry.id;
+  const id = isNew ? crypto.randomUUID() : entry.id;
+  const dir = entryDir(id);
+  await fs.mkdir(dir, { recursive: true });
+
+  let meta = {};
+  if (!isNew) {
+    try { meta = await readMeta(id); } catch { /* neu anlegen */ }
+  }
+
+  if (entry.original && entry.original.data) {
+    const ext = safeExt(entry.original.ext);
+    if (meta.originalFile && meta.originalFile !== `original.${ext}`) {
+      await fs.rm(path.join(dir, meta.originalFile), { force: true });
+    }
+    await fs.writeFile(path.join(dir, `original.${ext}`), Buffer.from(entry.original.data));
+    meta.originalFile = `original.${ext}`;
+  }
+  if (!meta.originalFile) throw new Error('Originalbild fehlt');
+
+  await fs.writeFile(path.join(dir, 'result.svg'), entry.svg || '');
+  if (entry.raster && entry.raster.data) {
+    await fs.writeFile(path.join(dir, 'result.png'), Buffer.from(entry.raster.data));
+  }
+  if (entry.thumb) await fs.writeFile(path.join(dir, 'thumb.png'), Buffer.from(entry.thumb));
+
+  const now = Date.now();
+  meta = {
+    ...meta,
+    id,
+    name: entry.name || meta.name || 'Bild',
+    originalName: entry.originalName || meta.originalName || '',
+    settings: entry.settings || {},
+    width: entry.width,
+    height: entry.height,
+    created: meta.created || now,
+    updated: now,
+  };
+  await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
+  return meta;
+});
+
+ipcMain.handle('history-load', async (_e, id) => {
+  const meta = await readMeta(id);
+  const data = await fs.readFile(path.join(entryDir(id), meta.originalFile));
+  return { meta, original: data };
+});
+
+ipcMain.handle('history-delete', async (_e, id) => {
+  await fs.rm(entryDir(id), { recursive: true, force: true });
+  return true;
+});
+
+ipcMain.handle('history-clear', async () => {
+  const res = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['Abbrechen', 'Alles löschen'],
+    defaultId: 0,
+    cancelId: 0,
+    message: 'Gesamte Historie löschen?',
+    detail: 'Alle gespeicherten Umwandlungen werden unwiderruflich entfernt.',
+  });
+  if (res.response !== 1) return false;
+  await fs.rm(HISTORY_DIR(), { recursive: true, force: true });
+  await fs.mkdir(HISTORY_DIR(), { recursive: true });
+  return true;
+});
+
+ipcMain.handle('history-export-svg', async (_e, id) => {
+  const meta = await readMeta(id);
+  const svg = await fs.readFile(path.join(entryDir(id), 'result.svg'), 'utf8');
+  const res = await dialog.showSaveDialog(mainWindow, {
+    title: 'SVG speichern',
+    defaultPath: path.join(app.getPath('pictures'), `${sanitize(meta.name)}.svg`),
+    filters: [{ name: 'SVG', extensions: ['svg'] }],
+  });
+  if (res.canceled || !res.filePath) return null;
+  await fs.writeFile(res.filePath, svg);
+  return res.filePath;
+});
+
+ipcMain.handle('history-open-folder', (_e, id) => {
+  shell.openPath(entryDir(id));
+});
+
+function safeExt(ext) {
+  const e = String(ext || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return IMAGE_EXTS.includes(e) ? e : 'png';
+}

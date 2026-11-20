@@ -1,0 +1,428 @@
+'use strict';
+
+/**
+ * Bildverarbeitung: Bitmap -> Graustufen -> Anpassungen -> Binärbild (1 = schwarz/gravieren).
+ */
+const Processing = (() => {
+  const MAX_PIXELS = 36e6; // Schutz gegen zu große Arbeitsbilder
+
+  /** Zielgröße des Arbeitsbildes in Pixeln. */
+  function targetSize(srcW, srcH, s) {
+    let w;
+    if (s.mode === 'dither') {
+      w = Math.round((s.widthMm / 25.4) * s.dpi);
+    } else {
+      const longSide = Math.max(srcW, srcH);
+      const scale = Math.min(s.workRes / longSide, 4); // max. 4-fach hochskalieren
+      w = Math.round(srcW * scale);
+    }
+    w = Math.max(1, w);
+    let h = Math.max(1, Math.round((w * srcH) / srcW));
+    if (w * h > MAX_PIXELS) {
+      const f = Math.sqrt(MAX_PIXELS / (w * h));
+      w = Math.max(1, Math.floor(w * f));
+      h = Math.max(1, Math.floor(h * f));
+    }
+    return { w, h };
+  }
+
+  /** Zeichnet die Quelle skaliert (weißer Hintergrund) und liefert Graustufen 0..255 als Float32Array. */
+  function toGray(bitmap, w, h, s) {
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    if (s.blur > 0) {
+      // Weichzeichner relativ zur Bildbreite, damit er unabhängig von der Auflösung wirkt
+      ctx.filter = `blur(${(s.blur * w) / 1000}px)`;
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    ctx.filter = 'none';
+
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const gray = new Float32Array(w * h);
+    for (let i = 0, p = 0; p < gray.length; i += 4, p++) {
+      gray[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    }
+    return gray;
+  }
+
+  function sharpen(gray, w, h, amount) {
+    if (amount <= 0) return gray;
+    const out = new Float32Array(gray.length);
+    for (let y = 0; y < h; y++) {
+      const y0 = y > 0 ? y - 1 : y;
+      const y1 = y < h - 1 ? y + 1 : y;
+      for (let x = 0; x < w; x++) {
+        const x0 = x > 0 ? x - 1 : x;
+        const x1 = x < w - 1 ? x + 1 : x;
+        const c = gray[y * w + x];
+        const lap = 4 * c - gray[y0 * w + x] - gray[y1 * w + x] - gray[y * w + x0] - gray[y * w + x1];
+        out[y * w + x] = c + amount * lap;
+      }
+    }
+    return out;
+  }
+
+  /** Helligkeit, Kontrast, Gamma, Invertieren. Ergebnis auf 0..255 begrenzt. */
+  function adjust(gray, s) {
+    const b = s.brightness * 2.55;
+    const c = s.contrast * 2.55;
+    const cf = (259 * (c + 255)) / (255 * (259 - c));
+    const invGamma = 1 / s.gamma;
+    const lut = new Float32Array(256);
+    for (let v = 0; v < 256; v++) {
+      let x = v + b;
+      x = cf * (x - 128) + 128;
+      x = Math.min(255, Math.max(0, x));
+      x = 255 * Math.pow(x / 255, invGamma);
+      if (s.invert) x = 255 - x;
+      lut[v] = x;
+    }
+    const out = new Float32Array(gray.length);
+    for (let i = 0; i < gray.length; i++) {
+      const v = gray[i];
+      const vi = v <= 0 ? 0 : v >= 255 ? 255 : v;
+      const lo = vi | 0;
+      const hi = lo < 255 ? lo + 1 : 255;
+      out[i] = lut[lo] + (lut[hi] - lut[lo]) * (vi - lo);
+    }
+    return out;
+  }
+
+  /** Otsu-Schwellwert auf dem angepassten Graustufenbild. */
+  function otsu(gray) {
+    const hist = new Float64Array(256);
+    for (let i = 0; i < gray.length; i++) hist[Math.max(0, Math.min(255, gray[i] | 0))]++;
+    const total = gray.length;
+    let sum = 0;
+    for (let t = 0; t < 256; t++) sum += t * hist[t];
+    let sumB = 0, wB = 0, best = 0, bestT = 128;
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t];
+      if (!wB) continue;
+      const wF = total - wB;
+      if (!wF) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB;
+      const mF = (sum - sumB) / wF;
+      const between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > best) { best = between; bestT = t; }
+    }
+    return Math.max(1, Math.min(254, bestT));
+  }
+
+  function threshold(gray, t) {
+    const out = new Uint8Array(gray.length);
+    for (let i = 0; i < gray.length; i++) out[i] = gray[i] < t ? 1 : 0;
+    return out;
+  }
+
+  const KERNELS = {
+    floyd: { div: 16, k: [[1, 0, 7], [-1, 1, 3], [0, 1, 5], [1, 1, 1]] },
+    atkinson: { div: 8, k: [[1, 0, 1], [2, 0, 1], [-1, 1, 1], [0, 1, 1], [1, 1, 1], [0, 2, 1]] },
+    jarvis: {
+      div: 48,
+      k: [[1, 0, 7], [2, 0, 5], [-2, 1, 3], [-1, 1, 5], [0, 1, 7], [1, 1, 5], [2, 1, 3],
+          [-2, 2, 1], [-1, 2, 3], [0, 2, 5], [1, 2, 3], [2, 2, 1]],
+    },
+    stucki: {
+      div: 42,
+      k: [[1, 0, 8], [2, 0, 4], [-2, 1, 2], [-1, 1, 4], [0, 1, 8], [1, 1, 4], [2, 1, 2],
+          [-2, 2, 1], [-1, 2, 2], [0, 2, 4], [1, 2, 2], [2, 2, 1]],
+    },
+  };
+
+  /** Fehlerdiffusion mit Serpentinen-Durchlauf (weniger Artefakte). */
+  function errorDiffusion(gray, w, h, algo) {
+    const { div, k } = KERNELS[algo];
+    const buf = Float32Array.from(gray);
+    const out = new Uint8Array(gray.length);
+    for (let y = 0; y < h; y++) {
+      const ltr = (y & 1) === 0;
+      for (let i = 0; i < w; i++) {
+        const x = ltr ? i : w - 1 - i;
+        const idx = y * w + x;
+        const old = buf[idx];
+        const black = old < 128;
+        out[idx] = black ? 1 : 0;
+        const err = old - (black ? 0 : 255);
+        for (let n = 0; n < k.length; n++) {
+          const dx = ltr ? k[n][0] : -k[n][0];
+          const nx = x + dx;
+          const ny = y + k[n][1];
+          if (nx < 0 || nx >= w || ny >= h) continue;
+          buf[ny * w + nx] += (err * k[n][2]) / div;
+        }
+      }
+    }
+    return out;
+  }
+
+  const BAYER8 = (() => {
+    const m = [[0]];
+    let size = 1;
+    let mat = m;
+    while (size < 8) {
+      const n = size * 2;
+      const next = Array.from({ length: n }, () => new Array(n));
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const v = mat[y][x] * 4;
+          next[y][x] = v;
+          next[y][x + size] = v + 2;
+          next[y + size][x] = v + 3;
+          next[y + size][x + size] = v + 1;
+        }
+      }
+      mat = next;
+      size = n;
+    }
+    return mat;
+  })();
+
+  function ordered(gray, w, h) {
+    const out = new Uint8Array(gray.length);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const t = ((BAYER8[y & 7][x & 7] + 0.5) / 64) * 255;
+        out[y * w + x] = gray[y * w + x] < t ? 1 : 0;
+      }
+    }
+    return out;
+  }
+
+  /** Liest den Alphakanal einer Maske in Zielgröße (0..1). */
+  function maskAlpha(maskCanvas, w, h) {
+    const c = new OffscreenCanvas(w, h);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(maskCanvas, 0, 0, w, h);
+    const d = ctx.getImageData(0, 0, w, h).data;
+    const a = new Float32Array(w * h);
+    for (let i = 0, p = 0; p < a.length; i += 4, p++) a[p] = d[i + 3] / 255;
+    return a;
+  }
+
+  /**
+   * Euklidische Distanztransformation (Felzenszwalb).
+   * Liefert für jedes Pixel den Abstand (px) zum nächsten Pixel mit set[i] = 1.
+   */
+  function distanceTransform(set, w, h) {
+    const INF = 1e20;
+    const f = new Float64Array(Math.max(w, h));
+    const d = new Float64Array(Math.max(w, h));
+    const v = new Int32Array(Math.max(w, h));
+    const z = new Float64Array(Math.max(w, h) + 1);
+    const grid = new Float64Array(w * h);
+    for (let i = 0; i < grid.length; i++) grid[i] = set[i] ? 0 : INF;
+
+    const edt1d = (n) => {
+      let k = 0;
+      v[0] = 0; z[0] = -INF; z[1] = INF;
+      for (let q = 1; q < n; q++) {
+        let s0;
+        do {
+          const r = v[k];
+          s0 = (f[q] + q * q - (f[r] + r * r)) / (2 * q - 2 * r);
+        } while (s0 <= z[k] && --k >= 0);
+        k++;
+        v[k] = q; z[k] = s0; z[k + 1] = INF;
+      }
+      k = 0;
+      for (let q = 0; q < n; q++) {
+        while (z[k + 1] < q) k++;
+        const r = v[k];
+        d[q] = (q - r) * (q - r) + f[r];
+      }
+    };
+
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) f[y] = grid[y * w + x];
+      edt1d(h);
+      for (let y = 0; y < h; y++) grid[y * w + x] = d[y];
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) f[x] = grid[y * w + x];
+      edt1d(w);
+      for (let x = 0; x < w; x++) grid[y * w + x] = Math.sqrt(d[x]);
+    }
+    return grid;
+  }
+
+  function dilate(bits, w, h, r) {
+    if (r <= 0) return bits;
+    const dist = distanceTransform(bits, w, h);
+    const out = new Uint8Array(bits.length);
+    for (let i = 0; i < out.length; i++) out[i] = dist[i] <= r ? 1 : 0;
+    return out;
+  }
+
+  function erode(bits, w, h, r) {
+    if (r <= 0) return bits;
+    const inv = new Uint8Array(bits.length);
+    for (let i = 0; i < inv.length; i++) inv[i] = bits[i] ? 0 : 1;
+    const dist = distanceTransform(inv, w, h);
+    const out = new Uint8Array(bits.length);
+    for (let i = 0; i < out.length; i++) out[i] = bits[i] && dist[i] > r ? 1 : 0;
+    return out;
+  }
+
+  /** Füllt alle Löcher (Bereiche, die nicht mit dem Bildrand verbunden sind). */
+  function fillHoles(bits, w, h) {
+    const outside = new Uint8Array(bits.length);
+    const stack = new Int32Array(bits.length);
+    let sp = 0;
+    const push = (i) => { if (!bits[i] && !outside[i]) { outside[i] = 1; stack[sp++] = i; } };
+    for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+    for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+    while (sp) {
+      const i = stack[--sp];
+      const x = i % w;
+      if (x > 0) push(i - 1);
+      if (x < w - 1) push(i + 1);
+      if (i >= w) push(i - w);
+      if (i < (h - 1) * w) push(i + w);
+    }
+    const out = new Uint8Array(bits.length);
+    for (let i = 0; i < out.length; i++) out[i] = outside[i] ? 0 : 1;
+    return out;
+  }
+
+  /** Canny-Kantenerkennung. sensitivity 1..100 (höher = mehr Kanten). */
+  function canny(gray, w, h, sensitivity) {
+    const mag = new Float32Array(w * h);
+    const dir = new Uint8Array(w * h);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        const tl = gray[i - w - 1], t = gray[i - w], tr = gray[i - w + 1];
+        const l = gray[i - 1], r = gray[i + 1];
+        const bl = gray[i + w - 1], b = gray[i + w], br = gray[i + w + 1];
+        const gx = -tl - 2 * l - bl + tr + 2 * r + br;
+        const gy = -tl - 2 * t - tr + bl + 2 * b + br;
+        mag[i] = Math.hypot(gx, gy);
+        let a = (Math.atan2(gy, gx) * 180) / Math.PI;
+        if (a < 0) a += 180;
+        dir[i] = a < 22.5 || a >= 157.5 ? 0 : a < 67.5 ? 1 : a < 112.5 ? 2 : 3;
+      }
+    }
+    // Non-Maximum-Suppression
+    const nms = new Float32Array(w * h);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        const m = mag[i];
+        if (!m) continue;
+        let a, b;
+        switch (dir[i]) {
+          case 0: a = mag[i - 1]; b = mag[i + 1]; break;
+          case 1: a = mag[i - w - 1]; b = mag[i + w + 1]; break;
+          case 2: a = mag[i - w]; b = mag[i + w]; break;
+          default: a = mag[i - w + 1]; b = mag[i + w - 1];
+        }
+        if (m >= a && m >= b) nms[i] = m;
+      }
+    }
+    // Hysterese
+    const high = 20 + (100 - sensitivity) * 6;
+    const low = high * 0.4;
+    const out = new Uint8Array(w * h);
+    const stack = [];
+    for (let i = 0; i < nms.length; i++) {
+      if (nms[i] >= high && !out[i]) {
+        out[i] = 1;
+        stack.push(i);
+        while (stack.length) {
+          const j = stack.pop();
+          const jx = j % w;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = jx + dx;
+              const k = j + dy * w + dx;
+              if (nx < 0 || nx >= w || k < 0 || k >= nms.length || out[k]) continue;
+              if (nms[k] >= low) { out[k] = 1; stack.push(k); }
+            }
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Vollständige Verarbeitung.
+   * @param maskCanvas optionale Freistellmaske (Alphakanal = Motiv)
+   * @returns {{ w, h, bits: Uint8Array, alpha: Float32Array|null }}
+   */
+  function process(bitmap, s, maskCanvas = null) {
+    const { w, h } = targetSize(bitmap.width, bitmap.height, s);
+    let gray = toGray(bitmap, w, h, s);
+    gray = sharpen(gray, w, h, s.sharpen);
+    gray = adjust(gray, s);
+
+    // Freigestellter Hintergrund wird weiß (= wird nicht graviert)
+    let alpha = null;
+    if (maskCanvas) {
+      alpha = maskAlpha(maskCanvas, w, h);
+      for (let i = 0; i < gray.length; i++) gray[i] = gray[i] * alpha[i] + 255 * (1 - alpha[i]);
+    }
+
+    let bits;
+    if (s.mode === 'edges') {
+      bits = canny(gray, w, h, s.edgeSensitivity);
+      const mmPerPx = s.widthMm / w;
+      const r = Math.max(0, s.lineWidthMm / mmPerPx / 2 - 0.5);
+      bits = dilate(bits, w, h, r);
+    } else if (s.mode === 'vector' || s.ditherAlgo === 'threshold') {
+      bits = threshold(gray, s.threshold);
+    } else if (s.ditherAlgo === 'ordered') {
+      bits = ordered(gray, w, h);
+    } else {
+      bits = errorDiffusion(gray, w, h, s.ditherAlgo);
+    }
+    return { w, h, bits, alpha };
+  }
+
+  /**
+   * Silhouette für die Umrisslinie: Motiv (Maske oder schwarze Pixel),
+   * um offsetPx erweitert, Lücken bis closePx geschlossen, Löcher gefüllt.
+   * Das Ergebnis ist um pad Pixel auf jeder Seite größer.
+   */
+  function silhouette(src, w, h, offsetPx, closePx) {
+    const pad = Math.ceil(offsetPx + closePx) + 2;
+    const pw = w + 2 * pad, ph = h + 2 * pad;
+    let m = new Uint8Array(pw * ph);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) m[(y + pad) * pw + x + pad] = src[y * w + x];
+    }
+    if (closePx > 0) m = erode(dilate(m, pw, ph, offsetPx + closePx), pw, ph, closePx);
+    else m = dilate(m, pw, ph, offsetPx);
+    m = fillHoles(m, pw, ph);
+    return { bits: m, w: pw, h: ph, pad };
+  }
+
+  /** Binärbild als Canvas (schwarz auf weiß oder schwarz auf transparent). */
+  function bitsToCanvas(bits, w, h, transparent) {
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(w, h);
+    const d = img.data;
+    for (let i = 0, p = 0; p < bits.length; i += 4, p++) {
+      if (bits[p]) {
+        d[i] = d[i + 1] = d[i + 2] = 0;
+        d[i + 3] = 255;
+      } else {
+        d[i] = d[i + 1] = d[i + 2] = 255;
+        d[i + 3] = transparent ? 0 : 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return canvas;
+  }
+
+  return { process, bitsToCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate };
+})();
