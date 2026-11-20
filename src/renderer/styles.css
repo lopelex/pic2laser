@@ -400,3 +400,23 @@ body.has-image .dropzone:not(.dragging) { display: none; }
 
 .model-req { color: var(--muted); font-size: 11px; }
 .model-req.warn { color: #f59e0b; }
+
+/* ---------- Klickpunkte (Plus/Minus) über dem Original ---------- */
+.marker-layer { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }
+.marker {
+  position: absolute;
+  width: 18px; height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .55);
+  box-sizing: border-box;
+}
+.marker.plus { background: #22c55e; }
+.marker.minus { background: #ef4444; }
+.marker::before, .marker.plus::after {
+  content: ''; position: absolute; background: #fff; border-radius: 1px;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+}
+.marker::before { width: 8px; height: 2px; }
+.marker.plus::after { width: 2px; height: 8px; }

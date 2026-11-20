@@ -205,6 +205,7 @@ function setSetting(key, value) {
   state.settings[key] = value;
   persistSettings();
   syncControls();
+  if (key === 'bgSeeds' || key === 'samPoints' || key === 'bgRemove') renderMarkers();
   updatePresetHint();
   if (!key.startsWith('fmt')) scheduleProcess();
 }
@@ -1369,9 +1370,7 @@ async function contentSource(s, bitmap, mask) {
 
 /** Zeigt im Original-Fenster das freigestellte Bild bzw. das unveränderte Original. */
 async function updateOriginalView(s, mask, base = state.source.bitmap) {
-  const markers = s.bgRemove === 'color'
-    ? s.bgSeeds.map((p) => ({ ...p, positive: false }))
-    : s.bgRemove === 'sam' ? s.samPoints : [];
+  const markers = []; // Klickpunkte zeichnet die Marker-Ebene (renderMarkers) – immer gleich groß
   const boxes = s.textBlocks || [];
   const hideBg = ui.hideBackground;
   const key = `${mask ? state.mask.key : 'plain'}|${JSON.stringify(markers)}|${JSON.stringify(boxes)}|${restoreSig(s)}|${hideBg}`;
@@ -1527,7 +1526,7 @@ function markerAt(img, e, points) {
   const dw = nw * scale, dh = nh * scale;
   const ox = rect.left + (rect.width - dw) / 2;
   const oy = rect.top + (rect.height - dh) / 2;
-  const radius = Math.max(10, Math.max(5, Math.round(Math.max(nw, nh) / 110)) * scale * 1.3);
+  const radius = 13; // Marker sind 18 px groß (Marker-Ebene), etwas großzügiger treffen
   let best = -1, bestDist = Infinity;
   points.forEach((p, i) => {
     const d = Math.hypot(ox + p.x * dw - e.clientX, oy + p.y * dh - e.clientY);
@@ -1816,6 +1815,34 @@ function setZoom(i) {
   const z = ZOOM_STEPS[state.zoomIndex];
   document.documentElement.style.setProperty('--zoom', z);
   $('#zoom-label').textContent = `${Math.round(z * 100)} %`;
+  requestAnimationFrame(renderMarkers);
+}
+
+/**
+ * Klickpunkte (Plus/Minus) als eigene Ebene über dem Original – unabhängig von
+ * Bildgröße und Zoom immer gleich groß und sofort sichtbar.
+ */
+function renderMarkers() {
+  const layer = $('#marker-layer');
+  const img = $('#img-original');
+  const mode = state.settings.bgRemove;
+  const points = !state.source ? [] : mode === 'color'
+    ? state.settings.bgSeeds.map((p) => ({ ...p, positive: false }))
+    : mode === 'sam' ? state.settings.samPoints : [];
+  layer.textContent = '';
+  if (!points.length || !img.naturalWidth) return;
+  // Lage des Bildinhalts (object-fit: contain) innerhalb des <img>
+  const iw = img.clientWidth, ih = img.clientHeight;
+  const sc = Math.min(iw / img.naturalWidth, ih / img.naturalHeight);
+  const dw = img.naturalWidth * sc, dh = img.naturalHeight * sc;
+  const ox = img.offsetLeft + (iw - dw) / 2, oy = img.offsetTop + (ih - dh) / 2;
+  for (const p of points) {
+    const m = document.createElement('div');
+    m.className = `marker ${p.positive ? 'plus' : 'minus'}`;
+    m.style.left = `${ox + p.x * dw}px`;
+    m.style.top = `${oy + p.y * dh}px`;
+    layer.append(m);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1843,6 +1870,9 @@ function toast(msg, isError = false, action = null) {
 
 bindControls();
 bindPresets();
+$('#img-original').addEventListener('load', renderMarkers);
+window.addEventListener('resize', renderMarkers);
+for (const b of $$('#view-mode button')) b.addEventListener('click', () => requestAnimationFrame(renderMarkers));
 bindDragDrop();
 bindView();
 syncControls();
