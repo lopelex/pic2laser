@@ -254,16 +254,155 @@ function bindControls() {
 /* Presets                                                            */
 /* ------------------------------------------------------------------ */
 
-// Mitgelieferte Vorlagen (nur die Abweichungen von den Standardwerten)
+// Mitgelieferte Vorlagen, gegliedert nach Art des Eingangsbilds
+// (nur die Abweichungen von den Standardwerten; Ausgabegröße und Exportformate bleiben erhalten)
 const BUILTIN_PRESETS = [
-  { name: 'Logo / Schrift', settings: { mode: 'vector', threshold: 128, turdSize: 4, alphaMax: 1, optTolerance: 0.2, workRes: 2000 } },
-  { name: 'Foto – Dithering', settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, contrast: 15, sharpen: 0.6 } },
-  { name: 'Foto – freigestellt', settings: { mode: 'dither', ditherAlgo: 'floyd', dpi: 254, contrast: 10, sharpen: 0.5, bgRemove: 'birefnet' } },
-  { name: 'Porträt – Strichzeichnung', settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 832, threshold: 150, bgRemove: 'modnet' } },
-  { name: 'Sticker mit Schnittkontur', settings: { mode: 'vector', bgRemove: 'ai', outline: true, outlineOffsetMm: 3, outlineCloseMm: 3 } },
-  { name: 'Nur Schnittkontur', settings: { mode: 'vector', bgRemove: 'ai', outline: true, outlineOnly: true, outlineOffsetMm: 2, outlineCloseMm: 4 } },
-  { name: 'Holz-Relief (3D)', settings: { mode: 'relief', depthRes: '770', dpi: 254, blur: 1, contrast: 10 } },
-  { name: 'Kleines Bild verbessern', settings: { mode: 'vector', upscale: true, blur: 0.5 } },
+  // ---- Logos, Schrift & Grafik ----
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Logo / Schrift (sauber)',
+    desc: 'Für saubere Logos, Schriftzüge und Vektorgrafiken mit klaren Kanten.',
+    settings: { mode: 'vector', threshold: 128, turdSize: 4, alphaMax: 1, optTolerance: 0.2, workRes: 2000 },
+  },
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Logo aus kleinem Bild / Screenshot',
+    desc: 'Für kleine, verpixelte oder unscharfe Logos (z. B. aus dem Internet): KI-Vergrößerung glättet die Kanten.',
+    settings: { mode: 'vector', upscale: true, blur: 0.5, threshold: 128, turdSize: 8, alphaMax: 1.1, optTolerance: 0.3, workRes: 2400 },
+  },
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Clipart / Comic',
+    desc: 'Für Comics, Cliparts und Malvorlagen mit schwarzen Konturen – feine Linien bleiben erhalten.',
+    settings: { mode: 'vector', threshold: 140, turdSize: 3, alphaMax: 0.9, optTolerance: 0.15, workRes: 2400 },
+  },
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Handschrift / Unterschrift (Scan)',
+    desc: 'Für eingescannte oder fotografierte Handschrift auf Papier: hebt den Kontrast und entfernt Papierflecken.',
+    settings: { mode: 'vector', contrast: 35, brightness: 10, blur: 0.5, threshold: 135, turdSize: 12, alphaMax: 1.2, optTolerance: 0.3, workRes: 2500 },
+  },
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Bleistift- / Tuschezeichnung (Scan)',
+    desc: 'Für gescannte Zeichnungen und Skizzen: helle Striche werden kräftiger, Papierstruktur verschwindet.',
+    settings: { mode: 'vector', contrast: 45, brightness: 15, gamma: 0.8, sharpen: 0.4, threshold: 160, turdSize: 6, workRes: 2500 },
+  },
+
+  // ---- Porträts & Personen ----
+  {
+    group: 'Porträts & Personen', name: 'Porträt – Fotogravur',
+    desc: 'Für Porträtfotos: Person freigestellt, Dithering mit feiner Kontur zwischen Person und Hintergrund.',
+    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, contrast: 15, sharpen: 0.6, bgRemove: 'modnet', subjectLine: true, subjectLineMm: 0.25 },
+  },
+  {
+    group: 'Porträts & Personen', name: 'Porträt – Schablone (Stencil)',
+    desc: 'Für Porträts als flächige Schwarz-Weiß-Grafik im Stencil-Stil, z. B. für Holzschilder.',
+    settings: { mode: 'vector', bgRemove: 'modnet', contrast: 25, blur: 1, threshold: 110, turdSize: 25, alphaMax: 1.2, optTolerance: 0.4, subjectLine: true, subjectLineMm: 0.4 },
+  },
+  {
+    group: 'Porträts & Personen', name: 'Porträt – Strichzeichnung',
+    desc: 'Für Porträtfotos: KI zeichnet das Gesicht wie von Hand nach.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 832, threshold: 150, bgRemove: 'modnet' },
+  },
+  {
+    group: 'Porträts & Personen', name: 'Gruppenfoto / Person im Alltag',
+    desc: 'Für Fotos mit mehreren Personen oder unruhigem Hintergrund: präzises Freistellen, Dithering.',
+    settings: { mode: 'dither', ditherAlgo: 'floyd', dpi: 254, contrast: 15, sharpen: 0.5, bgRemove: 'isnet', subjectLine: true, subjectLineMm: 0.25 },
+  },
+
+  // ---- Tiere ----
+  {
+    group: 'Tiere', name: 'Haustier – Fotogravur',
+    desc: 'Für Hunde, Katzen & Co.: Fell bleibt detailreich, Hintergrund wird entfernt.',
+    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, contrast: 20, sharpen: 0.8, bgRemove: 'birefnet', subjectLine: true, subjectLineMm: 0.25 },
+  },
+  {
+    group: 'Tiere', name: 'Haustier – Schablone',
+    desc: 'Für Haustierfotos als kontrastreiche Schwarz-Weiß-Grafik.',
+    settings: { mode: 'vector', bgRemove: 'birefnet', contrast: 25, blur: 1, threshold: 105, turdSize: 20, alphaMax: 1.2, optTolerance: 0.4, subjectLine: true, subjectLineMm: 0.4 },
+  },
+  {
+    group: 'Tiere', name: 'Haustier – Strichzeichnung',
+    desc: 'Für Haustierfotos als Linienzeichnung, z. B. für Gedenktafeln.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 896, threshold: 145, bgRemove: 'birefnet' },
+  },
+  {
+    group: 'Tiere', name: 'Silhouette (gefüllt)',
+    desc: 'Für jedes Motiv: komplett schwarz gefüllte Silhouette ohne Innendetails.',
+    settings: { mode: 'vector', bgRemove: 'birefnet', brightness: -100, threshold: 254, turdSize: 30, alphaMax: 1.2, optTolerance: 0.4 },
+  },
+
+  // ---- Fotos & Landschaft ----
+  {
+    group: 'Fotos & Landschaft', name: 'Foto allgemein – Dithering',
+    desc: 'Für normale Fotos ohne Freistellen.',
+    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, contrast: 15, sharpen: 0.6 },
+  },
+  {
+    group: 'Fotos & Landschaft', name: 'Landschaft / Architektur',
+    desc: 'Für Landschafts- und Gebäudefotos mit vielen feinen Details.',
+    settings: { mode: 'dither', ditherAlgo: 'stucki', dpi: 300, contrast: 20, sharpen: 0.9 },
+  },
+  {
+    group: 'Fotos & Landschaft', name: 'Landschaft als Linienzeichnung',
+    desc: 'Für Landschaften, Gebäude und Skylines als feine Strichzeichnung.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 1024, threshold: 150 },
+  },
+  {
+    group: 'Fotos & Landschaft', name: 'Dunkles / kontrastarmes Foto',
+    desc: 'Für unterbelichtete, flaue oder alte Fotos: hellt auf und verstärkt den Kontrast.',
+    settings: { mode: 'dither', ditherAlgo: 'floyd', dpi: 254, brightness: 15, contrast: 35, gamma: 1.3, sharpen: 0.5 },
+  },
+  {
+    group: 'Fotos & Landschaft', name: 'Altes / kleines Foto restaurieren',
+    desc: 'Für kleine, alte oder unscharfe Fotos: KI-Vergrößerung vor dem Dithering.',
+    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, upscale: true, contrast: 20, sharpen: 0.4 },
+  },
+
+  // ---- Material ----
+  {
+    group: 'Material', name: 'Holz – Fotogravur',
+    desc: 'Für Fotos auf Holz: Atkinson-Dithering wirkt auf Holz heller und sauberer.',
+    settings: { mode: 'dither', ditherAlgo: 'atkinson', dpi: 254, contrast: 20, sharpen: 0.6, gamma: 1.1 },
+  },
+  {
+    group: 'Material', name: 'Schiefer / Glas / eloxiertes Alu (invertiert)',
+    desc: 'Für Materialien, auf denen die Gravur hell erscheint: Bild wird invertiert.',
+    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 300, invert: true, contrast: 20, sharpen: 0.6 },
+  },
+  {
+    group: 'Material', name: 'Leder – Gravur',
+    desc: 'Für Leder: gröbere Auflösung und mehr Kontrast, damit nichts verbrennt.',
+    settings: { mode: 'dither', ditherAlgo: 'floyd', dpi: 200, contrast: 25, gamma: 1.2, sharpen: 0.4 },
+  },
+  {
+    group: 'Material', name: 'Acryl – Flächengravur',
+    desc: 'Für Grafiken auf Acryl: klare Flächen als Vektor. Für Rückseitengravur in LightBurn spiegeln.',
+    settings: { mode: 'vector', threshold: 128, turdSize: 6, alphaMax: 1, optTolerance: 0.2, workRes: 2000 },
+  },
+
+  // ---- Schneiden & Relief ----
+  {
+    group: 'Schneiden & Relief', name: 'Sticker mit Schnittkontur',
+    desc: 'Motiv freigestellt plus rote Schnittlinie mit 3 mm Abstand.',
+    settings: { mode: 'vector', bgRemove: 'ai', outline: true, outlineOffsetMm: 3, outlineCloseMm: 3 },
+  },
+  {
+    group: 'Schneiden & Relief', name: 'Holzaufsteller / Figur ausschneiden',
+    desc: 'Für Figuren aus Holz: Gravur plus Schnittlinie mit 5 mm Rand und geschlossenen Lücken.',
+    settings: { mode: 'dither', ditherAlgo: 'atkinson', dpi: 254, contrast: 20, sharpen: 0.6, bgRemove: 'birefnet', subjectLine: true, subjectLineMm: 0.3, outline: true, outlineOffsetMm: 5, outlineCloseMm: 6 },
+  },
+  {
+    group: 'Schneiden & Relief', name: 'Nur Schnittkontur',
+    desc: 'Nur die Außenkontur des Motivs als Schnittlinie, ohne Gravur.',
+    settings: { mode: 'vector', bgRemove: 'ai', outline: true, outlineOnly: true, outlineOffsetMm: 2, outlineCloseMm: 4 },
+  },
+  {
+    group: 'Schneiden & Relief', name: 'Holz-Relief (3D)',
+    desc: 'Für Objekte und Landschaften: Tiefenkarte für 3D-Reliefgravur.',
+    settings: { mode: 'relief', depthRes: '770', dpi: 254, blur: 1, contrast: 10 },
+  },
+  {
+    group: 'Schneiden & Relief', name: 'Porträt-Relief (3D)',
+    desc: 'Für Porträts: Person freigestellt, glatte Tiefenkarte für Reliefgravur.',
+    settings: { mode: 'relief', depthRes: '770', dpi: 254, blur: 1.5, contrast: 15, bgRemove: 'modnet' },
+  },
 ];
 
 // Werte, die zum einzelnen Bild gehören und nicht in Presets gespeichert werden
@@ -323,7 +462,9 @@ function renderPresets() {
     sel.append(g);
   };
   group('Eigene Presets', state.presets, 'user');
-  group('Vorlagen', BUILTIN_PRESETS, 'builtin');
+  for (const name of [...new Set(BUILTIN_PRESETS.map((p) => p.group))]) {
+    group(name, BUILTIN_PRESETS.filter((p) => p.group === name), 'builtin');
+  }
   const active = state.activePreset?.key || '';
   sel.value = Array.from(sel.options).some((o) => o.value === active) ? active : '';
   $('#btn-preset-delete').disabled = !sel.value.startsWith('user:');
@@ -336,7 +477,11 @@ function updatePresetHint() {
   if (!a) { hint.textContent = ''; return; }
   const cur = presetSettingsFromCurrent();
   const changed = Object.keys(cur).some((k) => JSON.stringify(cur[k]) !== JSON.stringify(a.settings[k]));
-  hint.textContent = changed ? 'Einstellungen wurden seit dem Anwenden des Presets geändert.' : '';
+  const builtin = a.key.startsWith('builtin:') && BUILTIN_PRESETS.find((p) => `builtin:${p.name}` === a.key);
+  const parts = [];
+  if (builtin) parts.push(builtin.desc);
+  if (changed) parts.push('Einstellungen wurden seit dem Anwenden geändert.');
+  hint.textContent = parts.join(' ');
 }
 
 async function savePreset() {
