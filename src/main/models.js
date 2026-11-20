@@ -6,12 +6,11 @@
  * nach <userData>/models geladen und per SHA-256 geprüft.
  */
 
-const { app, net } = require('electron');
+const { app, net, utilityProcess } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const crypto = require('crypto');
-const os = require('os');
 
 const HF = 'https://huggingface.co';
 
@@ -174,7 +173,8 @@ async function ensure(id, onProgress) {
 
 async function remove(id) {
   const m = getModel(id);
-  sessions.delete(id);
+  const file = path.join(DOWNLOAD_DIR(), m.file);
+  if (worker.proc) worker.proc.postMessage({ type: 'drop', file });
   await fs.rm(path.join(DOWNLOAD_DIR(), m.file), { force: true });
 }
 
@@ -182,35 +182,40 @@ async function remove(id) {
 /* Inferenz                                                           */
 /* ------------------------------------------------------------------ */
 
-const sessions = new Map(); // id -> Promise<{ ort, session }>
+// Die Inferenz läuft in einem eigenen Utility-Prozess (model-worker.js), weil
+// onnxruntime-node im aufrufenden Thread rechnet und sonst das Fenster blockiert.
+const worker = {
+  proc: null,
+  nextId: 1,
+  pending: new Map(), // id -> { resolve, reject }
 
-/**
- * Bevorzugt die native Laufzeit (onnxruntime-node, schnell). Wo es keine nativen
- * Binärdateien gibt (z. B. Intel-Macs), wird onnxruntime-web (WebAssembly) genutzt.
- */
-async function createSession(file) {
-  try {
-    const ort = require('onnxruntime-node');
-    // Ohne Speicher-Arena: etwas langsamer, aber z. B. BiRefNet braucht ~0,5 statt ~8 GB RAM
-    const options = { enableCpuMemArena: false, enableMemPattern: false, logSeverityLevel: 3 };
-    return { ort, session: await ort.InferenceSession.create(file, options) };
-  } catch (nativeErr) {
-    console.warn('onnxruntime-node nicht verfügbar, nutze WebAssembly:', nativeErr.message);
-    const ort = require('onnxruntime-web');
-    ort.env.wasm.numThreads = Math.max(1, Math.min(4, os.cpus().length));
-    const bytes = await fs.readFile(file);
-    return { ort, session: await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] }) };
-  }
-}
+  ensureProc() {
+    if (this.proc) return this.proc;
+    this.proc = utilityProcess.fork(path.join(__dirname, 'model-worker.js'), [], { serviceName: 'Pic2Laser KI' });
+    this.proc.on('message', (msg) => {
+      const job = this.pending.get(msg.id);
+      if (!job) return;
+      this.pending.delete(msg.id);
+      if (msg.ok) job.resolve(msg.result);
+      else job.reject(new Error(msg.error));
+    });
+    this.proc.on('exit', () => {
+      this.proc = null;
+      for (const job of this.pending.values()) job.reject(new Error('KI-Prozess wurde beendet'));
+      this.pending.clear();
+    });
+    return this.proc;
+  },
 
-function getSession(id, onProgress) {
-  if (!sessions.has(id)) {
-    const p = ensure(id, onProgress).then(createSession);
-    sessions.set(id, p);
-    p.catch(() => sessions.delete(id));
-  }
-  return sessions.get(id);
-}
+  run(file, feeds, outputs) {
+    const proc = this.ensureProc();
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      proc.postMessage({ id, file, feeds, outputs });
+    });
+  },
+};
 
 /**
  * feeds: { name: { data: TypedArray, dims: number[], type?: 'float32' } }
@@ -218,16 +223,8 @@ function getSession(id, onProgress) {
  * Rückgabe: { name: { data, dims } }
  */
 async function run(id, feeds, outputs, onProgress) {
-  const { ort, session } = await getSession(id, onProgress);
-  const inputs = {};
-  for (const [name, t] of Object.entries(feeds)) {
-    inputs[name] = new ort.Tensor(t.type || 'float32', t.data, t.dims);
-  }
-  const fetches = outputs && outputs.length ? outputs : [session.outputNames[0]];
-  const res = await session.run(inputs, fetches);
-  const result = {};
-  for (const name of fetches) result[name] = { data: res[name].data, dims: res[name].dims };
-  return result;
+  const file = await ensure(id, onProgress);
+  return worker.run(file, feeds, outputs);
 }
 
 /* ------------------------------------------------------------------ */

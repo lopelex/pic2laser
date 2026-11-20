@@ -65,6 +65,7 @@ const state = {
   source: null, // { name, ext, bytes: Uint8Array, bitmap, url, savedId }
   result: null, // { w, h, bits, svg, widthMm, heightMm, dpi, ... }
   cache: new Map(), // Zwischenergebnisse der KI-Modelle für das aktuelle Bild (Promises)
+  inflight: new Map(), // Cache-Schlüssel → Startzeit noch laufender Berechnungen
   mask: null, // { key, canvas }
   models: [], // Status der KI-Modelle
   presets: [], // eigene Presets
@@ -408,6 +409,7 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   state.historyId = historyId;
   state.result = null;
   state.cache = new Map();
+  state.inflight = new Map();
   state.mask = null;
   state.originalViewKey = null;
 
@@ -550,6 +552,224 @@ function scheduleProcess(delay = 120) {
   processTimer = setTimeout(runProcess, delay);
 }
 
+/* ------------------------------------------------------------------ */
+/* Restzeit-Schätzung                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Gelernte Laufzeiten pro Schritt (ms je Einheit, z. B. je Megapixel oder je Modellaufruf).
+ * Startwerte stammen aus Messungen; danach passt sich die Schätzung dem Rechner an.
+ */
+const Timing = (() => {
+  const KEY = 'pic2laser.timing';
+  let stats = {};
+  try { stats = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { /* ignorieren */ }
+  return {
+    est(key, units, seedPerUnit) {
+      return (stats[key] ?? seedPerUnit) * units;
+    },
+    learn(key, units, ms) {
+      if (!(units > 0) || !(ms > 0)) return;
+      const v = ms / units;
+      stats[key] = stats[key] == null ? v : stats[key] * 0.6 + v * 0.4;
+      try { localStorage.setItem(KEY, JSON.stringify(stats)); } catch { /* ignorieren */ }
+    },
+  };
+})();
+
+function fmtDuration(ms) {
+  if (ms < 1500) return 'gleich fertig';
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `noch ca. ${sec} s`;
+  return `noch ca. ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')} min`;
+}
+
+/** Fortschritt eines Berechnungsdurchlaufs mit Restzeit-Anzeige. */
+const Run = {
+  cur: null,
+  timer: null,
+  downloading: false,
+
+  start(steps) {
+    this.cur = {
+      t0: performance.now(),
+      steps: new Map(steps.map((st) => [st.id, { ...st, done: false, frac: null }])),
+    };
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.render(), 250);
+  },
+
+  /** Verfolgt einen Schritt; nach Abschluss wird die tatsächliche Dauer gelernt. */
+  async track(id, promise) {
+    const st = this.cur?.steps.get(id);
+    if (st && st.started == null) st.started = performance.now();
+    this.render();
+    const res = await promise;
+    if (st && !st.done) {
+      st.done = true;
+      if (!st.inherited) Timing.learn(st.tkey, st.units, performance.now() - st.started);
+    }
+    return res;
+  },
+
+  progress(id, frac) {
+    const st = this.cur?.steps.get(id);
+    if (st) st.frac = frac;
+  },
+
+  stop() {
+    clearInterval(this.timer);
+    this.timer = null;
+    this.cur = null;
+    if (!this.downloading) hideProgress();
+  },
+
+  render() {
+    const r = this.cur;
+    if (!r || this.downloading) return;
+    const now = performance.now();
+    let rem = 0;
+    let label = null;
+    let overrun = false;
+    for (const st of r.steps.values()) {
+      if (st.done) continue;
+      if (!label) label = st.label;
+      if (st.started == null) {
+        rem += st.est;
+        continue;
+      }
+      const el = now - st.started;
+      let left = st.frac > 0.03 ? el / st.frac - el : st.est - el;
+      if (left < 0) {
+        // länger als geschätzt: keine erfundene Zahl anzeigen
+        left = Math.max(st.est * 0.1, 500);
+        if (label === st.label) overrun = true;
+      }
+      rem += left;
+    }
+    const el = now - r.t0;
+    if (!label || (el < 700 && el + rem < 1500)) return; // kurze Berechnung: nur der Spinner
+    const eta = overrun ? 'dauert etwas länger …' : fmtDuration(rem);
+    showProgress(`${label} · ${eta}`, Math.min(0.97, el / (el + rem)));
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* Zwischenspeicher & Schlüssel                                       */
+/* ------------------------------------------------------------------ */
+
+const SEG_MODEL = { ai: 'u2netp', isnet: 'isnet', birefnet: 'birefnet', modnet: 'modnet', sam: 'sam_encoder' };
+const SEG_SEED_MS = { ai: 1500, isnet: 4000, birefnet: 26000, modnet: 2200 };
+const MODEL_NAMES = {
+  u2netp: 'Freistellen (schnell)', isnet: 'Freistellen (präzise)', birefnet: 'Freistellen (beste Qualität)',
+  modnet: 'Porträt-Freistellen', sam_encoder: 'Objekt anklicken', sam_decoder: 'Objekt anklicken',
+  lineart: 'KI-Strichzeichnung', esrgan: 'KI-Vergrößerung', depth: 'Tiefenkarte',
+};
+
+const upTag = (s) => (s.upscale ? 'up' : 'orig');
+const KEYS = {
+  seg: (method, up) => `seg:${method}:${up}`,
+  samEmb: (up) => `sam-emb:${up}`,
+  samMask: (up, points) => `sam-mask:${up}:${JSON.stringify(points)}`,
+  lineart: (up, res, maskKey) => `lineart:${up}:${res}:${maskKey}`,
+  depth: (up, res) => `depth:${up}:${res}`,
+};
+
+/** Schlüssel der Freistellmaske für die aktuellen Einstellungen (null = keine Maske). */
+function maskKeyFor(s) {
+  const method = s.bgRemove;
+  if (method === 'none' || (method === 'sam' && !s.samPoints.length)) return null;
+  const up = upTag(s);
+  if (method === 'color') return `color:${up}:${s.bgTolerance}:${s.bgBorder}:${JSON.stringify(s.bgSeeds)}`;
+  if (method === 'sam') return `sam:${up}:${s.maskThreshold}:${JSON.stringify(s.samPoints)}`;
+  return `${method}:${up}:${s.maskThreshold}`;
+}
+
+/** Zwischenspeicher pro Bild: gleiche Anfrage → gleiches Promise. Laufende Berechnungen werden vermerkt. */
+function cached(key, fn) {
+  if (!state.cache.has(key)) {
+    const p = fn();
+    state.cache.set(key, p);
+    state.inflight.set(key, performance.now());
+    p.catch(() => state.cache.delete(key)).finally(() => state.inflight.delete(key));
+  }
+  return state.cache.get(key);
+}
+
+function cleanError(err) {
+  return String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+}
+
+const upscaleApplies = (bitmap) => Math.max(bitmap.width, bitmap.height) < 2048;
+
+/**
+ * Plant die Schritte eines Durchlaufs mit geschätzter Dauer.
+ * Bereits zwischengespeicherte Ergebnisse entfallen; noch laufende werden mit ihrer Startzeit übernommen.
+ */
+function planSteps(s) {
+  const b = state.source.bitmap;
+  const up = upTag(s);
+  const steps = [];
+  const add = (id, label, tkey, units, seed, cacheKey = null) => {
+    let started = null;
+    if (cacheKey && state.cache.has(cacheKey)) {
+      if (!state.inflight.has(cacheKey)) return; // schon fertig
+      started = state.inflight.get(cacheKey);
+    }
+    steps.push({ id, label, tkey, units, est: Timing.est(tkey, units, seed), started, inherited: started != null });
+  };
+
+  let work = { w: b.width, h: b.height };
+  if (s.upscale && upscaleApplies(b)) {
+    const sc = Math.min(1, 1024 / Math.max(b.width, b.height));
+    const iw = Math.round(b.width * sc), ih = Math.round(b.height * sc);
+    add('upscale', 'KI-Vergrößerung', 'upscale', Math.ceil(iw / 192) * Math.ceil(ih / 192), 450, 'upscale');
+    work = { w: iw * 4, h: ih * 4 };
+  }
+
+  const method = s.bgRemove;
+  const maskKey = maskKeyFor(s);
+  if (maskKey && !(state.mask && state.mask.key === maskKey)) {
+    if (method === 'color') {
+      const a = Segmentation.analysisSize({ width: work.w, height: work.h });
+      add('colormask', 'Freistellen nach Farbe', 'colormask', (a.w * a.h) / 1e6, 250);
+    } else if (method === 'sam') {
+      add('sam-emb', 'Objekt erkennen', 'sam-emb', 1, 2500, KEYS.samEmb(up));
+      add('sam-mask', 'Objekt auswählen', 'sam-mask', 1, 500, KEYS.samMask(up, s.samPoints));
+    } else {
+      add('seg', MODEL_NAMES[SEG_MODEL[method]], `seg:${method}`, 1, SEG_SEED_MS[method], KEYS.seg(method, up));
+    }
+  }
+
+  let src = work;
+  if (s.mode === 'edges' && s.edgeMethod === 'ai') {
+    const sc = Number(s.lineRes) / Math.max(work.w, work.h);
+    src = { w: Math.round(work.w * sc), h: Math.round(work.h * sc) };
+    add('lineart', 'KI-Strichzeichnung', 'lineart', (src.w * src.h) / 1e6, 6000, KEYS.lineart(up, s.lineRes, maskKey || 'none'));
+  } else if (s.mode === 'relief') {
+    const sc = Number(s.depthRes) / Math.max(work.w, work.h);
+    add('depth', 'Tiefenkarte', 'depth', (work.w * sc * work.h * sc) / 1e6, 6000, KEYS.depth(up, s.depthRes));
+  }
+  if (s.subjectLine && !maskKey && s.mode !== 'relief') {
+    add('contour', 'Motivkontur', `seg:ai`, 1, SEG_SEED_MS.ai, KEYS.seg('ai', up));
+  }
+
+  const out = Processing.targetSize(src.w, src.h, s);
+  const mp = (out.w * out.h) / 1e6;
+  const variant = s.mode === 'edges' ? `:${s.edgeMethod}` : s.mode === 'dither' ? `:${s.ditherAlgo}` : '';
+  const renderSeed = { vector: 250, edges: s.edgeMethod === 'ai' ? 300 : 700, dither: 700, relief: 250 }[s.mode] + (s.outline ? 1500 : 0);
+  add('render', 'Bildverarbeitung', `render:${s.mode}${variant}${s.outline ? '+outline' : ''}`, mp, renderSeed);
+  if (!(s.outline && s.outlineOnly) && (s.mode === 'vector' || s.mode === 'edges')) {
+    add('trace', 'Vektorisierung', `trace:${s.mode}${variant}`, mp, 1000);
+  }
+  if (s.outline) add('trace-outline', 'Umrisslinie', 'trace-outline', mp, 300);
+  return steps;
+}
+
+/* ------------------------------------------------------------------ */
+/* Durchlauf                                                          */
+/* ------------------------------------------------------------------ */
+
 async function runProcess() {
   if (!state.source) return;
   const gen = ++state.generation;
@@ -563,6 +783,7 @@ async function runProcess() {
   try {
     const t0 = performance.now();
     const stale = () => gen !== state.generation;
+    Run.start(planSteps(s));
 
     // 1. Optional KI-Vergrößerung
     const work = await workingBitmap(s);
@@ -577,7 +798,6 @@ async function runProcess() {
     // 3. KI-Quelle je nach Modus (Strichzeichnung, Tiefenkarte) oder das Bild selbst
     const source = await contentSource(s, work, mask);
     if (stale()) return;
-    hideProgress();
 
     // Motivkontur ohne Freistellen: Grenze per schneller KI ermitteln, Hintergrund bleibt erhalten
     let lineMask = null;
@@ -585,10 +805,10 @@ async function runProcess() {
       lineMask = await contourMask(s, work);
       if (stale()) return;
     }
-    hideProgress();
 
     // 4. Rasterverarbeitung im Worker (blockiert die Oberfläche nicht)
-    const { w, h, bits, gray8, tracePng, imagePng, imageB64, sil } = await Pipeline.render(source, mask, s, lineMask);
+    const { w, h, bits, gray8, tracePng, imagePng, imageB64, sil } =
+      await Run.track('render', Pipeline.render(source, mask, s, lineMask));
     if (stale()) return;
     const widthMm = s.widthMm;
     const heightMm = (widthMm * h) / w;
@@ -598,16 +818,17 @@ async function runProcess() {
     // 5. Vektorisierung (Potrace im eigenen Prozess)
     let fillPath = null;
     if (tracePng) {
-      fillPath = await window.api.trace(tracePng, { turdSize: s.turdSize, alphaMax: s.alphaMax, optTolerance: s.optTolerance });
+      fillPath = await Run.track('trace',
+        window.api.trace(tracePng, { turdSize: s.turdSize, alphaMax: s.alphaMax, optTolerance: s.optTolerance }));
       if (stale()) return;
     }
     let outline = null;
     if (sil) {
-      const d = await window.api.trace(sil.png, {
+      const d = await Run.track('trace-outline', window.api.trace(sil.png, {
         turdSize: Math.round(sil.w * sil.h * 0.0005), // Kleinteile ignorieren
         alphaMax: 1.2,
         optTolerance: 0.5,
-      });
+      }));
       if (stale()) return;
       outline = { d, pad: sil.pad };
     }
@@ -634,7 +855,7 @@ async function runProcess() {
   } finally {
     if (gen === state.generation) {
       setBusy(false);
-      hideProgress();
+      Run.stop();
     }
   }
 }
@@ -648,46 +869,23 @@ function showResult(blob, pixelated) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Freistellen                                                        */
+/* KI-Schritte                                                        */
 /* ------------------------------------------------------------------ */
-
-const SEG_MODEL = { ai: 'u2netp', isnet: 'isnet', birefnet: 'birefnet', modnet: 'modnet', sam: 'sam_encoder' };
-const MODEL_NAMES = {
-  u2netp: 'Freistellen (schnell)', isnet: 'Freistellen (präzise)', birefnet: 'Freistellen (beste Qualität)',
-  modnet: 'Porträt-Freistellen', sam_encoder: 'Objekt anklicken', sam_decoder: 'Objekt anklicken',
-  lineart: 'KI-Strichzeichnung', esrgan: 'KI-Vergrößerung', depth: 'Tiefenkarte',
-};
-
-/** Zwischenspeicher pro Bild: gleiche Anfrage → gleiches Promise. */
-function cached(key, fn) {
-  if (!state.cache.has(key)) {
-    const p = fn();
-    state.cache.set(key, p);
-    p.catch(() => state.cache.delete(key));
-  }
-  return state.cache.get(key);
-}
-
-function cleanError(err) {
-  return String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-}
 
 /** Bild nach optionaler KI-Vergrößerung. */
 async function workingBitmap(s) {
   const bitmap = state.source.bitmap;
   if (!s.upscale) return bitmap;
-  if (Math.max(bitmap.width, bitmap.height) >= 2048) {
+  if (!upscaleApplies(bitmap)) {
     if (!state.cache.has('upscale-skip')) {
       state.cache.set('upscale-skip', Promise.resolve());
       toast('Das Bild ist bereits groß genug – KI-Vergrößerung wird übersprungen.');
     }
     return bitmap;
   }
-  return cached('upscale', async () => {
-    await ensureModel('esrgan');
-    showProgress('KI-Vergrößerung …', 0);
-    return AI.upscale(bitmap, (done, total) => showProgress(`KI-Vergrößerung ${done}/${total}`, done / total));
-  });
+  if (!state.cache.has('upscale')) await ensureModelReady('esrgan');
+  return Run.track('upscale', cached('upscale', () =>
+    AI.upscale(bitmap, (done, total) => Run.progress('upscale', done / total))));
 }
 
 async function ensureModelReady(id) {
@@ -699,29 +897,24 @@ async function ensureModelReady(id) {
 /** Liefert die Freistellmaske (zwischengespeichert) oder null. */
 async function ensureMask(s, bitmap) {
   const method = s.bgRemove;
-  if (method === 'none') return null;
-  if (method === 'sam' && !s.samPoints.length) return null;
-  const up = s.upscale ? 'up' : 'orig';
-  let key;
-  if (method === 'color') key = `color:${up}:${s.bgTolerance}:${s.bgBorder}:${JSON.stringify(s.bgSeeds)}`;
-  else if (method === 'sam') key = `sam:${up}:${s.maskThreshold}:${JSON.stringify(s.samPoints)}`;
-  else key = `${method}:${up}:${s.maskThreshold}`;
+  const key = maskKeyFor(s);
+  if (!key) return null;
   if (state.mask && state.mask.key === key) return state.mask.canvas;
+  const up = upTag(s);
 
   let canvas;
   try {
     if (method === 'color') {
-      canvas = await Pipeline.colorMask(bitmap, s.bgTolerance, s.bgBorder, s.bgSeeds);
+      canvas = await Run.track('colormask', Pipeline.colorMask(bitmap, s.bgTolerance, s.bgBorder, s.bgSeeds));
     } else {
       await ensureModelReady(SEG_MODEL[method]);
-      showProgress(`${MODEL_NAMES[SEG_MODEL[method]]} …`, null);
       let raw;
       if (method === 'sam') {
-        const emb = await cached(`sam-emb:${up}`, () => AI.samEmbedding(bitmap));
+        const emb = await Run.track('sam-emb', cached(KEYS.samEmb(up), () => AI.samEmbedding(bitmap)));
         const { w, h } = Segmentation.analysisSize(bitmap);
-        raw = await cached(`sam-mask:${up}:${JSON.stringify(s.samPoints)}`, () => AI.samMask(emb, s.samPoints, w, h));
+        raw = await Run.track('sam-mask', cached(KEYS.samMask(up, s.samPoints), () => AI.samMask(emb, s.samPoints, w, h)));
       } else {
-        raw = await cached(`seg:${method}:${up}`, () => AI.segment(method, bitmap));
+        raw = await Run.track('seg', cached(KEYS.seg(method, up), () => AI.segment(method, bitmap)));
       }
       canvas = Segmentation.aiMask(raw, bitmap, s.maskThreshold);
     }
@@ -737,11 +930,10 @@ async function ensureMask(s, bitmap) {
 
 /** Maske nur für die Motivkontur (schnelle KI), wenn nicht freigestellt wird. */
 async function contourMask(s, bitmap) {
-  const up = s.upscale ? 'up' : 'orig';
+  const up = upTag(s);
   try {
     await ensureModelReady('u2netp');
-    showProgress('Motivkontur wird ermittelt …', null);
-    const raw = await cached(`seg:ai:${up}`, () => AI.segment('ai', bitmap));
+    const raw = await Run.track('contour', cached(KEYS.seg('ai', up), () => AI.segment('ai', bitmap)));
     return await cached(`contour-mask:${up}`, async () => Segmentation.aiMask(raw, bitmap, 0.5));
   } catch (err) {
     if (isCancelled(err)) throw err;
@@ -753,12 +945,11 @@ async function contourMask(s, bitmap) {
 
 /** Bild, das tatsächlich umgewandelt wird: Original, KI-Strichzeichnung oder KI-Tiefenkarte. */
 async function contentSource(s, bitmap, mask) {
-  const up = s.upscale ? 'up' : 'orig';
+  const up = upTag(s);
   if (s.mode === 'edges' && s.edgeMethod === 'ai') {
-    const maskKey = mask ? state.mask.key : 'none';
-    return cached(`lineart:${up}:${s.lineRes}:${maskKey}`, async () => {
-      await ensureModelReady('lineart');
-      showProgress('KI-Strichzeichnung …', null);
+    const key = KEYS.lineart(up, s.lineRes, mask ? state.mask.key : 'none');
+    if (!state.cache.has(key)) await ensureModelReady('lineart');
+    return Run.track('lineart', cached(key, () => {
       // Freigestellten Hintergrund vorher entfernen, damit dort keine Linien entstehen
       let input = bitmap;
       if (mask) {
@@ -770,14 +961,12 @@ async function contentSource(s, bitmap, mask) {
         input = c;
       }
       return AI.lineArt(input, Number(s.lineRes));
-    });
+    }));
   }
   if (s.mode === 'relief') {
-    return cached(`depth:${up}:${s.depthRes}`, async () => {
-      await ensureModelReady('depth');
-      showProgress('Tiefenkarte wird berechnet …', null);
-      return AI.depthMap(bitmap, Number(s.depthRes));
-    });
+    const key = KEYS.depth(up, s.depthRes);
+    if (!state.cache.has(key)) await ensureModelReady('depth');
+    return Run.track('depth', cached(key, () => AI.depthMap(bitmap, Number(s.depthRes))));
   }
   return bitmap;
 }
@@ -896,11 +1085,27 @@ function hideProgress() {
   $('#progress').hidden = true;
 }
 
+// Download-Fortschritt mit Restzeit aus der bisherigen Datenrate
+const downloadStarts = new Map();
 window.api.models.onProgress((p) => {
-  if (p.done) return;
+  if (p.done) {
+    downloadStarts.delete(p.id);
+    Run.downloading = downloadStarts.size > 0;
+    if (!Run.downloading) {
+      if (Run.cur) Run.render();
+      else hideProgress();
+    }
+    return;
+  }
+  Run.downloading = true;
+  if (!downloadStarts.has(p.id)) downloadStarts.set(p.id, { t: performance.now(), bytes: p.received });
+  const start = downloadStarts.get(p.id);
+  const el = performance.now() - start.t;
+  const rate = el > 500 ? (p.received - start.bytes) / el : 0; // Bytes pro ms
+  const eta = rate > 0 && p.total ? ` · ${fmtDuration((p.total - p.received) / rate)}` : '';
   const name = MODEL_NAMES[p.id] || p.id;
   const frac = p.total ? p.received / p.total : null;
-  showProgress(`Lade Modell „${name}“: ${fmtMB(p.received)} / ${fmtMB(p.total)}`, frac);
+  showProgress(`Lade Modell „${name}“: ${fmtMB(p.received)} / ${fmtMB(p.total)}${eta}`, frac);
 });
 
 /** Rechnet einen Klick auf ein <img> mit object-fit: contain in relative Bildkoordinaten um. */
