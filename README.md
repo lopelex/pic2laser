@@ -2,6 +2,9 @@
 
 Electron-App, die Bilder in Schwarz-Weiß-SVGs (und optional PNG/JPG/BMP) für die Lasergravur mit LightBurn umwandelt.
 
+Aktuelle Version: **1.1.3**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
+bekannte und behobene Fehler: [BUGS.md](BUGS.md).
+
 ## Starten
 
 ```bash
@@ -50,7 +53,8 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
 - **Schrift & Logos**: erkennt Schriftzüge und angrenzende Logo-Elemente und stellt sie scharf und gefüllt dar,
   statt sie zu rastern oder nachzuzeichnen (Bereiche werden im Original blau markiert)
 - **Umrisslinie**: Randkontur um das Motiv mit Abstand in mm (rote Linie → eigene LightBurn-Ebene,
-  z. B. zum Ausschneiden), optional nur die Umrisslinie ohne Gravur
+  z. B. zum Ausschneiden), optional nur die Umrisslinie ohne Gravur. In PNG/JPG/BMP, Historien-Vorschau
+  und Drag-Symbol erscheint sie schwarz, in gleicher Größe und Lage wie im SVG.
 - **Einstellungen**: Helligkeit, Kontrast, Gamma, Weichzeichnen, Schärfen, Invertieren,
   Schwellwert (inkl. Auto/Otsu), Fleckenfilter, Ecken glätten, Kurventoleranz, Auflösung/DPI.
   Doppelklick auf einen Regler setzt ihn zurück.

@@ -1,15 +1,15 @@
 # Bekannte Fehler
 
-> **Status:** Alle neun Punkte sind in Version 1.1.3 behoben und getestet (Download abbrechen,
-> Esc im Ruhezustand, erneuter Download, Abbrechen ohne laufende KI, neues Bild, Umrisslinie,
-> Abbrechen während KI-Berechnung).
+> **Status (Version 1.1.3, Commit 37bcfcb):** Die Punkte 1–9 sind behoben; eine zweite Prüfung
+> hat die Fixes im Code bestätigt. Bei Punkt 1 und 5 bleibt je eine Lücke, die als neuer Punkt
+> geführt wird (Nr. 10 und 11). **Offen sind die Punkte 10–14** am Ende der Datei.
 
 Ergebnis einer Code-Prüfung vom 20.11.2026 (Stand: Version 1.1.2 plus noch nicht committete
 Abbrechen-Funktion und Ergebnis-Info). Zeilennummern beziehen sich auf diesen Stand.
 
 ## Wichtig
 
-### 1. Fortschrittsleiste bleibt nach abgebrochenem Download hängen – ✅ behoben
+### 1. Fortschrittsleiste bleibt nach abgebrochenem Download hängen – ✅ behoben (Rest siehe Nr. 11)
 **Ort:** `src/renderer/app.js:1509–1521` (Download-Fortschritt), `src/renderer/app.js:1706–1716` (`cancelAll`)
 
 `cancelAll()` setzt nur `Run.downloading = false`, leert aber `downloadStarts` nicht. Ein
@@ -55,7 +55,7 @@ gesetzt und `next()` schickt einen inzwischen neu eingereihten Job an den sterbe
 Der folgende `exit` lehnt diesen gültigen Job mit „cancelled“ ab. Der Durchlauf endet ohne
 Ergebnis und ohne Meldung. Das Zeitfenster ist eng.
 
-### 5. KI-Prozess: Abbruch wirkt in zwei Zeitfenstern nicht richtig – ✅ behoben
+### 5. KI-Prozess: Abbruch wirkt in zwei Zeitfenstern nicht richtig – ✅ behoben (Rest siehe Nr. 10)
 **Ort:** `src/main/models.js:269–270`, `296–300`, `322–326`
 
 - **(a) Abbruch während `checkMemory`:** `run()` wartet bei knappem Speicher bis zu 300 ms in
@@ -101,6 +101,71 @@ etwa durch eine geänderte Einstellung, werden seine Busy-Anzeige und sein Forts
 Seine `trace`- oder `model-run`-Aufrufe können außerdem noch vom Abbruch im Main-Prozess erfasst
 werden. Der Durchlauf liefert dann kein Ergebnis.
 
+## Offen (zweite Prüfung nach Version 1.1.3)
+
+Zeilennummern beziehen sich auf Commit 37bcfcb.
+
+### 10. Abbrechen zwischen zwei Kacheln wirkt nicht – ❗ wichtig
+**Ort:** `src/main/models.js:304–305`, Kachel-Schleifen in `src/renderer/ai.js:528` (Vergrößern),
+`src/renderer/restore.js:72` (Entrauschen), ebenso Kratzer auffüllen und Gesichter restaurieren
+
+Jede Kachel ist ein eigener `model-run`-Aufruf. Kommt der Abbruch, während der Renderer eine
+Kachel vor- oder nachbereitet, ist `pending` leer: Es wird nichts beendet, `epoch++` hat keine
+Wirkung, und die nächste Kachel liest bereits den neuen Epoch-Wert.
+
+**So tritt es auf:** Vergrößern mit 30 Kacheln, nach Kachel 5 abbrechen. Die übrigen 25 Kacheln
+rechnen unsichtbar unter Volllast weiter. Der nächste Durchlauf wartet in der KI-Warteschlange
+dahinter. Der Kommentar am Epoch-Zähler („rechnet danach nicht weiter“) verspricht mehr, als er hält.
+
+**Lösung:** In den Kachel-Schleifen im Renderer vor jeder Kachel die Generation bzw. ein
+Abbruch-Signal prüfen und mit `cancelled` aussteigen.
+
+### 11. Fortschrittsleiste kann nach dem Abbrechen wieder auftauchen – Kleinigkeit
+**Ort:** `src/renderer/app.js:1713–1724` (`cancelAll`), `src/renderer/app.js:1517–1534` (Download-Fortschritt)
+
+Rückschritt durch 37bcfcb: `cancelAll` räumt die Oberfläche jetzt *vor* dem Await auf. Eine
+`model-progress`-Meldung, die Main noch vor dem Abbruch abgeschickt hat, kommt erst danach an,
+ruft erneut `showProgress("Lade Modell …")` auf und trägt sich wieder in `downloadStarts` ein.
+Weder der `finally`-Block von `ensureModel` noch der von `runProcess` blendet sie wieder aus.
+
+**So tritt es auf:** Während ein Durchlauf ein Modell lädt, abbrechen. Gelegentlich (Fortschritt
+kommt alle 150 ms) bleibt „Lade Modell …“ stehen; Esc meldet dann wieder „Berechnung abgebrochen.“
+Der Knopf „laden“ in der Modellliste ist nicht betroffen.
+
+**Lösung:** Nach dem Await in `cancelAll` erneut aufräumen, oder Fortschrittsmeldungen nach
+einem Abbruch bis zum nächsten Start ignorieren.
+
+### 12. Neuer Durchlauf erwischt kurz nach dem Abbruch den abgebrochenen Download – Kleinigkeit
+**Ort:** `src/main/models.js:188–189`, `206–208`
+
+Der Eintrag in `downloads` wird erst nach `fs.rm(tmp)` und `p.finally` entfernt, also nach der
+Antwort auf `cancel-all`. Ein `ensure(id)` in diesem Zeitfenster (Neustart über
+`scheduleProcess(0)` oder sofort geänderte Einstellung) bekommt das sterbende Promise und endet
+still mit `cancelled`, ohne Ergebnis und ohne Meldung. Das Zeitfenster ist sehr eng.
+
+**Lösung:** Den Eintrag in `cancelAll()` sofort aus `downloads` entfernen.
+
+### 13. Umrisslinie ohne Pfad: Rasterbilder ohne Rand, SVG mit Rand – Kleinigkeit
+**Ort:** `src/renderer/app.js:1595` (`rasterCanvas`) gegenüber `app.js:1170–1172` und
+`src/renderer/encoders.js:150–152`
+
+Liefert Potrace für die Silhouette einen leeren Pfad (`outline = { d: '', pad }`), erweitert das
+SVG die viewBox trotzdem um `pad` und `totalWmm` zählt den Rand mit, `rasterCanvas` aber nicht.
+
+**So tritt es auf:** Umrisslinie aktiv, Silhouette leer oder komplett unter `turdSize`.
+PNG/JPG/BMP sind dann um 2·pad Pixel kleiner als das SVG; in LightBurn liegen Bild und SVG versetzt.
+
+**Lösung:** Bei leerem Pfad `outline = null` setzen oder in `rasterCanvas` den Rand trotzdem anlegen.
+
+### 14. Ergebnis-Info zeigt kurz Formate eines veralteten Ergebnisses – Kleinigkeit
+**Ort:** `src/renderer/app.js:1678`
+
+`renderResultInfo(files…)` läuft auch, wenn sich `state.result` während `await dragPrepare`
+geändert hat; die Zeile davor prüft das nur für `dragReady`. Werden die Formate umgestellt,
+während eine ältere Vorbereitung läuft, stehen kurz die alten Formate beim neuen Ergebnis.
+
+**Lösung:** `renderResultInfo` nur aufrufen, wenn `r === state.result`.
+
 ## Geprüft, kein Problem
 
 - **Verarbeitungs-Worker:** Nach `Pipeline.cancel()` mit `worker = null` erzeugt `call()` ihn
@@ -111,3 +176,9 @@ werden. Der Durchlauf liefert dann kein Ergebnis.
 - **Abgebrochener Download:** Die `.part`-Datei wird gelöscht, die `downloads`-Map in `finally`
   aufgeräumt; ein erneuter Download ist möglich.
 - **BMP/PNG mit Umrisslinie:** Die Bit-Konvention (1 = schwarz) passt zu `bmp1bit` und `resultCanvas`.
+- **Vektorisierung nach Abbruch (seit 37bcfcb):** Der beendete Prozess wird abgekoppelt, neue
+  Aufträge gehen an einen neuen Prozess; kein doppeltes Ablehnen, `next()` arbeitet korrekt.
+- **KI-Prozess nach Abbruch:** Der beendete Prozess löst über `exit` keine Ablehnungen mehr aus,
+  `trim`/`drop` laufen nicht ins Leere.
+- **Umrisslinie in PNG/JPG/BMP, Historien-Vorschau, Drag-Symbol:** Lage und Größe stimmen mit dem
+  SVG überein (außer im Sonderfall Nr. 13).

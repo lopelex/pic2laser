@@ -157,3 +157,123 @@ Läuft vor allen anderen Schritten (Arbeitsgröße je nach Rechner 1024–1600 p
 - Windows (Installer und portable EXE), macOS (Apple Silicon und Intel), Linux.
 - Auf Rechnern ohne native KI-Laufzeit (z. B. Intel-Macs) laufen die Modelle automatisch über
   WebAssembly.
+
+---
+
+# Für Entwickler: direkt weitermachen
+
+Dieser Teil erklärt, wie die App aufgebaut ist und wo man was ändert. Einstieg, Build und
+Modell-Lizenzen stehen in der [README](README.md), offene und behobene Fehler in [BUGS.md](BUGS.md).
+
+## Schnellstart
+
+```bash
+npm install
+npm start                      # App starten (Electron)
+PIC2LASER_SIMULATE_RAM_MB=8192 npm start   # kleineren Rechner simulieren
+npm run dist:win | dist:mac | dist         # Installer bauen → dist/
+```
+
+Es gibt keinen Build-Schritt für den eigenen Code (kein Bundler, kein TypeScript) und keine
+automatischen Tests: Änderungen werden durch Starten der App geprüft. Unter Windows/Linux ist
+das Anwendungsmenü ausgeblendet (`Menu.setApplicationMenu(null)` in main.js); für DevTools dort
+vorübergehend `mainWindow.webContents.openDevTools()` einfügen.
+
+## Prozesse und Dateien
+
+```
+Main-Prozess (src/main/main.js)
+ ├─ Utility-Prozess trace-worker.js   Potrace-Vektorisierung
+ ├─ Utility-Prozess model-worker.js   KI-Inferenz (onnxruntime-node, sonst onnxruntime-web/WASM)
+ ├─ models.js                         Modell-Registry, Downloads, Steuerung des KI-Prozesses
+ ├─ resources.js                      RAM/CPU → Leistungsstufe und Grenzen
+ └─ preload.js                        window.api (contextIsolation + sandbox)
+Renderer (src/renderer/index.html, klassische <script>-Tags, globale Module)
+ ├─ app.js            Oberfläche, Zustand, Ablauf eines Durchlaufs, Export, Historie
+ ├─ processing.js     Bildverarbeitung (Anpassungen, Schwellwert, Dithering, Kanten, Umriss)
+ ├─ segmentation.js   Masken, Freistellen nach Farbe, Klickpunkte
+ ├─ ai.js             Vor-/Nachbereitung aller KI-Modelle, ruft window.api.models.run
+ ├─ restore.js        Altes Foto restaurieren
+ ├─ encoders.js       SVG/PNG/JPG/BMP mit mm/DPI
+ └─ pipeline-worker.js  Web Worker: führt processing/encoders/segmentation im Hintergrund aus
+```
+
+Die Renderer-Module sind IIFEs, die ein globales Objekt anlegen (`Processing`, `AI`,
+`Segmentation`, `Restore`, `Encoders`). `processing.js`, `encoders.js` und `segmentation.js`
+werden sowohl im Fenster als auch im Web Worker geladen (`importScripts`) – dort also kein DOM
+verwenden, nur `OffscreenCanvas`. Die Content-Security-Policy erlaubt nur lokale Skripte.
+
+## Ablauf eines Durchlaufs (`runProcess` in app.js)
+
+Jede Einstellungsänderung ruft `setSetting` → `scheduleProcess` (120 ms entprellt) → `runProcess`.
+
+1. `state.generation` wird erhöht; jeder Schritt prüft danach `stale()` und bricht ab, wenn
+   inzwischen ein neuerer Durchlauf begonnen hat.
+2. `refreshSystem` + `applyLimits`: Grenzen der Leistungsstufe anwenden.
+3. `planSteps` plant die Schritte mit geschätzter Dauer für Fortschritt und Restzeit (`Run`, `Timing`).
+4. `workingBitmap`: Restaurieren (`restore.js`) und KI-Vergrößerung.
+5. Texterkennung → Freistellen (`ensureMask`) → Originalansicht → Gesichtserkennung.
+6. `contentSource`: je nach Modus KI-Strichzeichnung, Tiefenkarte oder das Bild selbst.
+7. `Pipeline.render` im Web Worker: Rasterergebnis, PNG für Potrace, Silhouette für die Umrisslinie.
+8. `window.api.trace` (Potrace im Utility-Prozess) für Fläche/Linien und die Umrisslinie.
+9. `Encoders.svgDocument` baut das SVG; `state.result` wird gesetzt, Vorschau und Statuszeile
+   aktualisiert, Drag-Dateien vorbereitet (`scheduleDragPrepare`).
+
+KI-Zwischenergebnisse liegen pro Bild in `state.cache` (Promise je Schlüssel, siehe `KEYS` und
+`cached()`); sie werden beim Laden eines neuen Bildes geleert. Abbrüche werden als Fehler mit
+der Meldung `cancelled` weitergereicht und von `isCancelled()` still ignoriert.
+
+**Abbrechen** (`cancelAll`): erhöht `state.generation`, beendet den Web Worker
+(`Pipeline.cancel`) und ruft `window.api.cancelAll` → Main bricht Vektorisierung,
+laufende KI-Jobs (nur wenn der Prozess rechnet) und Downloads ab.
+
+## Zustand und Einstellungen
+
+- `DEFAULTS` (Anfang von app.js) enthält alle Einstellungen mit Standardwerten. Sie werden in
+  `localStorage` (`pic2laser.settings`) gespeichert, UI-Zustand unter `pic2laser.ui`.
+- Bedienelemente in `index.html` mit `data-key="<einstellung>"` werden von `bindControls`
+  automatisch angebunden (Checkbox → bool, Range/Number → Zahl, sonst Text).
+  Anzeige-Formatierung der Regler in `FORMATTERS`.
+- `state` hält Bild, Ergebnis, Cache, Modelle, Systemprofil, Presets und Historie.
+- Klickpunkte (`bgSeeds`, `samPoints`) gehören zum Bild, nicht zum Preset (`PER_IMAGE_KEYS`).
+
+## Daten auf der Platte (`<userData>`)
+
+| Pfad | Inhalt |
+|---|---|
+| `presets.json` | eigene Presets |
+| `history/<uuid>/` | `meta.json`, `original.<ext>`, `result.svg`, `result.png`, `thumb.png` |
+| `models/` | heruntergeladene Modelle (`.part` während des Downloads) |
+| `<temp>/pic2laser-drag/` | vorbereitete Dateien für Drag & Drop |
+
+## Typische Erweiterungen
+
+**Neue Einstellung**
+1. Standardwert in `DEFAULTS` (app.js).
+2. Bedienelement mit `data-key` in `index.html`, ggf. Formatierung in `FORMATTERS`.
+3. Auswerten in `processing.js` (Worker) oder im passenden Schritt von `runProcess`.
+4. Ändert sie ein KI-Ergebnis, muss sie in den Cache-Schlüssel (`KEYS`) und in `planSteps`.
+
+**Neues Preset:** Eintrag in `BUILTIN_PRESETS` (app.js) mit `group`, `name`, `desc` und
+`settings` (nur die vom Standard abweichenden Werte).
+
+**Neues KI-Modell**
+1. Eintrag in `MODELS` (src/main/models.js): `label`, `file`, `license`; für Downloads zusätzlich
+   `url` (auf einen festen Commit gepinnt), `size`, `sha256`, ggf. `extra` für externe Gewichte.
+   Mitgelieferte Modelle liegen in `models/`.
+2. Vor-/Nachbereitung als Funktion in `ai.js`, Aufruf über `AI.run(id, feeds, outputs)`.
+3. Im Ablauf (`runProcess`/`planSteps`) mit eigenem Cache-Schlüssel einbinden.
+4. Lizenz muss kommerzielle Nutzung erlauben; README-Tabelle ergänzen.
+
+**Neuer IPC-Aufruf:** `ipcMain.handle` in main.js bzw. `register()` in models.js, dazu eine
+Funktion in `preload.js` unter `window.api`.
+
+## Konventionen
+
+- Oberfläche, Kommentare und Commit-Meldungen auf Deutsch.
+- Schwere Arbeit nie im Main- oder Fenster-Thread: Bildverarbeitung in den Web Worker,
+  KI und Potrace in die Utility-Prozesse.
+- Maße intern in Pixeln, ausgegeben in mm; SVG mit `width/height` in mm, Rasterbilder mit DPI.
+- Bit-Konvention der Schwarz-Weiß-Ergebnisse: 1 = schwarz (wird gelasert).
+- Version in `package.json` hochzählen und im Commit nennen („Version 1.1.3: …“); README,
+  FUNCTION.md und BUGS.md mitpflegen.
