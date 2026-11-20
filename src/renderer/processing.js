@@ -367,7 +367,7 @@ const Processing = (() => {
 
     // Gesichtszüge hervorheben: lokaler Kontrast im Gesichtsbereich
     if (s.faceBoost && s.faces && s.faces.length && s.mode !== 'relief' && !(s.mode === 'edges' && s.edgeMethod === 'ai')) {
-      enhanceFaces(gray, w, h, s.faces, s.faceStrength, s.mouthStrength ?? 1, s.noseStrength ?? 0.5);
+      enhanceFaces(gray, w, h, s.faces, s.faceStrength, faceFeatureLevels(s));
     }
 
     // Freigestellter Hintergrund wird weiß (= wird nicht graviert)
@@ -443,7 +443,52 @@ const Processing = (() => {
    * Hebt Augen, Brauen, Nase und Mund hervor: Unscharfe Maskierung mit einem
    * Radius in Größe der Gesichtsdetails, elliptisch weich auf das Gesicht begrenzt.
    */
-  function enhanceFaces(gray, w, h, faces, strength, mouth, nose) {
+  /**
+   * Gesichtsmerkmale relativ zur Gesichtsbox der Erkennung (UltraFace: Stirn bis Kinn).
+   * Die Positionen sind an Porträts nachgemessen.
+   *  y/dx: Mittelpunkt (Anteil Boxhöhe / Abstand zur Mitte als Anteil Boxbreite)
+   *  rx/ry: Halbachsen der Ellipse; rad: Detailradius; dark/light: Verstärkung
+   *  floor: Rauschschwelle in Graustufen – feinere Unterschiede werden ignoriert
+   *  inner: Glättungsradius (Anteil von rad) – Punkte kleiner als Falten (Poren, Sommersprossen) entfallen
+   *  line: größere Ellipse für das Nachzeichnen im Modus Linien
+   */
+  const FACE_FEATURES = {
+    mouth: [{ dx: 0, y: 0.80, rx: 0.30, ry: 0.12, rad: 0.035, dark: 3.5, light: 0.6, floor: 2, line: { rx: 0.38, ry: 0.16 } }],
+    nose: [{ dx: 0, y: 0.62, rx: 0.18, ry: 0.14, rad: 0.03, dark: 3.2, light: 0.5, floor: 2, line: { rx: 0.22, ry: 0.16 } }],
+    chin: [{ dx: 0, y: 0.97, rx: 0.30, ry: 0.12, rad: 0.04, dark: 3.0, light: 0.4, floor: 5, inner: 0.35, line: { rx: 0.36, ry: 0.15 } }],
+    cheeks: [
+      { dx: -0.27, y: 0.66, rx: 0.15, ry: 0.15, rad: 0.05, dark: 2.4, light: 0.5, floor: 4, inner: 0.4, line: { rx: 0.18, ry: 0.18 } },
+      { dx: 0.27, y: 0.66, rx: 0.15, ry: 0.15, rad: 0.05, dark: 2.4, light: 0.5, floor: 4, inner: 0.4, line: { rx: 0.18, ry: 0.18 } },
+    ],
+  };
+
+  /** Bereiche eines Merkmals für ein Gesicht (relativ zum Bild). */
+  function faceFeatureRegions(f, key, forLines = false) {
+    const fw = f.x2 - f.x1, fh = f.y2 - f.y1, fcx = (f.x1 + f.x2) / 2;
+    return (FACE_FEATURES[key] || []).map((d) => ({
+      cx: fcx + d.dx * fw,
+      cy: f.y1 + d.y * fh,
+      rx: (forLines ? d.line.rx : d.rx) * fw,
+      ry: (forLines ? d.line.ry : d.ry) * fh,
+      rad: d.rad, dark: d.dark, light: d.light, floor: d.floor || 0, inner: d.inner || 0,
+    }));
+  }
+
+  /** Stärken der Merkmal-Regler aus den Einstellungen (0 = aus). */
+  function faceFeatureLevels(s) {
+    return {
+      mouth: s.mouthStrength ?? 1,
+      nose: s.noseStrength ?? 0.5,
+      chin: s.chinStrength ?? 0,
+      cheeks: s.cheekStrength ?? 0,
+    };
+  }
+
+  /**
+   * Hebt Gesichtszüge hervor: lokaler Kontrast im ganzen Gesicht (Augen, Brauen)
+   * plus gezielte, feinere Verstärkung von Mund, Nase, Kinn und Wangen.
+   */
+  function enhanceFaces(gray, w, h, faces, strength, levels) {
     for (const f of faces) {
       const fw = (f.x2 - f.x1) * w, fh = (f.y2 - f.y1) * h;
       // 1. ganzes Gesicht: Details in Größe von Augen/Brauen/Nase
@@ -452,44 +497,26 @@ const Processing = (() => {
         rad: Math.max(2, Math.round(Math.min(fw, fh) * 0.06)),
         dark: strength * 2.1, light: strength * 1.1,
       });
-      // 2. Mund: Lippen haben oft fast Hauttöne – feiner Radius, dunkle Fuge stark betonen
-      if (mouth > 0) {
-        const m = mouthBox(f);
-        localContrast(gray, w, h, {
-          cx: m.cx * w, cy: m.cy * h, rx: m.rx * w, ry: m.ry * h,
-          rad: Math.max(1, Math.round(fh * 0.035)),
-          dark: mouth * 3.5, light: mouth * 0.6,
-        });
-      }
-      // 3. Nase: Nasenflügel, Nasenlöcher und Seitenschatten
-      if (nose > 0) {
-        const n = noseBox(f);
-        localContrast(gray, w, h, {
-          cx: n.cx * w, cy: n.cy * h, rx: n.rx * w, ry: n.ry * h,
-          rad: Math.max(1, Math.round(fh * 0.03)),
-          dark: nose * 3.2, light: nose * 0.5,
-        });
+      // 2. einzelne Merkmale (Lippen, Nase, Kinn, Wangen haben oft fast Hauttöne)
+      for (const [key, level] of Object.entries(levels)) {
+        if (!(level > 0)) continue;
+        for (const r of faceFeatureRegions(f, key)) {
+          localContrast(gray, w, h, {
+            cx: r.cx * w, cy: r.cy * h, rx: r.rx * w, ry: r.ry * h,
+            rad: Math.max(1, Math.round(fh * r.rad)),
+            dark: level * r.dark, light: level * r.light, floor: r.floor,
+            inner: r.inner ? Math.max(1, Math.round(fh * r.rad * r.inner)) : 0,
+          });
+        }
       }
     }
-  }
-
-  /** Lage des Mundes relativ zur Gesichtsbox (UltraFace: Stirn bis Kinn). */
-  function mouthBox(f) {
-    const fw = f.x2 - f.x1, fh = f.y2 - f.y1;
-    return { cx: (f.x1 + f.x2) / 2, cy: f.y1 + fh * 0.78, rx: fw * 0.3, ry: fh * 0.12 };
-  }
-
-  /** Lage der Nase relativ zur Gesichtsbox. */
-  function noseBox(f) {
-    const fw = f.x2 - f.x1, fh = f.y2 - f.y1;
-    return { cx: (f.x1 + f.x2) / 2, cy: f.y1 + fh * 0.56, rx: fw * 0.18, ry: fh * 0.15 };
   }
 
   /**
    * Unscharfe Maskierung (lokaler Kontrast), elliptisch weich begrenzt.
    * dark/light: Verstärkung für dunkle bzw. helle Details.
    */
-  function localContrast(gray, w, h, { cx, cy, rx, ry, rad, dark, light }) {
+  function localContrast(gray, w, h, { cx, cy, rx, ry, rad, dark, light, floor = 0, inner = 0 }) {
     const x0 = Math.max(0, Math.floor(cx - rx)), x1 = Math.min(w - 1, Math.ceil(cx + rx));
     const y0 = Math.max(0, Math.floor(cy - ry)), y1 = Math.min(h - 1, Math.ceil(cy + ry));
     const rw = x1 - x0 + 1, rh = y1 - y0 + 1;
@@ -518,7 +545,17 @@ const Processing = (() => {
         const sum = integ[(yb + 1) * iw + xb + 1] - integ[ya * iw + xb + 1] - integ[(yb + 1) * iw + xa] + integ[ya * iw + xa];
         const mean = sum / ((xb - xa + 1) * (yb - ya + 1));
         const i = (y0 + y) * w + x0 + x;
-        const detail = gray[i] - mean;
+        // Bandpass: statt des Einzelpixels ein leicht geglätteter Wert (entfernt Poren/Sommersprossen)
+        let center = gray[i];
+        if (inner > 0) {
+          const ia = Math.max(0, y - inner), ib = Math.min(rh - 1, y + inner);
+          const ja = Math.max(0, x - inner), jb = Math.min(rw - 1, x + inner);
+          center = (integ[(ib + 1) * iw + jb + 1] - integ[ia * iw + jb + 1] - integ[(ib + 1) * iw + ja] + integ[ia * iw + ja])
+            / ((jb - ja + 1) * (ib - ia + 1));
+        }
+        let detail = center - mean;
+        // Rauschschwelle: feine Hautstruktur nicht verstärken
+        if (floor > 0) detail = detail > 0 ? Math.max(0, detail - floor) : Math.min(0, detail + floor);
         const k = detail < 0 ? dark : light;
         gray[i] = Math.max(0, Math.min(255, gray[i] + wgt * k * detail));
       }
@@ -566,5 +603,5 @@ const Processing = (() => {
     return bits;
   }
 
-  return { process, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate, addSubjectLine };
+  return { faceFeatureRegions, faceFeatureLevels, process, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate, addSubjectLine };
 })();

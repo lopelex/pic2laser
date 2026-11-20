@@ -95,8 +95,12 @@ const AI = (() => {
   /** Liefert die rohe Motivmaske { data (0..1), w, h }. */
   async function segment(method, bitmap) {
     if (method === 'modnet') {
-      // MODNet: kürzere Seite 512, beide Seiten Vielfache von 32, Werte auf -1..1
-      const sc = 512 / Math.min(bitmap.width, bitmap.height);
+      // MODNet: kürzere Seite 512, beide Seiten Vielfache von 32, Werte auf -1..1.
+      // Kleine Bilder höchstens auf das Doppelte vergrößern – stark hochskaliert (unscharf)
+      // versagt MODNet (gemessen: 135 px → 512 px schneidet die Haut weg, → 288 px sauber).
+      const short = Math.min(bitmap.width, bitmap.height);
+      const target = Math.max(256, Math.min(512, short * 2));
+      const sc = target / short;
       const w = roundTo(bitmap.width * sc, 32);
       const h = roundTo(bitmap.height * sc, 32);
       const input = toNCHW(pixels(bitmap, w, h), w, h, { mean: [0.5, 0.5, 0.5], std: [0.5, 0.5, 0.5] });
@@ -249,7 +253,7 @@ const AI = (() => {
    * Zeichnet jedes Gesicht zusätzlich in hoher Auflösung als Strichzeichnung,
    * verstärkt die Linien und blendet es weich in die Gesamtzeichnung ein.
    */
-  async function enhanceFacesLineArt(input, base, faces, strength, { mouth = 1, nose = 0.5 } = {}) {
+  async function enhanceFacesLineArt(input, base, faces, strength, levels = {}) {
     const out = new OffscreenCanvas(base.width, base.height);
     const octx = out.getContext('2d');
     octx.drawImage(base, 0, 0);
@@ -294,15 +298,12 @@ const AI = (() => {
       octx.drawImage(patch, dx, dy, dw, dh);
       octx.globalCompositeOperation = 'source-over';
 
-      // Mund und Nase gezielt nachschärfen (Regler „Mund“/„Nase“, 0 = aus)
-      const fw = f.x2 - f.x1, fh = f.y2 - f.y1, fcx = (f.x1 + f.x2) / 2;
-      if (mouth > 0) {
-        await enhanceFeatureLineArt(input, octx, base.width, base.height,
-          { cx: fcx, cy: f.y1 + fh * 0.78, rx: fw * 0.38, ry: fh * 0.17 }, mouth);
-      }
-      if (nose > 0) {
-        await enhanceFeatureLineArt(input, octx, base.width, base.height,
-          { cx: fcx, cy: f.y1 + fh * 0.56, rx: fw * 0.22, ry: fh * 0.16 }, nose);
+      // Mund, Nase, Kinn, Wangen gezielt nachschärfen (eigene Regler, 0 = aus)
+      for (const [key, level] of Object.entries(levels)) {
+        if (!(level > 0)) continue;
+        for (const region of Processing.faceFeatureRegions(f, key, true)) {
+          await enhanceFeatureLineArt(input, octx, base.width, base.height, region, level);
+        }
       }
     }
     return out;
@@ -359,7 +360,7 @@ const AI = (() => {
     vals.sort((a, b) => a - b);
     // nur die deutlichsten Täler (je stärker, desto mehr)
     const q = Math.max(0.8, 0.95 - strength * 0.06);
-    const t = Math.max(10, vals.length ? vals[Math.floor(vals.length * q)] : 255);
+    const t = Math.max(10 + 2 * (m.floor || 0), vals.length ? vals[Math.floor(vals.length * q)] : 255);
 
     for (let p = 0; p < W * H; p++) {
       let v = Math.pow(img.data[p * 4] / 255, gamma);

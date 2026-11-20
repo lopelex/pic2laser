@@ -53,6 +53,8 @@ const DEFAULTS = Object.freeze({
   faceStrength: 1,
   mouthStrength: 1,
   noseStrength: 0.5,
+  chinStrength: 0.5,
+  cheekStrength: 0,
 });
 
 const SETTINGS_STORAGE_KEY = 'pic2laser.settings';
@@ -126,6 +128,8 @@ const FORMATTERS = {
   faceStrength: (v) => `${Math.round(Number(v) * 100)} %`,
   mouthStrength: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
   noseStrength: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
+  chinStrength: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
+  cheekStrength: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
 };
 
 function syncControls() {
@@ -296,22 +300,22 @@ const BUILTIN_PRESETS = [
   {
     group: 'Porträts & Personen', name: 'Porträt – Fotogravur',
     desc: 'Für Porträtfotos: Person freigestellt, Dithering mit feiner Kontur zwischen Person und Hintergrund.',
-    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, contrast: 15, sharpen: 0.6, bgRemove: 'modnet', subjectLine: true, subjectLineMm: 0.25, faceBoost: true, faceStrength: 1, mouthStrength: 0.8, noseStrength: 0.5 },
+    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, contrast: 15, sharpen: 0.6, bgRemove: 'modnet', subjectLine: true, subjectLineMm: 0.25, faceBoost: true, faceStrength: 1, mouthStrength: 0.8, noseStrength: 0.5, chinStrength: 0.5, cheekStrength: 0.3 },
   },
   {
     group: 'Porträts & Personen', name: 'Porträt – Schablone (Stencil)',
     desc: 'Für Porträts als flächige Schwarz-Weiß-Grafik im Stencil-Stil, z. B. für Holzschilder.',
-    settings: { mode: 'vector', bgRemove: 'modnet', contrast: 25, blur: 1, threshold: 110, turdSize: 25, alphaMax: 1.2, optTolerance: 0.4, subjectLine: true, subjectLineMm: 0.4, faceBoost: true, faceStrength: 1, mouthStrength: 1, noseStrength: 0.6 },
+    settings: { mode: 'vector', bgRemove: 'modnet', contrast: 25, blur: 1, threshold: 110, turdSize: 25, alphaMax: 1.2, optTolerance: 0.4, subjectLine: true, subjectLineMm: 0.4, faceBoost: true, faceStrength: 1, mouthStrength: 1, noseStrength: 0.6, chinStrength: 0.6, cheekStrength: 0.3 },
   },
   {
     group: 'Porträts & Personen', name: 'Porträt – Strichzeichnung',
     desc: 'Für Porträtfotos: KI zeichnet das Gesicht wie von Hand nach.',
-    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 832, threshold: 150, bgRemove: 'modnet', faceBoost: true, faceStrength: 1, mouthStrength: 1.2, noseStrength: 0.8 },
+    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 832, threshold: 150, bgRemove: 'modnet', faceBoost: true, faceStrength: 1, mouthStrength: 1.2, noseStrength: 0.8, chinStrength: 0.8, cheekStrength: 0.5 },
   },
   {
     group: 'Porträts & Personen', name: 'Gruppenfoto / Person im Alltag',
     desc: 'Für Fotos mit mehreren Personen oder unruhigem Hintergrund: präzises Freistellen, Dithering.',
-    settings: { mode: 'dither', ditherAlgo: 'floyd', dpi: 254, contrast: 15, sharpen: 0.5, bgRemove: 'isnet', subjectLine: true, subjectLineMm: 0.25, faceBoost: true, faceStrength: 1, mouthStrength: 0.8, noseStrength: 0.4 },
+    settings: { mode: 'dither', ditherAlgo: 'floyd', dpi: 254, contrast: 15, sharpen: 0.5, bgRemove: 'isnet', subjectLine: true, subjectLineMm: 0.25, faceBoost: true, faceStrength: 1, mouthStrength: 0.8, noseStrength: 0.4, chinStrength: 0.4, cheekStrength: 0.2 },
   },
 
   // ---- Tiere ----
@@ -909,7 +913,7 @@ function planSteps(s) {
     add('lineart', 'KI-Strichzeichnung', 'lineart', (src.w * src.h) / 1e6, 6000, lineKey);
     if (s.faceBoost) {
       const n = state.faceCount ?? 1;
-      if (n > 0) add('lineart-faces', 'Gesichtsdetails zeichnen', 'lineart-face', n, 2500, `${lineKey}:faces:${s.faceStrength}:${s.mouthStrength}:${s.noseStrength}`);
+      if (n > 0) add('lineart-faces', 'Gesichtsdetails zeichnen', 'lineart-face', n, 2500, `${lineKey}:faces:${s.faceStrength}:${s.mouthStrength}:${s.noseStrength}:${s.chinStrength}:${s.cheekStrength}`);
     }
   } else if (s.mode === 'relief') {
     const sc = Number(s.depthRes) / Math.max(work.w, work.h);
@@ -1148,8 +1152,8 @@ async function contentSource(s, bitmap, mask) {
     const base = await Run.track('lineart', cached(key, () => AI.lineArt(lineInput(), Number(s.lineRes))));
     if (!s.faceBoost || !s.faces.length) return base;
     // Gesichter zusätzlich in hoher Auflösung nachzeichnen
-    return Run.track('lineart-faces', cached(`${key}:faces:${s.faceStrength}:${s.mouthStrength}:${s.noseStrength}`, () =>
-      AI.enhanceFacesLineArt(lineInput(), base, s.faces, s.faceStrength, { mouth: s.mouthStrength, nose: s.noseStrength })));
+    return Run.track('lineart-faces', cached(`${key}:faces:${s.faceStrength}:${s.mouthStrength}:${s.noseStrength}:${s.chinStrength}:${s.cheekStrength}`, () =>
+      AI.enhanceFacesLineArt(lineInput(), base, s.faces, s.faceStrength, Processing.faceFeatureLevels(s))));
   }
   if (s.mode === 'relief') {
     const key = KEYS.depth(up, s.depthRes);
