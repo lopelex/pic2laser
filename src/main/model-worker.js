@@ -18,6 +18,8 @@ async function createSession(file) {
     const ort = require('onnxruntime-node');
     // Ohne Speicher-Arena: etwas langsamer, aber z. B. BiRefNet braucht ~0,5 statt ~8 GB RAM
     const options = { enableCpuMemArena: false, enableMemPattern: false, logSeverityLevel: 3 };
+    const threads = Number(process.env.PIC2LASER_THREADS) || 0;
+    if (threads > 0) options.intraOpNumThreads = threads;
     return { ort, session: await ort.InferenceSession.create(file, options) };
   } catch (nativeErr) {
     console.warn('onnxruntime-node nicht verfügbar, nutze WebAssembly:', nativeErr.message);
@@ -40,7 +42,8 @@ async function createSession(file) {
  * Modelle werden vorher freigegeben. Gerechnet wird immer nur eine Anfrage gleichzeitig.
  */
 const sessions = new Map(); // Dateipfad -> { p: Promise<{ ort, session }>, size, lastUsed }
-const BUDGET = Math.min(3e9, Math.max(6e8, os.totalmem() * 0.2)); // Bytes Modelldateien
+// Budget kommt aus der Leistungsstufe des Rechners (resources.js), Fallback: 20 % des RAM
+const BUDGET = Number(process.env.PIC2LASER_MODEL_BUDGET_MB) * 1048576 || Math.min(3e9, Math.max(6e8, os.totalmem() * 0.2));
 
 async function fileSize(file) {
   let size = 0;
@@ -124,6 +127,13 @@ process.parentPort.on('message', (e) => {
   const msg = e.data;
   if (msg.type === 'drop') {
     queue = queue.then(() => release(msg.file));
+    return;
+  }
+  if (msg.type === 'trim') {
+    // vor speicherhungrigen Modellen: alle anderen freigeben
+    queue = queue.then(async () => {
+      for (const f of [...sessions.keys()]) if (f !== msg.keep) await release(f);
+    });
     return;
   }
   queue = queue.then(async () => {

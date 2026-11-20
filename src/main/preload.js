@@ -4,6 +4,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   trace: (pngBytes, params) => ipcRenderer.invoke('trace', pngBytes, params),
+  system: {
+    profile: () => ipcRenderer.invoke('system-profile'),
+  },
   presets: {
     list: () => ipcRenderer.invoke('presets-list'),
     save: (preset) => ipcRenderer.invoke('presets-save', preset),

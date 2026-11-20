@@ -18,8 +18,9 @@ const Processing = (() => {
     }
     w = Math.max(1, w);
     let h = Math.max(1, Math.round((w * srcH) / srcW));
-    if (w * h > MAX_PIXELS) {
-      const f = Math.sqrt(MAX_PIXELS / (w * h));
+    const maxPixels = s.maxMegapixels ? s.maxMegapixels * 1e6 : MAX_PIXELS; // je nach Arbeitsspeicher
+    if (w * h > maxPixels) {
+      const f = Math.sqrt(maxPixels / (w * h));
       w = Math.max(1, Math.floor(w * f));
       h = Math.max(1, Math.floor(h * f));
     }

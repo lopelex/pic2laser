@@ -490,7 +490,7 @@ const AI = (() => {
   /* KI-Vergrößerung (Real-ESRGAN general x4v3)                       */
   /* ---------------------------------------------------------------- */
 
-  const UPSCALE_MAX_INPUT = 1024;
+  let UPSCALE_MAX_INPUT = 1024; // je nach Arbeitsspeicher (configure)
   const TILE = 192;
   const OVERLAP = 12;
 
@@ -546,5 +546,9 @@ const AI = (() => {
     return canvas;
   }
 
-  return { run, pixels, toNCHW, detectText, segment, samEmbedding, samMask, lineArt, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
+  function configure({ upscaleMaxInput } = {}) {
+    if (upscaleMaxInput) UPSCALE_MAX_INPUT = upscaleMaxInput;
+  }
+
+  return { configure, run, pixels, toNCHW, detectText, segment, samEmbedding, samMask, lineArt, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
 })();

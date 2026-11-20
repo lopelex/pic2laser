@@ -85,6 +85,7 @@ const state = {
   inflight: new Map(), // Cache-Schlüssel → Startzeit noch laufender Berechnungen
   mask: null, // { key, canvas }
   models: [], // Status der KI-Modelle
+  sys: null, // Speicher/CPU des Rechners und daraus abgeleitete Grenzen
   presets: [], // eigene Presets
   activePreset: null, // { key, settings } – zuletzt angewendetes Preset
   originalViewKey: null,
@@ -904,7 +905,46 @@ function cached(key, fn) {
 }
 
 function cleanError(err) {
-  return String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+  return String(err?.message || err)
+    .replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+    .replace(/^LOW_MEMORY: /, '');
+}
+
+const isLowMemory = (err) => /LOW_MEMORY|bad_alloc|Arbeitsspeicher/.test(String(err?.message || err));
+
+/* ------------------------------------------------------------------ */
+/* Systemressourcen                                                   */
+/* ------------------------------------------------------------------ */
+
+/** Speicher und Leistungsstufe des Rechners abfragen und die Verarbeitungsgrenzen anwenden. */
+async function refreshSystem() {
+  try {
+    state.sys = await window.api.system.profile();
+  } catch {
+    return;
+  }
+  const l = state.sys.limits;
+  Restore.configure({ maxSide: l.restoreMaxSide, denoiseTile: l.denoiseTile });
+  AI.configure({ upscaleMaxInput: l.upscaleMaxInput });
+  renderSystemInfo();
+}
+
+const fmtGB = (mb) => `${(mb / 1024).toFixed(1).replace('.', ',')} GB`;
+
+function renderSystemInfo() {
+  const sys = state.sys;
+  if (!sys) return;
+  $('#system-info').textContent =
+    `Dieser Rechner: ${fmtGB(sys.totalMB)} RAM (${fmtGB(sys.availMB)} frei) · ${sys.cores} Kerne · Leistungsstufe „${sys.tier}“`;
+}
+
+/** Wendet die Grenzen des Rechners auf die Einstellungen eines Durchlaufs an. */
+function applyLimits(s) {
+  const l = state.sys?.limits;
+  if (!l) return s;
+  s.maxMegapixels = l.maxMegapixels;
+  s.lineRes = Math.min(Number(s.lineRes), l.lineResMax);
+  return s;
 }
 
 const upscaleApplies = (bitmap) => Math.max(bitmap.width, bitmap.height) < 2048;
@@ -1007,6 +1047,9 @@ async function runProcess() {
   try {
     const t0 = performance.now();
     const stale = () => gen !== state.generation;
+    await refreshSystem(); // aktuell freien Speicher berücksichtigen
+    if (stale()) return;
+    applyLimits(s);
     Run.start(planSteps(s));
 
     // 1. Optional KI-Vergrößerung
@@ -1187,7 +1230,15 @@ async function ensureMask(s, bitmap) {
         const { w, h } = Segmentation.analysisSize(bitmap);
         raw = await Run.track('sam-mask', cached(KEYS.samMask(up, s.samPoints), () => AI.samMask(emb, s.samPoints, w, h)));
       } else {
-        raw = await Run.track('seg', cached(KEYS.seg(method, up), () => AI.segment(method, bitmap)));
+        try {
+          raw = await Run.track('seg', cached(KEYS.seg(method, up), () => AI.segment(method, bitmap)));
+        } catch (err) {
+          // BiRefNet braucht ca. 6,7 GB – bei zu wenig Speicher automatisch IS-Net verwenden
+          if (method !== 'birefnet' || !isLowMemory(err)) throw err;
+          await ensureModelReady('isnet');
+          toast('Zu wenig freier Arbeitsspeicher für „beste Qualität“ – es wird „präzise“ (IS-Net) verwendet.');
+          raw = await cached(KEYS.seg('isnet', up), () => AI.segment('isnet', bitmap));
+        }
       }
       canvas = Segmentation.aiMask(raw, bitmap, s.maskThreshold);
     }
@@ -1343,6 +1394,13 @@ function renderModels() {
     label.className = 'model-name';
     label.textContent = m.label;
     label.title = `Lizenz: ${m.license}`;
+    const peak = state.sys?.modelPeakMB?.[m.id];
+    if (peak && peak >= 1000) {
+      const req = document.createElement('div');
+      req.className = 'model-req' + (state.sys && peak > state.sys.totalMB * 0.6 ? ' warn' : '');
+      req.textContent = `braucht ca. ${fmtGB(peak)} RAM`;
+      label.append(req);
+    }
     const st = document.createElement('div');
     st.className = 'model-state';
     if (m.bundled) {
@@ -1730,5 +1788,6 @@ bindView();
 syncControls();
 setZoom(0);
 refreshHistory();
+refreshSystem().then(renderModels);
 refreshModels();
 refreshPresets();

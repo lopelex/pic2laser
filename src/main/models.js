@@ -12,6 +12,8 @@ const fs = require('fs/promises');
 const fsSync = require('fs');
 const crypto = require('crypto');
 
+const resources = require('./resources');
+
 const HF = 'https://huggingface.co';
 
 const MODELS = {
@@ -250,7 +252,12 @@ const worker = {
 
   ensureProc() {
     if (this.proc) return this.proc;
-    this.proc = utilityProcess.fork(path.join(__dirname, 'model-worker.js'), [], { serviceName: 'Pic2Laser KI' });
+    // Speicherbudget und Thread-Zahl je nach Leistungsstufe des Rechners
+    const limits = resources.LIMITS[resources.tierFor(resources.totalMB())];
+    this.proc = utilityProcess.fork(path.join(__dirname, 'model-worker.js'), [], {
+      serviceName: 'Pic2Laser KI',
+      env: { ...process.env, PIC2LASER_MODEL_BUDGET_MB: String(limits.modelBudgetMB), PIC2LASER_THREADS: String(limits.threads) },
+    });
     this.proc.on('message', (msg) => {
       const job = this.pending.get(msg.id);
       if (!job) return;
@@ -264,6 +271,11 @@ const worker = {
       this.pending.clear();
     });
     return this.proc;
+  },
+
+  /** Alle zwischengespeicherten Modelle außer `keep` freigeben. */
+  trim(keep) {
+    if (this.proc) this.proc.postMessage({ type: 'trim', keep });
   },
 
   run(file, feeds, outputs) {
@@ -283,7 +295,28 @@ const worker = {
  */
 async function run(id, feeds, outputs, onProgress) {
   const file = await ensure(id, onProgress);
+  await checkMemory(id, file, feeds);
   return worker.run(file, feeds, outputs);
+}
+
+/**
+ * Prüft vor dem Rechnen, ob genug Arbeitsspeicher frei ist (gemessener Bedarf des Modells).
+ * Reicht er nicht, werden zuerst zwischengespeicherte Modelle freigegeben. Reicht er dann
+ * immer noch nicht, wird mit einer verständlichen Meldung abgebrochen (Code LOW_MEMORY),
+ * statt dass das System auslagert oder der KI-Prozess abstürzt.
+ */
+async function checkMemory(id, file, feeds) {
+  const need = resources.peakMB(id, feeds);
+  let avail = await resources.availableMBCached();
+  if (avail >= need + 300) return;
+  worker.trim(file);
+  await new Promise((r) => setTimeout(r, 300));
+  avail = await resources.availableMB();
+  // nach dem Freigeben noch einmal messen; etwas Spielraum, da Bedarf geschätzt ist
+  if (avail < need * 0.9) {
+    const gb = (mb) => (mb / 1024).toFixed(1).replace('.', ',');
+    throw new Error(`LOW_MEMORY: Zu wenig freier Arbeitsspeicher für „${getModel(id).label}“ – benötigt ca. ${gb(need)} GB, frei sind ${gb(avail)} GB. Bitte andere Programme schließen oder eine sparsamere Option wählen.`);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -302,6 +335,7 @@ function register(ipcMain) {
     return status();
   });
   ipcMain.handle('model-run', (e, id, feeds, outputs) => run(id, feeds, outputs, progressTo(e.sender)));
+  ipcMain.handle('system-profile', () => resources.profile());
 }
 
 module.exports = { register, MODELS };

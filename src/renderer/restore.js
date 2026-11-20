@@ -9,7 +9,8 @@
  *  - Gesichter restaurieren (YuNet-Gesichtspunkte → Ausrichtung → RestoreFormer++)
  */
 const Restore = (() => {
-  const MAX_SIDE = 1280; // Arbeitsgröße der Restaurierung (Rechenzeit)
+  // Arbeitsgröße und Kachelgröße – werden je nach Arbeitsspeicher des Rechners angepasst (configure)
+  let MAX_SIDE = 1280;
 
   /** Arbeitskopie des Bildes (höchstens MAX_SIDE), als Canvas. */
   function workingCopy(source) {
@@ -31,7 +32,7 @@ const Restore = (() => {
   /* Rauschen entfernen (SCUNet)                                      */
   /* ---------------------------------------------------------------- */
 
-  const DN_TILE = 384;
+  let DN_TILE = 320;
   const DN_OVERLAP = 16;
 
   function denoiseTiles(w, h) {
@@ -456,5 +457,10 @@ const Restore = (() => {
     return ctx.getImageData(0, 0, c.width, c.height).data;
   }
 
-  return { workingCopy, denoise, denoiseTiles, detectScratches, protectZones, inpaint, inpaintTiles, landmarks, restoreFaces, MAX_SIDE };
+  function configure({ maxSide, denoiseTile } = {}) {
+    if (maxSide) MAX_SIDE = maxSide;
+    if (denoiseTile) DN_TILE = denoiseTile;
+  }
+
+  return { configure, get MAX_SIDE() { return MAX_SIDE; }, workingCopy, denoise, denoiseTiles, detectScratches, protectZones, inpaint, inpaintTiles, landmarks, restoreFaces };
 })();
