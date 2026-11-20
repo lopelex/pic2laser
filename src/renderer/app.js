@@ -253,10 +253,19 @@ function bindControls() {
     }
   });
 
-  // Klick ins Original: Hintergrundpunkt (nach Farbe) bzw. Motiv-/Ausschlusspunkt (Objekt anklicken)
+  // Klick ins Original: Hintergrundpunkt (nach Farbe) bzw. Motiv-/Ausschlusspunkt (Objekt anklicken).
+  // Ein Klick auf einen vorhandenen Punkt (Plus/Minus) entfernt ihn wieder.
+  const pickPoints = () => (state.settings.bgRemove === 'color' ? state.settings.bgSeeds : state.settings.samPoints);
+  const pickActive = () => !!state.source && (state.settings.bgRemove === 'color' || state.settings.bgRemove === 'sam');
   const pick = (e, negative) => {
+    if (!pickActive()) return;
     const mode = state.settings.bgRemove;
-    if (!state.source || (mode !== 'color' && mode !== 'sam')) return;
+    const hit = markerAt(e.currentTarget, e, pickPoints());
+    if (hit >= 0) {
+      const points = pickPoints().filter((_, i) => i !== hit);
+      setSetting(mode === 'color' ? 'bgSeeds' : 'samPoints', points);
+      return;
+    }
     const p = imagePointFromEvent(e.currentTarget, e);
     if (!p) return;
     if (mode === 'color') setSetting('bgSeeds', [...state.settings.bgSeeds, p]);
@@ -267,6 +276,12 @@ function bindControls() {
     if (state.settings.bgRemove !== 'sam') return;
     e.preventDefault();
     pick(e, true);
+  });
+  // Mauszeiger: Hand über einem Punkt (anklicken = entfernen), sonst Fadenkreuz
+  $('#img-original').addEventListener('mousemove', (e) => {
+    const over = pickActive() && markerAt(e.currentTarget, e, pickPoints()) >= 0;
+    e.currentTarget.style.cursor = over ? 'pointer' : '';
+    e.currentTarget.title = over ? 'Klicken, um diesen Punkt zu entfernen' : '';
   });
 
   // Doppelklick auf einen Regler setzt ihn zurück
@@ -1499,6 +1514,28 @@ window.api.models.onProgress((p) => {
 });
 
 /** Rechnet einen Klick auf ein <img> mit object-fit: contain in relative Bildkoordinaten um. */
+/**
+ * Index des Klickpunkts unter dem Mauszeiger (oder −1). Die Trefferfläche entspricht
+ * der Größe des gezeichneten Markers (Segmentation.drawMarkers), mindestens 10 px.
+ */
+function markerAt(img, e, points) {
+  if (!points || !points.length) return -1;
+  const rect = img.getBoundingClientRect();
+  const nw = img.naturalWidth, nh = img.naturalHeight;
+  if (!nw || !nh) return -1;
+  const scale = Math.min(rect.width / nw, rect.height / nh);
+  const dw = nw * scale, dh = nh * scale;
+  const ox = rect.left + (rect.width - dw) / 2;
+  const oy = rect.top + (rect.height - dh) / 2;
+  const radius = Math.max(10, Math.max(5, Math.round(Math.max(nw, nh) / 110)) * scale * 1.3);
+  let best = -1, bestDist = Infinity;
+  points.forEach((p, i) => {
+    const d = Math.hypot(ox + p.x * dw - e.clientX, oy + p.y * dh - e.clientY);
+    if (d <= radius && d < bestDist) { best = i; bestDist = d; }
+  });
+  return best;
+}
+
 function imagePointFromEvent(img, e) {
   const rect = img.getBoundingClientRect();
   const nw = img.naturalWidth, nh = img.naturalHeight;
