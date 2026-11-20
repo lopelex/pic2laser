@@ -8,7 +8,6 @@
 const fs = require('fs/promises');
 const os = require('os');
 
-const sessions = new Map(); // Dateipfad -> Promise<{ ort, session }>
 
 /**
  * Bevorzugt die native Laufzeit (onnxruntime-node, schnell). Wo es keine nativen
@@ -35,16 +34,57 @@ async function createSession(file) {
   }
 }
 
-function getSession(file) {
-  if (!sessions.has(file)) {
-    const p = createSession(file);
-    sessions.set(file, p);
-    p.catch(() => sessions.delete(file));
+/*
+ * Speicherverwaltung: Geladene Modelle bleiben für schnelle Wiederholungen im Speicher,
+ * aber nur bis zu einem Budget (abhängig vom Arbeitsspeicher). Am längsten unbenutzte
+ * Modelle werden vorher freigegeben. Gerechnet wird immer nur eine Anfrage gleichzeitig.
+ */
+const sessions = new Map(); // Dateipfad -> { p: Promise<{ ort, session }>, size, lastUsed }
+const BUDGET = Math.min(3e9, Math.max(6e8, os.totalmem() * 0.2)); // Bytes Modelldateien
+
+async function fileSize(file) {
+  let size = 0;
+  for (const f of [file, `${file}.data`]) {
+    try { size += (await fs.stat(f)).size; } catch { /* keine externe Datei */ }
   }
-  return sessions.get(file);
+  return size;
 }
 
-async function run(file, feeds, outputs) {
+async function release(file) {
+  const entry = sessions.get(file);
+  if (!entry) return;
+  sessions.delete(file);
+  try {
+    const { session } = await entry.p;
+    if (session.release) await session.release();
+  } catch { /* war schon fehlerhaft */ }
+}
+
+async function makeRoom(file, needed) {
+  const loaded = () => [...sessions.entries()].filter(([f]) => f !== file);
+  let total = loaded().reduce((sum, [, e]) => sum + e.size, 0);
+  for (const [f, e] of loaded().sort((a, b) => a[1].lastUsed - b[1].lastUsed)) {
+    if (total + needed <= BUDGET) break;
+    await release(f);
+    total -= e.size;
+  }
+}
+
+async function getSession(file) {
+  let entry = sessions.get(file);
+  if (!entry) {
+    const size = await fileSize(file);
+    await makeRoom(file, size);
+    const p = createSession(file);
+    entry = { p, size, lastUsed: Date.now() };
+    sessions.set(file, entry);
+    p.catch(() => sessions.delete(file));
+  }
+  entry.lastUsed = Date.now();
+  return entry.p;
+}
+
+async function runOnce(file, feeds, outputs) {
   const { ort, session } = await getSession(file);
   const inputs = {};
   for (const [name, t] of Object.entries(feeds)) {
@@ -57,16 +97,41 @@ async function run(file, feeds, outputs) {
   return result;
 }
 
-process.parentPort.on('message', async (e) => {
+const isOutOfMemory = (err) => /bad_alloc|failed to allocate|out of memory|allocation/i.test(String(err && err.message || err));
+
+async function run(file, feeds, outputs) {
+  try {
+    return await runOnce(file, feeds, outputs);
+  } catch (err) {
+    if (!isOutOfMemory(err)) throw err;
+    // Speicher voll: alle Modelle freigeben und einmal neu versuchen
+    for (const f of [...sessions.keys()]) await release(f);
+    try {
+      return await runOnce(file, feeds, outputs);
+    } catch (err2) {
+      if (isOutOfMemory(err2)) {
+        throw new Error('Nicht genug Arbeitsspeicher für dieses KI-Modell. Bitte andere Programme schließen oder ein kleineres Modell bzw. Bild verwenden.');
+      }
+      throw err2;
+    }
+  }
+}
+
+// Immer nur eine Berechnung gleichzeitig (abgebrochene Läufe dürfen nicht parallel weiterrechnen)
+let queue = Promise.resolve();
+
+process.parentPort.on('message', (e) => {
   const msg = e.data;
   if (msg.type === 'drop') {
-    sessions.delete(msg.file);
+    queue = queue.then(() => release(msg.file));
     return;
   }
-  try {
-    const result = await run(msg.file, msg.feeds, msg.outputs);
-    process.parentPort.postMessage({ id: msg.id, ok: true, result });
-  } catch (err) {
-    process.parentPort.postMessage({ id: msg.id, ok: false, error: String((err && err.message) || err) });
-  }
+  queue = queue.then(async () => {
+    try {
+      const result = await run(msg.file, msg.feeds, msg.outputs);
+      process.parentPort.postMessage({ id: msg.id, ok: true, result });
+    } catch (err) {
+      process.parentPort.postMessage({ id: msg.id, ok: false, error: String((err && err.message) || err) });
+    }
+  });
 });
