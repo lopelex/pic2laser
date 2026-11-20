@@ -114,15 +114,41 @@ const Segmentation = (() => {
    * Vorschau des Originals mit entferntem Hintergrund.
    * markers: [{ x, y, positive }] – Klickpunkte (grün = Motiv, rot = Hintergrund).
    */
-  async function cutoutPreview(bitmap, mask, markers, boxes = []) {
+  async function cutoutPreview(bitmap, mask, markers, boxes = [], hideBackground = false) {
     const { w, h } = analysisSize(bitmap);
     const c = new OffscreenCanvas(w, h);
     const ctx = c.getContext('2d');
     ctx.drawImage(bitmap, 0, 0, w, h);
-    if (mask) {
+    if (mask && hideBackground) {
+      // Hintergrund ausblenden (transparent)
       ctx.globalCompositeOperation = 'destination-in';
       ctx.drawImage(mask, 0, 0, w, h);
       ctx.globalCompositeOperation = 'source-over';
+    } else if (mask) {
+      // Entfernten Hintergrund rot schraffieren – zwischen den Streifen bleibt das Bild sichtbar
+      const { bin, edge } = maskOutline(mask, w, h);
+      const sw = Math.max(2, Math.round(Math.max(w, h) / 260)); // Streifenbreite (schmal, Hintergrund bleibt gut sichtbar)
+      const hatch = new OffscreenCanvas(w, h);
+      const hctx = hatch.getContext('2d');
+      hctx.strokeStyle = 'rgba(239, 68, 68, 0.55)';
+      hctx.lineWidth = sw;
+      hctx.beginPath();
+      for (let d = -h; d < w + h; d += sw * 5) {
+        hctx.moveTo(d, 0);
+        hctx.lineTo(d + h, h);
+      }
+      hctx.stroke();
+      hctx.globalCompositeOperation = 'destination-out';
+      hctx.drawImage(bin, 0, 0); // nur außerhalb des Motivs
+      ctx.drawImage(hatch, 0, 0);
+
+      // Schnittlinie mit hellem Saum (auf hellem und dunklem Grund sichtbar)
+      ctx.save();
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.95)';
+      ctx.shadowBlur = Math.max(2, sw / 2);
+      ctx.drawImage(edge, 0, 0);
+      ctx.drawImage(edge, 0, 0);
+      ctx.restore();
     }
     drawMarkers(ctx, w, h, markers);
     // erkannte Schrift-/Logobereiche als gestrichelte Rahmen
@@ -135,6 +161,43 @@ const Segmentation = (() => {
       ctx.restore();
     }
     return c.convertToBlob({ type: 'image/png' });
+  }
+
+  /** Binäre Maske (Motiv deckend) und ihre Randlinie als Canvas. */
+  function maskOutline(mask, w, h) {
+    const src = new OffscreenCanvas(w, h);
+    const sctx = src.getContext('2d', { willReadFrequently: true });
+    sctx.drawImage(mask, 0, 0, w, h);
+    const a = sctx.getImageData(0, 0, w, h).data;
+    const inside = new Uint8Array(w * h);
+    for (let p = 0; p < w * h; p++) inside[p] = a[p * 4 + 3] >= 128 ? 1 : 0;
+
+    const bin = new OffscreenCanvas(w, h);
+    const bctx = bin.getContext('2d');
+    const bimg = bctx.createImageData(w, h);
+    const edge = new OffscreenCanvas(w, h);
+    const ectx = edge.getContext('2d');
+    const eimg = ectx.createImageData(w, h);
+    const lw = Math.max(1, Math.round(Math.max(w, h) / 600));
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const p = y * w + x;
+        if (!inside[p]) continue;
+        bimg.data[p * 4 + 3] = 255;
+        // Randpixel: innerhalb, aber mit einem Nachbarn außerhalb (im Abstand lw)
+        let border = false;
+        for (let d = 1; d <= lw && !border; d++) {
+          if ((x >= d && !inside[p - d]) || (x < w - d && !inside[p + d]) ||
+              (y >= d && !inside[p - d * w]) || (y < h - d && !inside[p + d * w])) border = true;
+        }
+        if (border) {
+          eimg.data[p * 4] = 220; eimg.data[p * 4 + 1] = 38; eimg.data[p * 4 + 2] = 38; eimg.data[p * 4 + 3] = 255;
+        }
+      }
+    }
+    bctx.putImageData(bimg, 0, 0);
+    ectx.putImageData(eimg, 0, 0);
+    return { bin, edge };
   }
 
   function drawMarkers(ctx, w, h, markers) {

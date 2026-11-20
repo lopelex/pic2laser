@@ -68,6 +68,15 @@ const DEFAULTS = Object.freeze({
 });
 
 const SETTINGS_STORAGE_KEY = 'pic2laser.settings';
+
+// Reine Anzeige-Vorlieben (nicht in Presets/Historie, kein Einfluss auf das Ergebnis)
+const UI_STORAGE_KEY = 'pic2laser.ui';
+const ui = (() => {
+  try { return { hideBackground: false, ...JSON.parse(localStorage.getItem(UI_STORAGE_KEY) || '{}') }; } catch { return { hideBackground: false }; }
+})();
+function saveUi() {
+  try { localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(ui)); } catch { /* ignorieren */ }
+}
 const ZOOM_STEPS = [1, 1.5, 2, 3, 4, 6, 8, 12];
 
 const MODE_HINTS = {
@@ -232,6 +241,17 @@ function bindControls() {
   }
   $('#btn-clear-seeds').addEventListener('click', () => setSetting('bgSeeds', []));
   $('#btn-clear-sam').addEventListener('click', () => setSetting('samPoints', []));
+
+  // Anzeige: entfernten Hintergrund rot markieren oder ausblenden (nur Vorschau)
+  $('#bg-hide').checked = ui.hideBackground;
+  $('#bg-hide').addEventListener('change', async (e) => {
+    ui.hideBackground = e.target.checked;
+    saveUi();
+    if (state.source && state.mask) {
+      const s = state.settings;
+      await updateOriginalView({ ...s, textBlocks: state.lastTextBlocks || [] }, state.mask.canvas, state.lastViewBase || state.source.bitmap);
+    }
+  });
 
   // Klick ins Original: Hintergrundpunkt (nach Farbe) bzw. Motiv-/Ausschlusspunkt (Objekt anklicken)
   const pick = (e, negative) => {
@@ -724,10 +744,10 @@ const Pipeline = (() => {
       const ts = textSource ? await createImageBitmap(textSource) : null;
       return call('render', { source: src, mask: m, lineMask: lm, textSource: ts, s }, [src, m, lm, ts].filter(Boolean));
     },
-    async cutout(source, mask, markers, boxes = []) {
+    async cutout(source, mask, markers, boxes = [], hideBackground = false) {
       const src = await createImageBitmap(source);
       const m = mask ? await createImageBitmap(mask) : null;
-      return call('cutout', { source: src, mask: m, markers, boxes }, m ? [src, m] : [src]);
+      return call('cutout', { source: src, mask: m, markers, boxes, hideBackground }, m ? [src, m] : [src]);
     },
     async colorMask(source, tolerance, border, seeds) {
       const src = await createImageBitmap(source);
@@ -1065,6 +1085,8 @@ async function runProcess() {
     // 2. Freistellen
     const mask = await ensureMask(s, work);
     if (stale()) return;
+    state.lastTextBlocks = s.textBlocks;
+    state.lastViewBase = viewBase;
     await updateOriginalView(s, mask, viewBase);
     if (stale()) return;
 
@@ -1336,7 +1358,8 @@ async function updateOriginalView(s, mask, base = state.source.bitmap) {
     ? s.bgSeeds.map((p) => ({ ...p, positive: false }))
     : s.bgRemove === 'sam' ? s.samPoints : [];
   const boxes = s.textBlocks || [];
-  const key = `${mask ? state.mask.key : 'plain'}|${JSON.stringify(markers)}|${JSON.stringify(boxes)}|${restoreSig(s)}`;
+  const hideBg = ui.hideBackground;
+  const key = `${mask ? state.mask.key : 'plain'}|${JSON.stringify(markers)}|${JSON.stringify(boxes)}|${restoreSig(s)}|${hideBg}`;
   if (state.originalViewKey === key) return;
   state.originalViewKey = key;
   const img = $('#img-original');
@@ -1349,10 +1372,10 @@ async function updateOriginalView(s, mask, base = state.source.bitmap) {
     $('#pane-original').classList.remove('checker');
     return;
   }
-  const png = await Pipeline.cutout(base, mask, markers, boxes);
+  const png = await Pipeline.cutout(base, mask, markers, boxes, hideBg);
   state.originalUrl = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
   img.src = state.originalUrl;
-  $('#pane-original').classList.toggle('checker', !!mask);
+  $('#pane-original').classList.toggle('checker', !!mask && hideBg);
 }
 
 /* ------------------------------------------------------------------ */

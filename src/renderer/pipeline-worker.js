@@ -62,8 +62,8 @@ const handlers = {
   },
 
   /** Vorschau des freigestellten Originals mit Klickpunkten (PNG-Bytes). */
-  async cutout({ source, mask, markers, boxes }) {
-    const blob = await Segmentation.cutoutPreview(source, mask, markers, boxes);
+  async cutout({ source, mask, markers, boxes, hideBackground }) {
+    const blob = await Segmentation.cutoutPreview(source, mask, markers, boxes, hideBackground);
     source.close();
     if (mask) mask.close();
     const bytes = new Uint8Array(await blob.arrayBuffer());
