@@ -365,6 +365,11 @@ const Processing = (() => {
     gray = sharpen(gray, w, h, s.sharpen);
     gray = adjust(gray, s);
 
+    // Gesichtszüge hervorheben: lokaler Kontrast im Gesichtsbereich
+    if (s.faceBoost && s.faces && s.faces.length && s.mode !== 'relief' && !(s.mode === 'edges' && s.edgeMethod === 'ai')) {
+      enhanceFaces(gray, w, h, s.faces, s.faceStrength, s.mouthStrength ?? 1, s.noseStrength ?? 0.5);
+    }
+
     // Freigestellter Hintergrund wird weiß (= wird nicht graviert)
     let alpha = null;
     if (maskCanvas) {
@@ -432,6 +437,92 @@ const Processing = (() => {
     }
     ctx.putImageData(img, 0, 0);
     return canvas;
+  }
+
+  /**
+   * Hebt Augen, Brauen, Nase und Mund hervor: Unscharfe Maskierung mit einem
+   * Radius in Größe der Gesichtsdetails, elliptisch weich auf das Gesicht begrenzt.
+   */
+  function enhanceFaces(gray, w, h, faces, strength, mouth, nose) {
+    for (const f of faces) {
+      const fw = (f.x2 - f.x1) * w, fh = (f.y2 - f.y1) * h;
+      // 1. ganzes Gesicht: Details in Größe von Augen/Brauen/Nase
+      localContrast(gray, w, h, {
+        cx: ((f.x1 + f.x2) / 2) * w, cy: ((f.y1 + f.y2) / 2) * h, rx: fw * 0.75, ry: fh * 0.8,
+        rad: Math.max(2, Math.round(Math.min(fw, fh) * 0.06)),
+        dark: strength * 2.1, light: strength * 1.1,
+      });
+      // 2. Mund: Lippen haben oft fast Hauttöne – feiner Radius, dunkle Fuge stark betonen
+      if (mouth > 0) {
+        const m = mouthBox(f);
+        localContrast(gray, w, h, {
+          cx: m.cx * w, cy: m.cy * h, rx: m.rx * w, ry: m.ry * h,
+          rad: Math.max(1, Math.round(fh * 0.035)),
+          dark: mouth * 3.5, light: mouth * 0.6,
+        });
+      }
+      // 3. Nase: Nasenflügel, Nasenlöcher und Seitenschatten
+      if (nose > 0) {
+        const n = noseBox(f);
+        localContrast(gray, w, h, {
+          cx: n.cx * w, cy: n.cy * h, rx: n.rx * w, ry: n.ry * h,
+          rad: Math.max(1, Math.round(fh * 0.03)),
+          dark: nose * 3.2, light: nose * 0.5,
+        });
+      }
+    }
+  }
+
+  /** Lage des Mundes relativ zur Gesichtsbox (UltraFace: Stirn bis Kinn). */
+  function mouthBox(f) {
+    const fw = f.x2 - f.x1, fh = f.y2 - f.y1;
+    return { cx: (f.x1 + f.x2) / 2, cy: f.y1 + fh * 0.78, rx: fw * 0.3, ry: fh * 0.12 };
+  }
+
+  /** Lage der Nase relativ zur Gesichtsbox. */
+  function noseBox(f) {
+    const fw = f.x2 - f.x1, fh = f.y2 - f.y1;
+    return { cx: (f.x1 + f.x2) / 2, cy: f.y1 + fh * 0.56, rx: fw * 0.18, ry: fh * 0.15 };
+  }
+
+  /**
+   * Unscharfe Maskierung (lokaler Kontrast), elliptisch weich begrenzt.
+   * dark/light: Verstärkung für dunkle bzw. helle Details.
+   */
+  function localContrast(gray, w, h, { cx, cy, rx, ry, rad, dark, light }) {
+    const x0 = Math.max(0, Math.floor(cx - rx)), x1 = Math.min(w - 1, Math.ceil(cx + rx));
+    const y0 = Math.max(0, Math.floor(cy - ry)), y1 = Math.min(h - 1, Math.ceil(cy + ry));
+    const rw = x1 - x0 + 1, rh = y1 - y0 + 1;
+    if (rw < 4 || rh < 4) return;
+
+    // Integralbild des Bereichs für schnelle Box-Mittelwerte
+    const iw = rw + 1;
+    const integ = new Float64Array(iw * (rh + 1));
+    for (let y = 0; y < rh; y++) {
+      let rowSum = 0;
+      for (let x = 0; x < rw; x++) {
+        rowSum += gray[(y0 + y) * w + x0 + x];
+        integ[(y + 1) * iw + x + 1] = integ[y * iw + x + 1] + rowSum;
+      }
+    }
+    for (let y = 0; y < rh; y++) {
+      const ya = Math.max(0, y - rad), yb = Math.min(rh - 1, y + rad);
+      const ny = (y0 + y - cy) / ry;
+      for (let x = 0; x < rw; x++) {
+        const nx = (x0 + x - cx) / rx;
+        const d = nx * nx + ny * ny;
+        if (d >= 1) continue;
+        const t = d < 0.55 ? 1 : (1 - d) / 0.45;
+        const wgt = t * t * (3 - 2 * t);
+        const xa = Math.max(0, x - rad), xb = Math.min(rw - 1, x + rad);
+        const sum = integ[(yb + 1) * iw + xb + 1] - integ[ya * iw + xb + 1] - integ[(yb + 1) * iw + xa] + integ[ya * iw + xa];
+        const mean = sum / ((xb - xa + 1) * (yb - ya + 1));
+        const i = (y0 + y) * w + x0 + x;
+        const detail = gray[i] - mean;
+        const k = detail < 0 ? dark : light;
+        gray[i] = Math.max(0, Math.min(255, gray[i] + wgt * k * detail));
+      }
+    }
   }
 
   /** Graustufenbild (Relief) als Canvas. */

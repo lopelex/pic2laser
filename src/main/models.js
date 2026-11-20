@@ -30,6 +30,11 @@ const MODELS = {
     file: 'realesr-general-x4v3.onnx',
     license: 'BSD-3-Clause',
   },
+  faces: {
+    label: 'Gesichtserkennung (UltraFace)',
+    file: 'ultraface-rfb-320.onnx',
+    license: 'MIT',
+  },
   sam_encoder: {
     label: 'Objekt anklicken – Encoder (MobileSAM)',
     file: 'mobilesam_encoder.onnx',

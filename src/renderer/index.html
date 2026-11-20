@@ -27,7 +27,7 @@
   <main class="layout">
     <!-- Einstellungen -->
     <aside class="panel settings" id="settings">
-      <section class="group">
+      <section class="group presets-group">
         <h3>Presets</h3>
         <div class="row">
           <select id="preset-select" title="Preset anwenden"></select>
@@ -40,6 +40,8 @@
         <p class="hint" id="preset-hint"></p>
       </section>
 
+      <!-- Nur dieser Bereich scrollt; die Presets bleiben fest oben -->
+      <div class="settings-scroll" id="settings-scroll">
       <section class="group">
         <h3>Modus</h3>
         <div class="segmented" id="mode">
@@ -223,6 +225,26 @@
       </section>
 
       <section class="group" data-mode="vector edges dither">
+        <h3>Gesichter</h3>
+        <label class="check"><input type="checkbox" data-key="faceBoost" /> Gesichtszüge hervorheben</label>
+        <div data-show="faceBoost">
+          <label class="slider">
+            <span>Stärke <output data-for="faceStrength"></output></span>
+            <input type="range" data-key="faceStrength" min="0.2" max="2" step="0.1" />
+          </label>
+          <label class="slider">
+            <span>Mund <output data-for="mouthStrength"></output></span>
+            <input type="range" data-key="mouthStrength" min="0" max="2" step="0.1" />
+          </label>
+          <label class="slider">
+            <span>Nase <output data-for="noseStrength"></output></span>
+            <input type="range" data-key="noseStrength" min="0" max="2" step="0.1" />
+          </label>
+          <p class="hint">Erkennt Gesichter per KI und betont Augen, Brauen, Nase und Mund. „Mund“ und „Nase“ verstärken diese Bereiche zusätzlich (0 = aus). Im Modus <b>Linien</b> wird jedes Gesicht zusätzlich in hoher Auflösung nachgezeichnet. <span id="face-info"></span></p>
+        </div>
+      </section>
+
+      <section class="group" data-mode="vector edges dither">
         <h3>Motivkontur</h3>
         <label class="check"><input type="checkbox" data-key="subjectLine" /> Dünne Linie zwischen Motiv und Hintergrund</label>
         <div data-show="subjectLine">
@@ -283,6 +305,7 @@
       </section>
 
       <button class="btn btn-ghost full" id="btn-reset">Einstellungen zurücksetzen</button>
+      </div>
     </aside>
 
     <!-- Vorschau -->

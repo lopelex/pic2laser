@@ -373,3 +373,27 @@ body.has-image .dropzone:not(.dragging) { display: none; }
 }
 #preset-name:focus { border-color: var(--accent); }
 #preset-hint:empty { display: none; }
+
+/* Einstellungen: Presets als fester Kopf, nur der Rest scrollt (eigene Scrollleiste) */
+.settings {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+.presets-group {
+  flex: none;
+  margin: 0;
+  padding: 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 6px 10px -8px rgba(0, 0, 0, .6);
+  position: relative;
+  z-index: 1;
+}
+.settings-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+}

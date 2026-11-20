@@ -203,6 +203,194 @@ const AI = (() => {
   }
 
   /* ---------------------------------------------------------------- */
+  /* Gesichter (UltraFace) & Gesichtsdetails                          */
+  /* ---------------------------------------------------------------- */
+
+  /** Findet Gesichter. Rückgabe: [{ x1, y1, x2, y2, score }] relativ (0..1). */
+  async function detectFaces(source, minScore = 0.85) {
+    const W = 320, H = 240;
+    const input = toNCHW(pixels(source, W, H), W, H, { mean: [127, 127, 127], std: [128, 128, 128], scale: 1 });
+    const res = await run('faces', { input: { data: input, dims: [1, 3, H, W] } }, ['scores', 'boxes']);
+    const scores = res.scores.data, boxes = res.boxes.data;
+    const cand = [];
+    for (let i = 0; i < scores.length / 2; i++) {
+      const p = scores[i * 2 + 1];
+      if (p < minScore) continue;
+      const clamp = (v) => Math.max(0, Math.min(1, v));
+      cand.push({ x1: clamp(boxes[i * 4]), y1: clamp(boxes[i * 4 + 1]), x2: clamp(boxes[i * 4 + 2]), y2: clamp(boxes[i * 4 + 3]), score: p });
+    }
+    // Non-Maximum-Suppression
+    cand.sort((a, b) => b.score - a.score);
+    const iou = (a, b) => {
+      const iw = Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1));
+      const ih = Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
+      const inter = iw * ih;
+      const area = (r) => (r.x2 - r.x1) * (r.y2 - r.y1);
+      return inter / (area(a) + area(b) - inter || 1);
+    };
+    const faces = [];
+    for (const c of cand) {
+      if (faces.every((f) => iou(f, c) < 0.3)) faces.push(c);
+      if (faces.length >= 12) break;
+    }
+    return faces;
+  }
+
+  /** Bereich um ein Gesicht inkl. Stirn, Haaransatz und Kinn (relativ, geclampt). */
+  function faceRegion(f) {
+    const cx = (f.x1 + f.x2) / 2, cy = (f.y1 + f.y2) / 2;
+    const rw = (f.x2 - f.x1) * 1.5, rh = (f.y2 - f.y1) * 1.5;
+    const x1 = Math.max(0, cx - rw / 2), x2 = Math.min(1, cx + rw / 2);
+    const y1 = Math.max(0, cy - rh * 0.55), y2 = Math.min(1, cy + rh * 0.45);
+    return { x1, y1, x2, y2, cx, cy, rx: rw / 2, ry: rh / 2 };
+  }
+
+  /**
+   * Zeichnet jedes Gesicht zusätzlich in hoher Auflösung als Strichzeichnung,
+   * verstärkt die Linien und blendet es weich in die Gesamtzeichnung ein.
+   */
+  async function enhanceFacesLineArt(input, base, faces, strength, { mouth = 1, nose = 0.5 } = {}) {
+    const out = new OffscreenCanvas(base.width, base.height);
+    const octx = out.getContext('2d');
+    octx.drawImage(base, 0, 0);
+    for (const f of faces) {
+      const r = faceRegion(f);
+      const sx = r.x1 * input.width, sy = r.y1 * input.height;
+      const sw = (r.x2 - r.x1) * input.width, sh = (r.y2 - r.y1) * input.height;
+      if (sw < 8 || sh < 8) continue;
+      const crop = new OffscreenCanvas(Math.round(sw), Math.round(sh));
+      crop.getContext('2d').drawImage(input, sx, sy, sw, sh, 0, 0, crop.width, crop.height);
+      const face = await lineArt(crop, Math.round(512 + 192 * Math.min(2, strength)));
+
+      // Linien kräftiger machen: Grauwerte nach unten ziehen (Weiß bleibt Weiß)
+      const fctx = face.getContext('2d', { willReadFrequently: true });
+      const img = fctx.getImageData(0, 0, face.width, face.height);
+      const gamma = 1 + strength * 1.5;
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = 255 * Math.pow(img.data[i] / 255, gamma);
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+      }
+      fctx.putImageData(img, 0, 0);
+
+      // Weicher, elliptischer Übergang zur Gesamtzeichnung
+      const dx = r.x1 * base.width, dy = r.y1 * base.height;
+      const dw = (r.x2 - r.x1) * base.width, dh = (r.y2 - r.y1) * base.height;
+      const patch = new OffscreenCanvas(Math.max(1, Math.round(dw)), Math.max(1, Math.round(dh)));
+      const pctx = patch.getContext('2d');
+      pctx.imageSmoothingQuality = 'high';
+      pctx.drawImage(face, 0, 0, patch.width, patch.height);
+      // Außerhalb der Ellipse wird Weiß eingeblendet (neutral beim Abdunkeln)
+      const ecx = (r.cx - r.x1) * base.width, ecy = (r.cy - r.y1) * base.height;
+      pctx.save();
+      pctx.translate(ecx, ecy);
+      pctx.scale(r.rx * base.width, r.ry * base.height);
+      const grad = pctx.createRadialGradient(0, 0, 0.65, 0, 0, 1);
+      grad.addColorStop(0, 'rgba(255,255,255,0)');
+      grad.addColorStop(1, 'rgba(255,255,255,1)');
+      pctx.fillStyle = grad;
+      pctx.fillRect(-2, -2, 4, 4);
+      pctx.restore();
+      octx.globalCompositeOperation = 'darken';
+      octx.drawImage(patch, dx, dy, dw, dh);
+      octx.globalCompositeOperation = 'source-over';
+
+      // Mund und Nase gezielt nachschärfen (Regler „Mund“/„Nase“, 0 = aus)
+      const fw = f.x2 - f.x1, fh = f.y2 - f.y1, fcx = (f.x1 + f.x2) / 2;
+      if (mouth > 0) {
+        await enhanceFeatureLineArt(input, octx, base.width, base.height,
+          { cx: fcx, cy: f.y1 + fh * 0.78, rx: fw * 0.38, ry: fh * 0.17 }, mouth);
+      }
+      if (nose > 0) {
+        await enhanceFeatureLineArt(input, octx, base.width, base.height,
+          { cx: fcx, cy: f.y1 + fh * 0.56, rx: fw * 0.22, ry: fh * 0.16 }, nose);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Gesichtsmerkmal (Mund, Nase) gezielt betonen. Lippen und Nase haben oft fast
+   * Hauttöne; deutlich dunkel sind nur Lippenfuge, Mundwinkel, Nasenlöcher und -flügel.
+   * 1. Bereich stark vergrößert erneut nachzeichnen (kräftige Linien)
+   * 2. dunkle „Täler“ direkt im Foto finden und als Linie ergänzen
+   * m: { cx, cy, rx, ry } relativ zum Bild
+   */
+  async function enhanceFeatureLineArt(input, octx, bw, bh, m, strength) {
+    const x1 = Math.max(0, m.cx - m.rx), x2 = Math.min(1, m.cx + m.rx);
+    const y1 = Math.max(0, m.cy - m.ry), y2 = Math.min(1, m.cy + m.ry);
+    const sw = (x2 - x1) * input.width, sh = (y2 - y1) * input.height;
+    if (sw < 8 || sh < 4) return;
+    const crop = new OffscreenCanvas(Math.max(1, Math.round(sw)), Math.max(1, Math.round(sh)));
+    crop.getContext('2d').drawImage(input, x1 * input.width, y1 * input.height, sw, sh, 0, 0, crop.width, crop.height);
+
+    // 1. Strichzeichnung des Mundes in hoher Vergrößerung
+    const lines = await lineArt(crop, 512);
+    const W = lines.width, H = lines.height;
+    const lctx = lines.getContext('2d', { willReadFrequently: true });
+    const img = lctx.getImageData(0, 0, W, H);
+    const gamma = 1 + strength * 3;
+
+    // 2. Dunkle Täler: Pixel deutlich dunkler als ihre Umgebung
+    const rgba = pixels(crop, W, H);
+    const g = new Float32Array(W * H);
+    for (let p = 0; p < W * H; p++) g[p] = 0.299 * rgba[p * 4] + 0.587 * rgba[p * 4 + 1] + 0.114 * rgba[p * 4 + 2];
+    const rad = Math.max(2, Math.round(H * 0.12));
+    const iw = W + 1;
+    const integ = new Float64Array(iw * (H + 1));
+    for (let y = 0; y < H; y++) {
+      let row = 0;
+      for (let x = 0; x < W; x++) {
+        row += g[y * W + x];
+        integ[(y + 1) * iw + x + 1] = integ[y * iw + x + 1] + row;
+      }
+    }
+    const valley = new Float32Array(W * H);
+    const vals = [];
+    for (let y = 0; y < H; y++) {
+      const ya = Math.max(0, y - rad), yb = Math.min(H - 1, y + rad);
+      for (let x = 0; x < W; x++) {
+        const xa = Math.max(0, x - rad), xb = Math.min(W - 1, x + rad);
+        const sum = integ[(yb + 1) * iw + xb + 1] - integ[ya * iw + xb + 1] - integ[(yb + 1) * iw + xa] + integ[ya * iw + xa];
+        const v = sum / ((xb - xa + 1) * (yb - ya + 1)) - g[y * W + x];
+        valley[y * W + x] = v;
+        if (v > 0) vals.push(v);
+      }
+    }
+    vals.sort((a, b) => a - b);
+    // nur die deutlichsten Täler (je stärker, desto mehr)
+    const q = Math.max(0.8, 0.95 - strength * 0.06);
+    const t = Math.max(10, vals.length ? vals[Math.floor(vals.length * q)] : 255);
+
+    for (let p = 0; p < W * H; p++) {
+      let v = Math.pow(img.data[p * 4] / 255, gamma);
+      const vv = valley[p];
+      if (vv > t) v = Math.min(v, 1 - Math.min(1, (vv - t) / t + 0.6));
+      const out = Math.round(v * 255);
+      img.data[p * 4] = img.data[p * 4 + 1] = img.data[p * 4 + 2] = out;
+    }
+    lctx.putImageData(img, 0, 0);
+
+    // weich elliptisch einblenden (abdunkeln)
+    const dx = x1 * bw, dy = y1 * bh, dw = (x2 - x1) * bw, dh = (y2 - y1) * bh;
+    const patch = new OffscreenCanvas(Math.max(1, Math.round(dw)), Math.max(1, Math.round(dh)));
+    const pctx = patch.getContext('2d');
+    pctx.imageSmoothingQuality = 'high';
+    pctx.drawImage(lines, 0, 0, patch.width, patch.height);
+    pctx.save();
+    pctx.translate((m.cx - x1) * bw, (m.cy - y1) * bh);
+    pctx.scale(m.rx * bw, m.ry * bh);
+    const grad = pctx.createRadialGradient(0, 0, 0.55, 0, 0, 1);
+    grad.addColorStop(0, 'rgba(255,255,255,0)');
+    grad.addColorStop(1, 'rgba(255,255,255,1)');
+    pctx.fillStyle = grad;
+    pctx.fillRect(-2, -2, 4, 4);
+    pctx.restore();
+    octx.globalCompositeOperation = 'darken';
+    octx.drawImage(patch, dx, dy, dw, dh);
+    octx.globalCompositeOperation = 'source-over';
+  }
+
+  /* ---------------------------------------------------------------- */
   /* Tiefenkarte (Depth Anything V2)                                  */
   /* ---------------------------------------------------------------- */
 
@@ -278,5 +466,5 @@ const AI = (() => {
     return canvas;
   }
 
-  return { segment, samEmbedding, samMask, lineArt, depthMap, upscale };
+  return { segment, samEmbedding, samMask, lineArt, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
 })();
