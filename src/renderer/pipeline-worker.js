@@ -13,8 +13,9 @@ const handlers = {
    * Komplette Rasterverarbeitung eines Durchlaufs.
    * payload: { source, mask (Freistellen), lineMask (nur für die Motivkontur), s: Einstellungen }
    */
-  async render({ source, mask, lineMask, s }) {
-    const { w, h, bits, gray8, alpha } = Processing.process(source, s, mask);
+  async render({ source, mask, lineMask, textSource, s }) {
+    const { w, h, bits, gray8, alpha } = Processing.process(source, s, mask, textSource);
+    if (textSource) textSource.close();
     // Motivkontur (nur Schwarz-Weiß-Modi)
     const contourMask = lineMask || mask;
     if (s.subjectLine && bits && contourMask) {
@@ -61,8 +62,8 @@ const handlers = {
   },
 
   /** Vorschau des freigestellten Originals mit Klickpunkten (PNG-Bytes). */
-  async cutout({ source, mask, markers }) {
-    const blob = await Segmentation.cutoutPreview(source, mask, markers);
+  async cutout({ source, mask, markers, boxes }) {
+    const blob = await Segmentation.cutoutPreview(source, mask, markers, boxes);
     source.close();
     if (mask) mask.close();
     const bytes = new Uint8Array(await blob.arrayBuffer());

@@ -55,6 +55,10 @@ const DEFAULTS = Object.freeze({
   noseStrength: 0.5,
   chinStrength: 0.5,
   cheekStrength: 0,
+  // Schrift & Logos
+  textClean: false,
+  textPad: 1,
+  textBold: 0,
 });
 
 const SETTINGS_STORAGE_KEY = 'pic2laser.settings';
@@ -130,6 +134,8 @@ const FORMATTERS = {
   noseStrength: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
   chinStrength: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
   cheekStrength: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
+  textPad: (v) => (Number(v) ? `${Number(v).toFixed(1)} × Zeilenhöhe` : 'nur Schrift'),
+  textBold: (v) => (Number(v) > 0 ? `+${v}` : `${v}`),
 };
 
 function syncControls() {
@@ -279,6 +285,16 @@ const BUILTIN_PRESETS = [
     group: 'Logos, Schrift & Grafik', name: 'Logo aus kleinem Bild / Screenshot',
     desc: 'Für kleine, verpixelte oder unscharfe Logos (z. B. aus dem Internet): KI-Vergrößerung glättet die Kanten.',
     settings: { mode: 'vector', upscale: true, blur: 0.5, threshold: 128, turdSize: 8, alphaMax: 1.1, optTolerance: 0.3, workRes: 2400 },
+  },
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Strichzeichnung mit Logo / Schrift',
+    desc: 'Für Fotos mit Logo oder Schriftzug (z. B. Fahrzeuge, Schilder, Werbung): Motiv als Strichzeichnung, Schrift und Logos sauber gefüllt.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 1024, threshold: 150, textClean: true, textPad: 1.5, textBold: 0 },
+  },
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Fotogravur mit Logo / Schrift',
+    desc: 'Für Fotos mit Logo oder Schriftzug: Motiv gerastert, Schrift und Logos scharf und gefüllt statt gepunktet.',
+    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, contrast: 15, sharpen: 0.6, textClean: true, textPad: 1.5, textBold: 0 },
   },
   {
     group: 'Logos, Schrift & Grafik', name: 'Clipart / Comic',
@@ -569,6 +585,7 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   state.inflight = new Map();
   state.faceCount = null;
   $('#face-info').textContent = '';
+  $('#text-info').textContent = '';
   state.mask = null;
   state.originalViewKey = null;
 
@@ -683,16 +700,17 @@ const Pipeline = (() => {
   }
 
   return {
-    async render(source, mask, s, lineMask = null) {
+    async render(source, mask, s, lineMask = null, textSource = null) {
       const src = await createImageBitmap(source);
       const m = mask ? await createImageBitmap(mask) : null;
       const lm = lineMask ? await createImageBitmap(lineMask) : null;
-      return call('render', { source: src, mask: m, lineMask: lm, s }, [src, m, lm].filter(Boolean));
+      const ts = textSource ? await createImageBitmap(textSource) : null;
+      return call('render', { source: src, mask: m, lineMask: lm, textSource: ts, s }, [src, m, lm, ts].filter(Boolean));
     },
-    async cutout(source, mask, markers) {
+    async cutout(source, mask, markers, boxes = []) {
       const src = await createImageBitmap(source);
       const m = mask ? await createImageBitmap(mask) : null;
-      return call('cutout', { source: src, mask: m, markers }, m ? [src, m] : [src]);
+      return call('cutout', { source: src, mask: m, markers, boxes }, m ? [src, m] : [src]);
     },
     async colorMask(source, tolerance, border, seeds) {
       const src = await createImageBitmap(source);
@@ -823,6 +841,7 @@ const MODEL_NAMES = {
   u2netp: 'Freistellen (schnell)', isnet: 'Freistellen (präzise)', birefnet: 'Freistellen (beste Qualität)',
   modnet: 'Porträt-Freistellen', sam_encoder: 'Objekt anklicken', sam_decoder: 'Objekt anklicken',
   lineart: 'KI-Strichzeichnung', esrgan: 'KI-Vergrößerung', depth: 'Tiefenkarte', faces: 'Gesichtserkennung',
+  text: 'Texterkennung',
 };
 
 const upTag = (s) => (s.upscale ? 'up' : 'orig');
@@ -833,7 +852,10 @@ const KEYS = {
   lineart: (up, res, maskKey) => `lineart:${up}:${res}:${maskKey}`,
   depth: (up, res) => `depth:${up}:${res}`,
   faces: (up) => `faces:${up}`,
+  text: (up) => `text:${up}`,
 };
+
+const textWanted = (s) => s.textClean && s.mode !== 'relief';
 
 const facesWanted = (s) => s.faceBoost && s.mode !== 'relief';
 
@@ -904,6 +926,7 @@ function planSteps(s) {
   }
 
   if (facesWanted(s)) add('faces', 'Gesichtserkennung', 'faces', 1, 300, KEYS.faces(up));
+  if (textWanted(s)) add('text', 'Texterkennung', 'text', 1, 900, KEYS.text(up));
 
   let src = work;
   if (s.mode === 'edges' && s.edgeMethod === 'ai') {
@@ -958,6 +981,10 @@ async function runProcess() {
     const work = await workingBitmap(s);
     if (stale()) return;
 
+    // Schrift & Logos erkennen (vor der Vorschau, damit die Bereiche dort markiert werden)
+    s.textBlocks = textWanted(s) ? await detectText(s, work) : [];
+    if (stale()) return;
+
     // 2. Freistellen
     const mask = await ensureMask(s, work);
     if (stale()) return;
@@ -981,7 +1008,7 @@ async function runProcess() {
 
     // 4. Rasterverarbeitung im Worker (blockiert die Oberfläche nicht)
     const { w, h, bits, gray8, tracePng, imagePng, imageB64, sil } =
-      await Run.track('render', Pipeline.render(source, mask, s, lineMask));
+      await Run.track('render', Pipeline.render(source, mask, s, lineMask, s.textBlocks.length && source !== work ? work : null));
     if (stale()) return;
     const widthMm = s.widthMm;
     const heightMm = (widthMm * h) / w;
@@ -1101,6 +1128,22 @@ async function ensureMask(s, bitmap) {
   return canvas;
 }
 
+/** Erkennt Schrift im (ggf. vergrößerten) Bild und zeigt die Anzahl der Bereiche an. */
+async function detectText(s, bitmap) {
+  try {
+    const blocks = await Run.track('text', cached(KEYS.text(upTag(s)), () => AI.detectText(bitmap)));
+    $('#text-info').textContent = blocks.length
+      ? `${blocks.length} Schriftbereich${blocks.length === 1 ? '' : 'e'} erkannt (im Original blau markiert).`
+      : 'Keine Schrift erkannt.';
+    return blocks;
+  } catch (err) {
+    if (isCancelled(err)) throw err;
+    console.error(err);
+    toast(`Texterkennung fehlgeschlagen: ${cleanError(err)}`, true);
+    return [];
+  }
+}
+
 /** Erkennt Gesichter im (ggf. vergrößerten) Bild und zeigt die Anzahl an. */
 async function detectFaces(s, bitmap) {
   try {
@@ -1168,7 +1211,8 @@ async function updateOriginalView(s, mask) {
   const markers = s.bgRemove === 'color'
     ? s.bgSeeds.map((p) => ({ ...p, positive: false }))
     : s.bgRemove === 'sam' ? s.samPoints : [];
-  const key = `${mask ? state.mask.key : 'plain'}|${JSON.stringify(markers)}`;
+  const boxes = s.textBlocks || [];
+  const key = `${mask ? state.mask.key : 'plain'}|${JSON.stringify(markers)}|${JSON.stringify(boxes)}`;
   if (state.originalViewKey === key) return;
   state.originalViewKey = key;
   const img = $('#img-original');
@@ -1176,12 +1220,12 @@ async function updateOriginalView(s, mask) {
     URL.revokeObjectURL(state.originalUrl);
     state.originalUrl = null;
   }
-  if (!mask && !markers.length) {
+  if (!mask && !markers.length && !boxes.length) {
     img.src = state.source.url;
     $('#pane-original').classList.remove('checker');
     return;
   }
-  const png = await Pipeline.cutout(state.source.bitmap, mask, markers);
+  const png = await Pipeline.cutout(state.source.bitmap, mask, markers, boxes);
   state.originalUrl = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
   img.src = state.originalUrl;
   $('#pane-original').classList.toggle('checker', !!mask);

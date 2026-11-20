@@ -40,6 +40,8 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
 - **Gesichtszüge hervorheben**: erkennt Gesichter und betont Augen, Brauen, Nase und Mund
   (Linien: Gesicht zusätzlich hochaufgelöst nachgezeichnet; Fläche/Foto: lokaler Kontrast)
 - **Motivkontur**: dünne Linie dort, wo Motiv und Hintergrund ineinander verschwimmen
+- **Schrift & Logos**: erkennt Schriftzüge und angrenzende Logo-Elemente und stellt sie scharf und gefüllt dar,
+  statt sie zu rastern oder nachzuzeichnen (Bereiche werden im Original blau markiert)
 - **Umrisslinie**: Randkontur um das Motiv mit Abstand in mm (rote Linie → eigene LightBurn-Ebene,
   z. B. zum Ausschneiden), optional nur die Umrisslinie ohne Gravur
 - **Einstellungen**: Helligkeit, Kontrast, Gamma, Weichzeichnen, Schärfen, Invertieren,
@@ -61,6 +63,7 @@ Alle Modelle laufen lokal und offline über onnxruntime (nativ, mit WebAssembly-
 | Informative Drawings | KI-Strichzeichnung | MIT | mitgeliefert |
 | Real-ESRGAN general x4v3 | KI-Vergrößerung | BSD-3-Clause | mitgeliefert (aus den offiziellen Gewichten nach ONNX konvertiert) |
 | MobileSAM | Objekt anklicken | Apache-2.0 | mitgeliefert |
+| PaddleOCR PP-OCRv4 (Detektor, via RapidOCR) | Texterkennung („Schrift & Logos“) | Apache-2.0 | mitgeliefert |
 | UltraFace RFB-320 | Gesichtserkennung („Gesichtszüge hervorheben“) | MIT | mitgeliefert (ungenutzte Graph-Eingänge entfernt) |
 | MODNet | Freistellen – Porträt | Apache-2.0 | Download bei Bedarf (26 MB) |
 | IS-Net | Freistellen – präzise | Apache-2.0 | Download bei Bedarf (179 MB) |

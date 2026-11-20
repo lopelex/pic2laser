@@ -30,6 +30,11 @@ const MODELS = {
     file: 'realesr-general-x4v3.onnx',
     license: 'BSD-3-Clause',
   },
+  text: {
+    label: 'Texterkennung (PaddleOCR PP-OCRv4)',
+    file: 'ppocr-det-v4.onnx',
+    license: 'Apache-2.0',
+  },
   faces: {
     label: 'Gesichtserkennung (UltraFace)',
     file: 'ultraface-rfb-320.onnx',

@@ -207,6 +207,85 @@ const AI = (() => {
   }
 
   /* ---------------------------------------------------------------- */
+  /* Texterkennung (PaddleOCR PP-OCRv4, DB-Detektor)                  */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Findet Textbereiche und fasst benachbarte Zeilen zu Blöcken zusammen.
+   * Rückgabe: [{ x1, y1, x2, y2, lineH }] relativ (0..1), lineH = größte Zeilenhöhe im Block.
+   */
+  async function detectText(source, limit = 1280) {
+    const sc = Math.min(1, limit / Math.max(source.width, source.height)) || 1;
+    const w = roundTo(source.width * Math.max(sc, 32 / Math.min(source.width, source.height)), 32);
+    const h = roundTo(source.height * Math.max(sc, 32 / Math.min(source.width, source.height)), 32);
+    const rgba = pixels(source, w, h);
+    // PaddleOCR erwartet BGR-Reihenfolge
+    const n = w * h;
+    const input = new Float32Array(3 * n);
+    const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      input[p] = (rgba[i + 2] / 255 - mean[0]) / std[0];
+      input[n + p] = (rgba[i + 1] / 255 - mean[1]) / std[1];
+      input[2 * n + p] = (rgba[i] / 255 - mean[2]) / std[2];
+    }
+    const out = await run('text', { x: { data: input, dims: [1, 3, h, w] } });
+    const prob = out.data;
+
+    // DB-Nachbearbeitung: zusammenhängende Bereiche über der Schwelle → Boxen
+    const seen = new Uint8Array(n);
+    const stack = new Int32Array(n);
+    const boxes = [];
+    for (let start = 0; start < n; start++) {
+      if (seen[start] || prob[start] < 0.3) continue;
+      let sp = 0, x0 = w, y0 = h, x1 = 0, y1 = 0, count = 0, sum = 0;
+      seen[start] = 1; stack[sp++] = start;
+      while (sp) {
+        const i = stack[--sp];
+        const x = i % w, y = (i / w) | 0;
+        count++; sum += prob[i];
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
+        for (const k of nb) {
+          if (k >= 0 && !seen[k] && prob[k] >= 0.3) { seen[k] = 1; stack[sp++] = k; }
+        }
+      }
+      const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+      if (count < 12 || bh < 3 || sum / count < 0.55) continue;
+      // „Unclip“: DB-Kerne sind schmaler als der Text → um A·1,5/U erweitern
+      const d = (bw * bh * 1.5) / (2 * (bw + bh));
+      boxes.push({ x1: x0 - d, y1: y0 - d, x2: x1 + 1 + d, y2: y1 + 1 + d, lineH: bh + 2 * d });
+    }
+
+    // Benachbarte Zeilen/Wörter zu Blöcken zusammenfassen
+    let blocks = boxes.map((b) => ({ ...b }));
+    let merged = true;
+    while (merged) {
+      merged = false;
+      outer: for (let a = 0; a < blocks.length; a++) {
+        for (let b = a + 1; b < blocks.length; b++) {
+          const A = blocks[a], B = blocks[b];
+          const g = Math.min(A.lineH, B.lineH) * 0.6;
+          if (A.x1 - g < B.x2 && B.x1 - g < A.x2 && A.y1 - g < B.y2 && B.y1 - g < A.y2) {
+            blocks[a] = {
+              x1: Math.min(A.x1, B.x1), y1: Math.min(A.y1, B.y1),
+              x2: Math.max(A.x2, B.x2), y2: Math.max(A.y2, B.y2),
+              lineH: Math.max(A.lineH, B.lineH),
+            };
+            blocks.splice(b, 1);
+            merged = true;
+            break outer;
+          }
+        }
+      }
+    }
+    const clamp = (v) => Math.max(0, Math.min(1, v));
+    return blocks.map((b) => ({
+      x1: clamp(b.x1 / w), y1: clamp(b.y1 / h), x2: clamp(b.x2 / w), y2: clamp(b.y2 / h),
+      lineH: b.lineH / h,
+    }));
+  }
+
+  /* ---------------------------------------------------------------- */
   /* Gesichter (UltraFace) & Gesichtsdetails                          */
   /* ---------------------------------------------------------------- */
 
@@ -467,5 +546,5 @@ const AI = (() => {
     return canvas;
   }
 
-  return { segment, samEmbedding, samMask, lineArt, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
+  return { detectText, segment, samEmbedding, samMask, lineArt, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
 })();

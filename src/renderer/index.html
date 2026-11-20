@@ -225,6 +225,22 @@
       </section>
 
       <section class="group" data-mode="vector edges dither">
+        <h3>Schrift &amp; Logos</h3>
+        <label class="check"><input type="checkbox" data-key="textClean" /> Schrift erkennen und sauber darstellen</label>
+        <div data-show="textClean">
+          <label class="slider">
+            <span>Logos einbeziehen <output data-for="textPad"></output></span>
+            <input type="range" data-key="textPad" min="0" max="4" step="0.5" />
+          </label>
+          <label class="slider">
+            <span>Schriftstärke <output data-for="textBold"></output></span>
+            <input type="range" data-key="textBold" min="-40" max="40" step="1" />
+          </label>
+          <p class="hint">Erkennt Schriftzüge per KI und stellt sie scharf und gefüllt dar statt gerastert oder nachgezeichnet. „Logos einbeziehen“ übernimmt Grafikelemente, die direkt an die Schrift grenzen (z.&nbsp;B. ein Logo-Symbol). <span id="text-info"></span></p>
+        </div>
+      </section>
+
+      <section class="group" data-mode="vector edges dither">
         <h3>Gesichter</h3>
         <label class="check"><input type="checkbox" data-key="faceBoost" /> Gesichtszüge hervorheben</label>
         <div data-show="faceBoost">

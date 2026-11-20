@@ -359,7 +359,7 @@ const Processing = (() => {
    * @param maskCanvas optionale Freistellmaske (Alphakanal = Motiv)
    * @returns {{ w, h, bits: Uint8Array|null, gray8: Uint8ClampedArray|null, alpha: Float32Array|null }}
    */
-  function process(bitmap, s, maskCanvas = null) {
+  function process(bitmap, s, maskCanvas = null, textSource = null) {
     const { w, h } = targetSize(bitmap.width, bitmap.height, s);
     let gray = toGray(bitmap, w, h, s);
     gray = sharpen(gray, w, h, s.sharpen);
@@ -399,6 +399,14 @@ const Processing = (() => {
     } else {
       bits = errorDiffusion(gray, w, h, s.ditherAlgo);
     }
+    // Schrift & Logos: in erkannten Textbereichen sauber gefüllt statt gerastert/nachgezeichnet
+    if (s.textClean && s.textBlocks && s.textBlocks.length) {
+      let tg = toGray(textSource || bitmap, w, h, { ...s, blur: 0 });
+      tg = sharpen(tg, w, h, s.sharpen);
+      tg = adjust(tg, s);
+      cleanText(bits, tg, w, h, s.textBlocks, s.textPad ?? 1, s.textBold ?? 0);
+    }
+
     return { w, h, bits, gray8: null, alpha };
   }
 
@@ -560,6 +568,177 @@ const Processing = (() => {
         gray[i] = Math.max(0, Math.min(255, gray[i] + wgt * k * detail));
       }
     }
+  }
+
+  /** Otsu-Schwelle innerhalb eines Rechtecks. */
+  function otsuRect(gray, w, x0, y0, x1, y1) {
+    const hist = new Float64Array(256);
+    let total = 0;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        hist[Math.max(0, Math.min(255, gray[y * w + x] | 0))]++;
+        total++;
+      }
+    }
+    let sum = 0;
+    for (let t = 0; t < 256; t++) sum += t * hist[t];
+    let sumB = 0, wB = 0, best = -1, bestT = 128;
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t];
+      if (!wB) continue;
+      const wF = total - wB;
+      if (!wF) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB, mF = (sum - sumB) / wF;
+      const between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > best) { best = between; bestT = t + 0.5; }
+    }
+    return bestT;
+  }
+
+  /**
+   * Schrift & Logos sauber darstellen: In jedem Textblock wird das Bild mit einem
+   * lokal optimalen Schwellwert (Otsu) gefüllt – scharfe, gefüllte Buchstaben statt
+   * Rasterpunkten oder Umrisslinien. Grafikelemente, die direkt an die Schrift
+   * grenzen (Logo-Symbole), werden über zusammenhängende Flächen mit erfasst.
+   * pad: Suchradius für Logo-Elemente in Zeilenhöhen; bold: Schwellwert-Versatz (+ = fetter).
+   */
+  function cleanText(bits, gray, w, h, blocks, pad, bold) {
+    for (const b of blocks) {
+      const lineH = Math.max(2, b.lineH * h);
+      let bx0 = Math.max(0, Math.floor(b.x1 * w)), by0 = Math.max(0, Math.floor(b.y1 * h));
+      let bx1 = Math.min(w - 1, Math.ceil(b.x2 * w)), by1 = Math.min(h - 1, Math.ceil(b.y2 * h));
+      if (bx1 - bx0 < 3 || by1 - by0 < 3) continue;
+
+      // Schriftbereich selbst (mit kleinem Rand) und dessen Schwellwert
+      const m = Math.round(lineH * 0.15);
+      const tx0 = Math.max(0, bx0 - m), ty0 = Math.max(0, by0 - m);
+      const tx1 = Math.min(w - 1, bx1 + m), ty1 = Math.min(h - 1, by1 + m);
+      const t = otsuRect(gray, w, tx0, ty0, tx1, ty1) + bold;
+
+      // übernommene Logo-Elemente (Fenster, Pixel-Labels, angenommene Komponenten)
+      let logo = null;
+
+      // Logo-Elemente neben der Schrift einbeziehen
+      if (pad > 0) {
+        const p = Math.round(lineH * pad);
+        const wx0 = Math.max(0, bx0 - p), wy0 = Math.max(0, by0 - p);
+        const wx1 = Math.min(w - 1, bx1 + p), wy1 = Math.min(h - 1, by1 + p);
+        const ww = wx1 - wx0 + 1, wh = wy1 - wy0 + 1;
+        const t0 = otsuRect(gray, w, wx0, wy0, wx1, wy1);
+        const seen = new Uint8Array(ww * wh);
+        const label = new Int32Array(ww * wh); // Komponentennummer + 1
+        const stack = new Int32Array(ww * wh);
+        // alle dunklen, zusammenhängenden Elemente, die vollständig im Suchfenster liegen
+        const comps = [];
+        for (let sy = 0; sy < wh; sy++) {
+          for (let sx = 0; sx < ww; sx++) {
+            const s0 = sy * ww + sx;
+            if (seen[s0] || gray[(wy0 + sy) * w + wx0 + sx] >= t0) continue;
+            let sp = 0, cx0 = sx, cy0 = sy, cx1 = sx, cy1 = sy, count = 0;
+            const id = comps.length + 1;
+            seen[s0] = 1; label[s0] = id; stack[sp++] = s0;
+            while (sp) {
+              const i = stack[--sp];
+              const x = i % ww, y = (i / ww) | 0;
+              count++;
+              if (x < cx0) cx0 = x; if (x > cx1) cx1 = x; if (y < cy0) cy0 = y; if (y > cy1) cy1 = y;
+              for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                  const nx = x + dx, ny = y + dy;
+                  if (nx < 0 || ny < 0 || nx >= ww || ny >= wh) continue;
+                  const k = ny * ww + nx;
+                  if (!seen[k] && gray[(wy0 + ny) * w + wx0 + nx] < t0) { seen[k] = 1; label[k] = id; stack[sp++] = k; }
+                }
+              }
+            }
+            const inside = (cx0 > 0 || wx0 === 0) && (cy0 > 0 || wy0 === 0) && (cx1 < ww - 1 || wx1 === w - 1) && (cy1 < wh - 1 || wy1 === h - 1);
+            // auch abgelehnte Komponenten bekommen einen Eintrag (Nummer = Label)
+            comps.push({
+              x0: wx0 + cx0, y0: wy0 + cy0, x1: wx0 + cx1, y1: wy0 + cy1,
+              ok: inside && count > 4 && count < ww * wh * 0.4,
+            });
+          }
+        }
+        // schrittweise wachsen: Elemente an der Schrift, dann Elemente an diesen (z. B. Zahnrad → Ähren)
+        const near = Math.round(lineH * 0.5);
+        let ux0 = bx0, uy0 = by0, ux1 = bx1, uy1 = by1;
+        const used = new Uint8Array(comps.length);
+        for (let pass = 0; pass < 4; pass++) {
+          let grew = false;
+          comps.forEach((c, k) => {
+            if (used[k] || !c.ok) return;
+            if (c.x0 <= ux1 + near && c.x1 >= ux0 - near && c.y0 <= uy1 + near && c.y1 >= uy0 - near) {
+              used[k] = 1;
+              grew = true;
+              ux0 = Math.min(ux0, c.x0); uy0 = Math.min(uy0, c.y0);
+              ux1 = Math.max(ux1, c.x1); uy1 = Math.max(uy1, c.y1);
+            }
+          });
+          if (!grew) break;
+        }
+        bx0 = Math.max(wx0, ux0); by0 = Math.max(wy0, uy0); bx1 = Math.min(wx1, ux1); by1 = Math.min(wy1, uy1);
+        logo = { wx0, wy0, ww, label, used };
+      }
+
+      // Schwarz werden nur: Schrift im Textbereich + genau die übernommenen Logo-Elemente
+      bx0 = Math.min(bx0, tx0); by0 = Math.min(by0, ty0);
+      bx1 = Math.max(bx1, tx1); by1 = Math.max(by1, ty1);
+      const rw = bx1 - bx0 + 1, rh = by1 - by0 + 1;
+      const tm = new Uint8Array(rw * rh);
+      for (let y = 0; y < rh; y++) {
+        const gy = by0 + y;
+        for (let x = 0; x < rw; x++) {
+          const gx = bx0 + x;
+          const i = gy * w + gx;
+          let on = gx >= tx0 && gx <= tx1 && gy >= ty0 && gy <= ty1 && gray[i] < t;
+          if (!on && logo) {
+            const lx = gx - logo.wx0, ly = gy - logo.wy0;
+            if (lx >= 0 && ly >= 0 && lx < logo.ww) {
+              const id = logo.label[ly * logo.ww + lx];
+              on = id > 0 && logo.used[id - 1] === 1;
+            }
+          }
+          tm[y * rw + x] = on ? 1 : 0;
+        }
+      }
+      // Schrift schwarz, schmaler Saum darum weiß (scharfe Kanten); der übrige
+      // Hintergrund behält seine Darstellung (Rasterung/Linien) – keine weißen Kästen
+      const halo = boxDilate(tm, rw, rh, Math.max(1, Math.round(lineH * 0.08)));
+      for (let y = 0; y < rh; y++) {
+        for (let x = 0; x < rw; x++) {
+          const k = y * rw + x;
+          const i = (by0 + y) * w + bx0 + x;
+          if (tm[k]) bits[i] = 1;
+          else if (halo[k]) bits[i] = 0;
+        }
+      }
+    }
+  }
+
+  /** Quadratische Dilatation (separabel, gleitendes Fenster). */
+  function boxDilate(src, w, h, r) {
+    const tmp = new Uint8Array(w * h);
+    const out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      let cnt = 0;
+      for (let x = -r; x < w + r; x++) {
+        const add = x + r, rem = x - r - 1;
+        if (add >= 0 && add < w) cnt += src[y * w + add];
+        if (rem >= 0 && rem < w) cnt -= src[y * w + rem];
+        if (x >= 0 && x < w) tmp[y * w + x] = cnt > 0 ? 1 : 0;
+      }
+    }
+    for (let x = 0; x < w; x++) {
+      let cnt = 0;
+      for (let y = -r; y < h + r; y++) {
+        const add = y + r, rem = y - r - 1;
+        if (add >= 0 && add < h) cnt += tmp[add * w + x];
+        if (rem >= 0 && rem < h) cnt -= tmp[rem * w + x];
+        if (y >= 0 && y < h) out[y * w + x] = cnt > 0 ? 1 : 0;
+      }
+    }
+    return out;
   }
 
   /** Graustufenbild (Relief) als Canvas. */
