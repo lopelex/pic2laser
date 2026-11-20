@@ -9,7 +9,7 @@ const Processing = (() => {
   /** Zielgröße des Arbeitsbildes in Pixeln. */
   function targetSize(srcW, srcH, s) {
     let w;
-    if (s.mode === 'dither') {
+    if (s.mode === 'dither' || s.mode === 'relief') {
       w = Math.round((s.widthMm / 25.4) * s.dpi);
     } else {
       const longSide = Math.max(srcW, srcH);
@@ -355,8 +355,9 @@ const Processing = (() => {
 
   /**
    * Vollständige Verarbeitung.
+   * @param bitmap     Quelle – bei KI-Linien die Strichzeichnung, bei Relief die Tiefenkarte
    * @param maskCanvas optionale Freistellmaske (Alphakanal = Motiv)
-   * @returns {{ w, h, bits: Uint8Array, alpha: Float32Array|null }}
+   * @returns {{ w, h, bits: Uint8Array|null, gray8: Uint8ClampedArray|null, alpha: Float32Array|null }}
    */
   function process(bitmap, s, maskCanvas = null) {
     const { w, h } = targetSize(bitmap.width, bitmap.height, s);
@@ -371,8 +372,17 @@ const Processing = (() => {
       for (let i = 0; i < gray.length; i++) gray[i] = gray[i] * alpha[i] + 255 * (1 - alpha[i]);
     }
 
+    // Relief: Graustufen bleiben erhalten (Laserleistung = Tiefe)
+    if (s.mode === 'relief') {
+      return { w, h, bits: null, gray8: Uint8ClampedArray.from(gray), alpha };
+    }
+
     let bits;
-    if (s.mode === 'edges') {
+    if (s.mode === 'edges' && s.edgeMethod === 'ai') {
+      bits = threshold(gray, s.threshold);
+      const r = s.lineBoldMm / (s.widthMm / w) / 2;
+      if (r >= 0.5) bits = dilate(bits, w, h, r);
+    } else if (s.mode === 'edges') {
       bits = canny(gray, w, h, s.edgeSensitivity);
       const mmPerPx = s.widthMm / w;
       const r = Math.max(0, s.lineWidthMm / mmPerPx / 2 - 0.5);
@@ -384,7 +394,7 @@ const Processing = (() => {
     } else {
       bits = errorDiffusion(gray, w, h, s.ditherAlgo);
     }
-    return { w, h, bits, alpha };
+    return { w, h, bits, gray8: null, alpha };
   }
 
   /**
@@ -424,5 +434,23 @@ const Processing = (() => {
     return canvas;
   }
 
-  return { process, bitsToCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate };
+  /** Graustufenbild (Relief) als Canvas. */
+  function grayToCanvas(gray8, w, h) {
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(w, h);
+    for (let i = 0, p = 0; p < gray8.length; i += 4, p++) {
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = gray8[p];
+      img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return canvas;
+  }
+
+  /** Ergebnis (Binär- oder Graustufenbild) als Canvas. */
+  function resultCanvas(r, transparent) {
+    return r.gray8 ? grayToCanvas(r.gray8, r.w, r.h) : bitsToCanvas(r.bits, r.w, r.h, transparent);
+  }
+
+  return { process, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate };
 })();

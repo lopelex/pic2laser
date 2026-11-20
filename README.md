@@ -27,13 +27,16 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
 
 - **Drag & Drop**, Datei-Dialog (Strg+O) oder Einfügen aus der Zwischenablage (Strg+V)
 - **Live-Vorschau** Original/Ergebnis nebeneinander, Zoom (Strg+Mausrad), synchrones Scrollen
-- **Drei Modi**
+- **Presets**: mitgelieferte Vorlagen (Logo, Foto, Porträt-Strichzeichnung, Sticker mit Schnittkontur,
+  Holz-Relief …) und eigene Presets speichern/überschreiben/löschen (`<userData>/presets.json`)
+- **Vier Modi**
   - *Fläche*: Schwellwert + Potrace → echte Vektorpfade (Logos, Schrift, Silhouetten)
-  - *Linien*: Kanten/Randkonturen nachzeichnen (Canny) → Strichzeichnung als Vektor, Linienstärke in mm
+  - *Linien*: KI-Strichzeichnung oder klassische Kantenerkennung (Canny) → Strichzeichnung als Vektor
   - *Foto*: Dithering mit Floyd-Steinberg, Atkinson, Jarvis, Stucki, Bayer, Schwellwert
-- **Freistellen**
-  - *KI (Auto)*: U²-Net (`models/u2netp.onnx`, Apache-2.0) läuft lokal und offline über onnxruntime
-  - *Nach Farbe*: Hintergrund vom Bildrand aus entfernen, weitere Bereiche per Klick ins Original
+  - *Relief*: KI-Tiefenkarte als Graustufenbild für 3D-Reliefgravur
+- **Freistellen**: KI schnell / präzise / beste Qualität / Porträt, Objekt per Klick auswählen (MobileSAM)
+  oder nach Farbe (Hintergrund vom Rand + Klickpunkte)
+- **KI-Vergrößerung 4×** für kleine oder unscharfe Bilder
 - **Umrisslinie**: Randkontur um das Motiv mit Abstand in mm (rote Linie → eigene LightBurn-Ebene,
   z. B. zum Ausschneiden), optional nur die Umrisslinie ohne Gravur
 - **Einstellungen**: Helligkeit, Kontrast, Gamma, Weichzeichnen, Schärfen, Invertieren,
@@ -45,11 +48,31 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
 - **Historie**: Jede exportierte Umwandlung wird mit Original, Einstellungen, SVG und PNG gespeichert
   (`<userData>/history`). Ein Klick öffnet sie wieder mit allen Einstellungen.
 
+## KI-Modelle
+
+Alle Modelle laufen lokal und offline über onnxruntime (nativ, mit WebAssembly-Fallback).
+
+| Modell | Zweck | Lizenz | Herkunft |
+|---|---|---|---|
+| U²-Net (u2netp) | Freistellen – schnell | Apache-2.0 | mitgeliefert |
+| Informative Drawings | KI-Strichzeichnung | MIT | mitgeliefert |
+| Real-ESRGAN general x4v3 | KI-Vergrößerung | BSD-3-Clause | mitgeliefert (aus den offiziellen Gewichten nach ONNX konvertiert) |
+| MobileSAM | Objekt anklicken | Apache-2.0 | mitgeliefert |
+| MODNet | Freistellen – Porträt | Apache-2.0 | Download bei Bedarf (26 MB) |
+| IS-Net | Freistellen – präzise | Apache-2.0 | Download bei Bedarf (179 MB) |
+| BiRefNet lite | Freistellen – beste Qualität | MIT | Download bei Bedarf (224 MB) |
+| Depth Anything V2 Small | Tiefenkarte (Relief) | Apache-2.0 | Download bei Bedarf (99 MB) |
+
+Downloads sind auf feste Versionen gepinnt und werden per SHA-256 geprüft; sie landen in
+`<userData>/models` und lassen sich in der App wieder entfernen.
+
 ## Aufbau
 
-- `src/main/main.js` – Fenster, Potrace-Vektorisierung, KI-Freistellen, Dateidialoge, Historie
+- `src/main/main.js` – Fenster, Potrace-Vektorisierung, Dateidialoge, Historie, Presets
+- `src/main/models.js` – KI-Modelle: Registry, Download mit Prüfsumme, Inferenz
 - `src/main/preload.js` – sichere IPC-Brücke (`window.api`)
 - `src/renderer/processing.js` – Bildverarbeitung (Anpassungen, Schwellwert, Dithering, Kanten, Umriss)
-- `src/renderer/segmentation.js` – Freistellen (KI-Maske, Farbmaske)
+- `src/renderer/ai.js` – Vor-/Nachverarbeitung für alle KI-Modelle
+- `src/renderer/segmentation.js` – Freistellen (Masken, Farbmaske, Klickpunkte)
 - `src/renderer/encoders.js` – SVG-, PNG-, JPG- und BMP-Ausgabe mit DPI-Angaben
 - `src/renderer/app.js` – Oberfläche, Vorschau, Export, Historie

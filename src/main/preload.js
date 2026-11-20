@@ -4,7 +4,22 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   trace: (pngBytes, params) => ipcRenderer.invoke('trace', pngBytes, params),
-  segment: (input) => ipcRenderer.invoke('segment', input),
+  presets: {
+    list: () => ipcRenderer.invoke('presets-list'),
+    save: (preset) => ipcRenderer.invoke('presets-save', preset),
+    remove: (name) => ipcRenderer.invoke('presets-delete', name),
+  },
+  models: {
+    status: () => ipcRenderer.invoke('model-status'),
+    ensure: (id) => ipcRenderer.invoke('model-ensure', id),
+    remove: (id) => ipcRenderer.invoke('model-remove', id),
+    run: (id, feeds, outputs) => ipcRenderer.invoke('model-run', id, feeds, outputs),
+    onProgress: (cb) => {
+      const handler = (_e, p) => cb(p);
+      ipcRenderer.on('model-progress', handler);
+      return () => ipcRenderer.removeListener('model-progress', handler);
+    },
+  },
   openImage: () => ipcRenderer.invoke('open-image'),
   exportFiles: (payload) => ipcRenderer.invoke('export-files', payload),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),

@@ -6,10 +6,7 @@ const fs = require('fs/promises');
 const crypto = require('crypto');
 const { Potrace } = require('potrace');
 
-// Das KI-Modell liegt außerhalb des asar-Archivs (siehe "asarUnpack" in package.json)
-const MODEL_PATH = path
-  .join(__dirname, '..', '..', 'models', 'u2netp.onnx')
-  .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+const models = require('./models');
 
 const HISTORY_DIR = () => path.join(app.getPath('userData'), 'history');
 const ID_PATTERN = /^[a-f0-9-]{36}$/;
@@ -77,54 +74,48 @@ ipcMain.handle('trace', async (_e, pngBytes, params) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Freistellen (KI): U²-Net (u2netp), läuft lokal und offline           */
+/* Presets (eigene Einstellungs-Vorlagen)                             */
 /* ------------------------------------------------------------------ */
 
-let segSession = null; // Promise<{ ort, session }>
+const PRESETS_FILE = () => path.join(app.getPath('userData'), 'presets.json');
 
-/**
- * Bevorzugt die native Laufzeit (onnxruntime-node, schnell). Wo es keine nativen
- * Binärdateien gibt (z. B. Intel-Macs), wird onnxruntime-web (WebAssembly) genutzt.
- */
-async function createSegSession() {
+async function readPresets() {
   try {
-    const ort = require('onnxruntime-node');
-    return { ort, session: await ort.InferenceSession.create(MODEL_PATH) };
-  } catch (nativeErr) {
-    console.warn('onnxruntime-node nicht verfügbar, nutze WebAssembly:', nativeErr.message);
-    const ort = require('onnxruntime-web');
-    ort.env.wasm.numThreads = Math.max(1, Math.min(4, require('os').cpus().length));
-    const model = await fs.readFile(MODEL_PATH);
-    return { ort, session: await ort.InferenceSession.create(model, { executionProviders: ['wasm'] }) };
+    const list = JSON.parse(await fs.readFile(PRESETS_FILE(), 'utf8'));
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
   }
 }
 
-function getSegSession() {
-  if (!segSession) {
-    segSession = createSegSession().catch((err) => {
-      segSession = null;
-      throw err;
-    });
-  }
-  return segSession;
+async function writePresets(list) {
+  await fs.mkdir(app.getPath('userData'), { recursive: true });
+  const tmp = `${PRESETS_FILE()}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(list, null, 2));
+  await fs.rename(tmp, PRESETS_FILE());
 }
 
-/** input: Float32Array 1×3×320×320 (bereits normalisiert). Rückgabe: Float32Array 320×320, Werte 0..1. */
-ipcMain.handle('segment', async (_e, input) => {
-  const { ort, session } = await getSegSession();
-  const tensor = new ort.Tensor('float32', Float32Array.from(input), [1, 3, 320, 320]);
-  const out = await session.run({ [session.inputNames[0]]: tensor });
-  const data = out[session.outputNames[0]].data;
-  let min = Infinity, max = -Infinity;
-  for (let i = 0; i < data.length; i++) {
-    if (data[i] < min) min = data[i];
-    if (data[i] > max) max = data[i];
-  }
-  const range = max - min || 1;
-  const mask = new Float32Array(data.length);
-  for (let i = 0; i < data.length; i++) mask[i] = (data[i] - min) / range;
-  return mask;
+ipcMain.handle('presets-list', () => readPresets());
+
+ipcMain.handle('presets-save', async (_e, preset) => {
+  const name = String(preset?.name || '').trim().slice(0, 60);
+  if (!name) throw new Error('Name fehlt');
+  if (!preset.settings || typeof preset.settings !== 'object') throw new Error('Einstellungen fehlen');
+  const list = (await readPresets()).filter((p) => p.name.toLowerCase() !== name.toLowerCase());
+  list.push({ name, settings: preset.settings, updated: Date.now() });
+  list.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  await writePresets(list);
+  return list;
 });
+
+ipcMain.handle('presets-delete', async (_e, name) => {
+  const list = (await readPresets()).filter((p) => p.name !== name);
+  await writePresets(list);
+  return list;
+});
+
+/* KI-Modelle (Freistellen, Strichzeichnung, Vergrößerung, Tiefenkarte) */
+models.register(ipcMain);
 
 function clamp(v, min, max) {
   if (!Number.isFinite(v)) return min;

@@ -2,14 +2,11 @@
 
 /**
  * Freistellen: erzeugt eine Maske (OffscreenCanvas, Alphakanal = Motiv) in Analyseauflösung.
- *  - "ai":    U²-Net (u2netp) im Main-Prozess, lokal und offline
+ *  - KI-Methoden: rohe Maske aus ai.js, hier mit weicher Schwelle aufbereitet
  *  - "color": Hintergrund per Farbähnlichkeit vom Bildrand und/oder von Klickpunkten aus füllen
  */
 const Segmentation = (() => {
   const MAX_SIDE = 2048;
-  const AI_SIZE = 320;
-  const MEAN = [0.485, 0.456, 0.406];
-  const STD = [0.229, 0.224, 0.225];
 
   function analysisSize(bitmap) {
     const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
@@ -29,34 +26,22 @@ const Segmentation = (() => {
     return ctx.getImageData(0, 0, w, h).data;
   }
 
-  /** Rohe KI-Maske (320×320, 0..1) – teuer, wird pro Bild zwischengespeichert. */
-  async function aiRaw(bitmap) {
-    const d = drawRgba(bitmap, AI_SIZE, AI_SIZE);
-    let max = 0;
-    for (let i = 0; i < d.length; i += 4) max = Math.max(max, d[i], d[i + 1], d[i + 2]);
-    max = max || 1;
-    const n = AI_SIZE * AI_SIZE;
-    const input = new Float32Array(3 * n);
-    for (let p = 0, i = 0; p < n; p++, i += 4) {
-      for (let c = 0; c < 3; c++) input[c * n + p] = (d[i + c] / max - MEAN[c]) / STD[c];
-    }
-    return window.api.segment(input);
-  }
-
-  /** Wandelt die rohe KI-Maske mit weicher Schwelle in eine Masken-Canvas um. */
+  /** Wandelt eine rohe KI-Maske { data (0..1), w, h } mit weicher Schwelle in eine Masken-Canvas um. */
   function aiMask(raw, bitmap, thresholdValue) {
-    const small = new OffscreenCanvas(AI_SIZE, AI_SIZE);
+    const small = new OffscreenCanvas(raw.w, raw.h);
     const sctx = small.getContext('2d');
-    const img = sctx.createImageData(AI_SIZE, AI_SIZE);
+    const img = sctx.createImageData(raw.w, raw.h);
     const lo = Math.max(0, thresholdValue - 0.08);
     const hi = Math.min(1, thresholdValue + 0.08);
-    for (let p = 0; p < raw.length; p++) {
-      const t = Math.min(1, Math.max(0, (raw[p] - lo) / (hi - lo || 1)));
+    const data = raw.data;
+    for (let p = 0; p < data.length; p++) {
+      const t = Math.min(1, Math.max(0, (data[p] - lo) / (hi - lo || 1)));
       img.data[p * 4 + 3] = Math.round(t * t * (3 - 2 * t) * 255);
     }
     sctx.putImageData(img, 0, 0);
 
     const { w, h } = analysisSize(bitmap);
+    if (w === raw.w && h === raw.h) return small;
     const mask = new OffscreenCanvas(w, h);
     const ctx = mask.getContext('2d');
     ctx.imageSmoothingEnabled = true;
@@ -125,30 +110,46 @@ const Segmentation = (() => {
     return smooth;
   }
 
-  /** Vorschau des Originals mit entferntem Hintergrund (und markierten Klickpunkten). */
-  async function cutoutPreview(bitmap, mask, seeds) {
+  /**
+   * Vorschau des Originals mit entferntem Hintergrund.
+   * markers: [{ x, y, positive }] – Klickpunkte (grün = Motiv, rot = Hintergrund).
+   */
+  async function cutoutPreview(bitmap, mask, markers) {
     const { w, h } = analysisSize(bitmap);
     const c = new OffscreenCanvas(w, h);
     const ctx = c.getContext('2d');
     ctx.drawImage(bitmap, 0, 0, w, h);
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.drawImage(mask, 0, 0, w, h);
-    ctx.globalCompositeOperation = 'source-over';
-
-    const r = Math.max(4, Math.round(Math.max(w, h) / 120));
-    for (const s of seeds || []) {
-      const x = s.x * w, y = s.y * h;
-      ctx.lineWidth = Math.max(2, r / 3);
-      ctx.strokeStyle = '#fff';
-      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = '#ff3b30';
-      ctx.lineWidth = Math.max(1, r / 5);
-      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x - r * 0.6, y - r * 0.6); ctx.lineTo(x + r * 0.6, y + r * 0.6);
-      ctx.moveTo(x + r * 0.6, y - r * 0.6); ctx.lineTo(x - r * 0.6, y + r * 0.6); ctx.stroke();
+    if (mask) {
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(mask, 0, 0, w, h);
+      ctx.globalCompositeOperation = 'source-over';
     }
+    drawMarkers(ctx, w, h, markers);
     return c.convertToBlob({ type: 'image/png' });
   }
 
-  return { aiRaw, aiMask, colorMask, cutoutPreview };
+  function drawMarkers(ctx, w, h, markers) {
+    const r = Math.max(5, Math.round(Math.max(w, h) / 110));
+    for (const m of markers || []) {
+      const x = m.x * w, y = m.y * h;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = m.positive ? '#22c55e' : '#ef4444';
+      ctx.fill();
+      ctx.lineWidth = Math.max(2, r / 3);
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.lineWidth = Math.max(1.5, r / 4);
+      ctx.moveTo(x - r * 0.5, y);
+      ctx.lineTo(x + r * 0.5, y);
+      if (m.positive) {
+        ctx.moveTo(x, y - r * 0.5);
+        ctx.lineTo(x, y + r * 0.5);
+      }
+      ctx.stroke();
+    }
+  }
+
+  return { aiMask, colorMask, cutoutPreview, analysisSize };
 })();

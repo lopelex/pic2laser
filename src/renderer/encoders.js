@@ -92,6 +92,35 @@ const Encoders = (() => {
     return u8;
   }
 
+  /** 8-Bit-Graustufen-BMP (für Relief/Graustufengravur). */
+  function bmp8gray(gray8, w, h, dpi) {
+    const rowBytes = Math.ceil(w / 4) * 4;
+    const pixelSize = rowBytes * h;
+    const offset = 14 + 40 + 256 * 4;
+    const buf = new ArrayBuffer(offset + pixelSize);
+    const dv = new DataView(buf);
+    const u8 = new Uint8Array(buf);
+    const ppm = Math.round(dpi / 0.0254);
+    u8[0] = 0x42; u8[1] = 0x4d;
+    dv.setUint32(2, buf.byteLength, true);
+    dv.setUint32(10, offset, true);
+    dv.setUint32(14, 40, true);
+    dv.setInt32(18, w, true);
+    dv.setInt32(22, h, true);
+    dv.setUint16(26, 1, true);
+    dv.setUint16(28, 8, true);
+    dv.setUint32(34, pixelSize, true);
+    dv.setInt32(38, ppm, true);
+    dv.setInt32(42, ppm, true);
+    dv.setUint32(46, 256, true);
+    for (let i = 0; i < 256; i++) dv.setUint32(54 + i * 4, (i << 16) | (i << 8) | i, true);
+    for (let y = 0; y < h; y++) {
+      const row = offset + (h - 1 - y) * rowBytes;
+      u8.set(gray8.subarray(y * w, y * w + w), row);
+    }
+    return u8;
+  }
+
   async function canvasBytes(canvas, type, quality) {
     const blob = await canvas.convertToBlob({ type, quality });
     return new Uint8Array(await blob.arrayBuffer());
@@ -141,5 +170,5 @@ ${parts.join('\n')}
 `;
   }
 
-  return { pngWithDpi, jpgWithDpi, bmp1bit, canvasBytes, svgDocument };
+  return { pngWithDpi, jpgWithDpi, bmp1bit, bmp8gray, canvasBytes, svgDocument };
 })();

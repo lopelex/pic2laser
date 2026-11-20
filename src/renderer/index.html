@@ -26,28 +26,53 @@
     <!-- Einstellungen -->
     <aside class="panel settings" id="settings">
       <section class="group">
+        <h3>Presets</h3>
+        <div class="row">
+          <select id="preset-select" title="Preset anwenden"></select>
+          <button class="btn btn-small" id="btn-preset-delete" title="Eigenes Preset löschen" disabled>Löschen</button>
+        </div>
+        <div class="row preset-save">
+          <input type="text" id="preset-name" placeholder="Aktuelle Einstellungen speichern als…" maxlength="60" />
+          <button class="btn btn-small" id="btn-preset-save" disabled>Speichern</button>
+        </div>
+        <p class="hint" id="preset-hint"></p>
+      </section>
+
+      <section class="group">
         <h3>Modus</h3>
         <div class="segmented" id="mode">
           <button data-value="vector" class="active" title="Flächen als Vektor (Logos, Schrift, Silhouetten)">Fläche</button>
           <button data-value="edges" title="Kanten nachzeichnen – Linienzeichnung als Vektor">Linien</button>
           <button data-value="dither" title="Dithering für Fotos">Foto</button>
+          <button data-value="relief" title="3D-Relief aus KI-Tiefenkarte (Graustufen)">Relief</button>
         </div>
         <p class="hint" id="mode-hint"></p>
       </section>
 
       <section class="group">
         <h3>Freistellen</h3>
-        <div class="segmented small" id="bgRemove">
-          <button data-value="none" class="active">Aus</button>
-          <button data-value="ai" title="Motiv automatisch per KI erkennen (lokal, offline)">KI (Auto)</button>
-          <button data-value="color" title="Hintergrund anhand der Farbe entfernen">Nach Farbe</button>
+        <label class="field">
+          <span>Methode</span>
+          <select data-key="bgRemove">
+            <option value="none">Aus</option>
+            <option value="ai">KI – schnell (U²-Net)</option>
+            <option value="isnet">KI – präzise (IS-Net) ⤓</option>
+            <option value="birefnet">KI – beste Qualität (BiRefNet) ⤓</option>
+            <option value="modnet">KI – Porträt/Haare (MODNet) ⤓</option>
+            <option value="sam">KI – Objekt anklicken (MobileSAM)</option>
+            <option value="color">Nach Farbe</option>
+          </select>
+        </label>
+        <div data-bg="sam">
+          <p class="hint"><b>Linksklick</b> ins Original markiert das Motiv, <b>Rechtsklick</b> (oder Alt+Klick) schließt Bereiche aus.</p>
+          <button class="btn btn-small" id="btn-clear-sam">Punkte zurücksetzen</button>
         </div>
-        <div data-bg="ai">
+        <div data-bg="ai isnet birefnet modnet sam">
           <label class="slider">
             <span>Maskenschwelle <output data-for="maskThreshold"></output></span>
             <input type="range" data-key="maskThreshold" min="0.05" max="0.95" step="0.01" />
           </label>
-          <p class="hint">Höher = engere Maske, niedriger = mehr vom Motiv bleibt erhalten.</p>
+          <p class="hint">Höher = engere Maske, niedriger = mehr vom Motiv bleibt erhalten. ⤓ = Modell wird beim ersten Gebrauch geladen.</p>
         </div>
         <div data-bg="color">
           <label class="slider">
@@ -58,6 +83,12 @@
           <p class="hint">Klicke ins <b>Original</b>, um weitere Hintergrundbereiche zu entfernen.</p>
           <button class="btn btn-small" id="btn-clear-seeds">Klickpunkte zurücksetzen</button>
         </div>
+      </section>
+
+      <section class="group">
+        <h3>KI-Verbesserung</h3>
+        <label class="check"><input type="checkbox" data-key="upscale" /> KI-Vergrößerung 4× (Real-ESRGAN)</label>
+        <p class="hint">Für kleine oder unscharfe Bilder: ergibt glattere Kanten und mehr Details. Dauert je nach Bildgröße einige Sekunden.</p>
       </section>
 
       <section class="group">
@@ -86,16 +117,57 @@
       </section>
 
       <section class="group" data-mode="edges">
-        <h3>Kanten nachzeichnen</h3>
-        <label class="slider">
-          <span>Empfindlichkeit <output data-for="edgeSensitivity"></output></span>
-          <input type="range" data-key="edgeSensitivity" min="1" max="100" step="1" />
+        <h3>Linien</h3>
+        <label class="field">
+          <span>Verfahren</span>
+          <select data-key="edgeMethod">
+            <option value="ai">KI-Strichzeichnung</option>
+            <option value="canny">Kantenerkennung (Canny)</option>
+          </select>
         </label>
-        <label class="slider">
-          <span>Linienstärke <output data-for="lineWidthMm"></output></span>
-          <input type="range" data-key="lineWidthMm" min="0.1" max="3" step="0.05" />
+        <div data-edge="ai">
+          <label class="slider">
+            <span>Detailgrad <output data-for="lineRes"></output></span>
+            <input type="range" data-key="lineRes" min="384" max="1280" step="64" />
+          </label>
+          <label class="slider">
+            <span>Linienschwelle <output data-for="threshold"></output></span>
+            <input type="range" data-key="threshold" min="1" max="254" step="1" />
+          </label>
+          <label class="slider">
+            <span>Linien verstärken <output data-for="lineBoldMm"></output></span>
+            <input type="range" data-key="lineBoldMm" min="0" max="1.5" step="0.05" />
+          </label>
+          <p class="hint">Zeichnet Fotos wie von Hand nach. Höherer Detailgrad = feinere Linien, dauert länger.</p>
+        </div>
+        <div data-edge="canny">
+          <label class="slider">
+            <span>Empfindlichkeit <output data-for="edgeSensitivity"></output></span>
+            <input type="range" data-key="edgeSensitivity" min="1" max="100" step="1" />
+          </label>
+          <label class="slider">
+            <span>Linienstärke <output data-for="lineWidthMm"></output></span>
+            <input type="range" data-key="lineWidthMm" min="0.1" max="3" step="0.05" />
+          </label>
+          <p class="hint">Tipp: Etwas Weichzeichnen reduziert Rauschen und kurze Störlinien.</p>
+        </div>
+      </section>
+
+      <section class="group" data-mode="relief">
+        <h3>Relief (3D)</h3>
+        <label class="field">
+          <span>Tiefen-Detail</span>
+          <select data-key="depthRes">
+            <option value="518">Normal (schnell)</option>
+            <option value="770">Hoch</option>
+            <option value="1022">Sehr hoch (langsam)</option>
+          </select>
         </label>
-        <p class="hint">Tipp: Etwas Weichzeichnen reduziert Rauschen und kurze Störlinien.</p>
+        <label class="field">
+          <span>Auflösung (DPI)</span>
+          <input type="number" data-key="dpi" min="50" max="1200" step="1" />
+        </label>
+        <p class="hint">Hell = nah/erhaben, dunkel = fern/tief. In LightBurn als Bild mit „3D-Slicing“ bzw. Graustufen gravieren. Kontrast/Gamma steuern die Tiefenwirkung, Weichzeichnen glättet die Oberfläche.</p>
       </section>
 
       <section class="group" data-mode="vector edges">
@@ -190,6 +262,12 @@
         </div>
       </section>
 
+      <section class="group">
+        <h3>KI-Modelle</h3>
+        <ul class="model-list" id="model-list"></ul>
+        <p class="hint">Alle Modelle laufen lokal und offline. Große Modelle werden nur bei Bedarf geladen.</p>
+      </section>
+
       <button class="btn btn-ghost full" id="btn-reset">Einstellungen zurücksetzen</button>
     </aside>
 
@@ -207,6 +285,7 @@
           <button class="btn btn-small" id="zoom-in" title="Vergrößern">+</button>
           <button class="btn btn-small" id="zoom-fit" title="An Fenster anpassen">Einpassen</button>
         </div>
+        <div class="progress" id="progress" hidden><div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div><span id="progress-label"></span></div>
         <div class="status" id="status"></div>
       </div>
 
@@ -246,6 +325,7 @@
   <div class="toast" id="toast"></div>
 
   <script src="processing.js"></script>
+  <script src="ai.js"></script>
   <script src="segmentation.js"></script>
   <script src="encoders.js"></script>
   <script src="app.js"></script>
