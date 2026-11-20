@@ -36,6 +36,9 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
   - *Relief*: KI-Tiefenkarte als Graustufenbild für 3D-Reliefgravur
 - **Freistellen**: KI schnell / präzise / beste Qualität / Porträt, Objekt per Klick auswählen (MobileSAM)
   oder nach Farbe (Hintergrund vom Rand + Klickpunkte)
+- **Altes Foto restaurieren**: Rauschen/Körnung entfernen, Kratzer & Staub finden und per KI auffüllen
+  (Augen, Nase und Mund geschützt), Gesichter per KI restaurieren (ausgerichtet über 5 Gesichtspunkte,
+  Tonwerte vom Original)
 - **KI-Vergrößerung 4×** für kleine oder unscharfe Bilder
 - **Gesichtszüge hervorheben**: erkennt Gesichter und betont Augen, Brauen, Nase und Mund
   (Linien: Gesicht zusätzlich hochaufgelöst nachgezeichnet; Fläche/Foto: lokaler Kontrast)
@@ -63,6 +66,10 @@ Alle Modelle laufen lokal und offline über onnxruntime (nativ, mit WebAssembly-
 | Informative Drawings | KI-Strichzeichnung | MIT | mitgeliefert |
 | Real-ESRGAN general x4v3 | KI-Vergrößerung | BSD-3-Clause | mitgeliefert (aus den offiziellen Gewichten nach ONNX konvertiert) |
 | MobileSAM | Objekt anklicken | Apache-2.0 | mitgeliefert |
+| YuNet (OpenCV Zoo) | Gesichtspunkte für die Gesichtsrestaurierung | MIT | mitgeliefert |
+| SCUNet (color real PSNR, ONNX von Heliosoph) | Rauschen & Körnung entfernen | Apache-2.0 | Download bei Bedarf (77 MB); identisch mit eigener Konvertierung der offiziellen Gewichte |
+| LaMa (ONNX von Carve) | Kratzer & Staub auffüllen | Apache-2.0 | Download bei Bedarf (208 MB) |
+| RestoreFormer++ (FP16-Gewichte, Saimon8420) | Gesichter restaurieren | Apache-2.0 | Download bei Bedarf (148 MB); ≙ eigener Konvertierung der offiziellen Gewichte |
 | PaddleOCR PP-OCRv4 (Detektor, via RapidOCR) | Texterkennung („Schrift & Logos“) | Apache-2.0 | mitgeliefert |
 | UltraFace RFB-320 | Gesichtserkennung („Gesichtszüge hervorheben“) | MIT | mitgeliefert (ungenutzte Graph-Eingänge entfernt) |
 | MODNet | Freistellen – Porträt | Apache-2.0 | Download bei Bedarf (26 MB) |

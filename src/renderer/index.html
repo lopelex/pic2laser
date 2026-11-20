@@ -90,6 +90,27 @@
       </section>
 
       <section class="group">
+        <h3>Altes Foto restaurieren</h3>
+        <label class="check"><input type="checkbox" data-key="restoreDenoise" /> Rauschen &amp; Körnung entfernen</label>
+        <label class="check"><input type="checkbox" data-key="restoreScratches" /> Kratzer &amp; Staub entfernen</label>
+        <div data-show="restoreScratches">
+          <label class="slider">
+            <span>Empfindlichkeit <output data-for="scratchSensitivity"></output></span>
+            <input type="range" data-key="scratchSensitivity" min="1" max="100" step="1" />
+          </label>
+        </div>
+        <label class="check"><input type="checkbox" data-key="restoreFaces" /> Gesichter restaurieren</label>
+        <div data-show="restoreFaces">
+          <label class="slider">
+            <span>Stärke <output data-for="faceRestoreStrength"></output></span>
+            <input type="range" data-key="faceRestoreStrength" min="0.1" max="1" step="0.05" />
+          </label>
+          <p class="hint">Bei sehr unscharfen Gesichtern muss die KI Details neu erzeugen (z.&nbsp;B. Blickrichtung) – dann Ergebnis prüfen. Unter 100&nbsp;% können Doppelkonturen entstehen.</p>
+        </div>
+        <p class="hint">Für alte, verrauschte oder beschädigte Fotos. Läuft vor allen anderen Schritten auf max. 1280 px. Die Modelle (zusammen ca. 430 MB) werden beim ersten Gebrauch geladen. <span id="restore-info"></span></p>
+      </section>
+
+      <section class="group">
         <h3>KI-Verbesserung</h3>
         <label class="check"><input type="checkbox" data-key="upscale" /> KI-Vergrößerung 4× (Real-ESRGAN)</label>
         <p class="hint">Für kleine oder unscharfe Bilder: ergibt glattere Kanten und mehr Details. Dauert je nach Bildgröße einige Sekunden.</p>
@@ -387,6 +408,7 @@
 
   <script src="processing.js"></script>
   <script src="ai.js"></script>
+  <script src="restore.js"></script>
   <script src="segmentation.js"></script>
   <script src="encoders.js"></script>
   <script src="app.js"></script>

@@ -35,6 +35,42 @@ const MODELS = {
     file: 'ppocr-det-v4.onnx',
     license: 'Apache-2.0',
   },
+  yunet: {
+    label: 'Gesichtspunkte (YuNet)',
+    file: 'yunet-2023mar.onnx',
+    license: 'MIT',
+  },
+  scunet: {
+    label: 'Rauschen & Körnung entfernen (SCUNet)',
+    file: 'scunet_color_real_psnr.onnx',
+    license: 'Apache-2.0',
+    url: `${HF}/Heliosoph/scunet-onnx/resolve/6d11417ee2fbcc73783c502a238ac115097754fe/scunet_color_real_psnr.onnx`,
+    size: 3798678,
+    sha256: '231be201ab413dbc999d7951caa9844846b93a12a40a41e037d6b5888ed4e88c',
+    // Gewichte liegen in einer zweiten Datei (ONNX „external data“)
+    extra: [{
+      file: 'scunet_color_real_psnr.onnx.data',
+      url: `${HF}/Heliosoph/scunet-onnx/resolve/6d11417ee2fbcc73783c502a238ac115097754fe/scunet_color_real_psnr.onnx.data`,
+      size: 73138176,
+      sha256: '98825ea1210b641c71e5f052f582c70c49fd44b35387ebe2c034268c17df3feb',
+    }],
+  },
+  lama: {
+    label: 'Kratzer & Staub auffüllen (LaMa)',
+    file: 'lama_fp32.onnx',
+    license: 'Apache-2.0',
+    url: `${HF}/Carve/LaMa-ONNX/resolve/c3c0c9e468934d62e79c329e35d82dd09ff8c444/lama_fp32.onnx`,
+    size: 208044816,
+    sha256: '1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6',
+  },
+  restoreformer: {
+    label: 'Gesichter restaurieren (RestoreFormer++)',
+    file: 'restoreformer_pp_fp16w.onnx',
+    license: 'Apache-2.0',
+    url: `${HF}/Saimon8420/restoreformer-pp-web/resolve/9e5912e04026135bc1a7c8557a2da66f521a7b8e/restoreformer_pp_fp16w.onnx`,
+    size: 147524528,
+    sha256: '1242189ac358f6eb05952f82c2a8ed01c0b03f2c0a6da1fe0f495128fe3d8d8a',
+  },
   faces: {
     label: 'Gesichtserkennung (UltraFace)',
     file: 'ultraface-rfb-320.onnx',
@@ -98,12 +134,15 @@ function getModel(id) {
 /** Pfad der Modelldatei, falls vorhanden (mitgeliefert oder heruntergeladen). */
 function modelPath(id) {
   const m = getModel(id);
-  const bundled = path.join(BUNDLED_DIR, m.file);
-  if (fsSync.existsSync(bundled)) return bundled;
-  const downloaded = path.join(DOWNLOAD_DIR(), m.file);
-  if (fsSync.existsSync(downloaded)) return downloaded;
+  const files = [m.file, ...(m.extra || []).map((e) => e.file)];
+  for (const dir of [BUNDLED_DIR, DOWNLOAD_DIR()]) {
+    if (files.every((f) => fsSync.existsSync(path.join(dir, f)))) return path.join(dir, m.file);
+  }
   return null;
 }
+
+/** Alle Dateien eines Modells (Hauptdatei + ggf. externe Gewichte). */
+const modelParts = (m) => [{ file: m.file, url: m.url, size: m.size, sha256: m.sha256 }, ...(m.extra || [])];
 
 function status() {
   return Object.entries(MODELS).map(([id, m]) => {
@@ -112,7 +151,7 @@ function status() {
       id,
       label: m.label,
       license: m.license,
-      size: m.size || null,
+      size: modelParts(m).reduce((sum, p) => sum + (p.size || 0), 0) || null,
       available: !!p,
       downloadable: !!m.url,
       bundled: !!p && p.startsWith(BUNDLED_DIR),
@@ -133,48 +172,58 @@ function download(id, onProgress) {
 
   const p = (async () => {
     await fs.mkdir(DOWNLOAD_DIR(), { recursive: true });
-    const target = path.join(DOWNLOAD_DIR(), m.file);
-    const part = `${target}.part`;
-    const res = await net.fetch(m.url);
-    if (!res.ok) throw new Error(`Download fehlgeschlagen (HTTP ${res.status})`);
-    const total = Number(res.headers.get('content-length')) || m.size || 0;
-    const hash = crypto.createHash('sha256');
-    const out = fsSync.createWriteStream(part);
-    let received = 0;
-    let lastReport = 0;
-    try {
-      const reader = res.body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        hash.update(value);
-        received += value.length;
-        if (!out.write(value)) await new Promise((r) => out.once('drain', r));
-        const now = Date.now();
-        if (now - lastReport > 150) {
-          lastReport = now;
-          onProgress?.({ id, received, total });
-        }
-      }
-      await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve())));
-    } catch (err) {
-      out.destroy();
-      await fs.rm(part, { force: true });
-      throw err;
+    const parts = modelParts(m);
+    const total = parts.reduce((sum, x) => sum + (x.size || 0), 0);
+    let before = 0;
+    for (const part of parts) {
+      const target = path.join(DOWNLOAD_DIR(), part.file);
+      if (fsSync.existsSync(target)) { before += part.size || 0; continue; }
+      await downloadFile(part, target, (received) => onProgress?.({ id, received: before + received, total }));
+      before += part.size || 0;
     }
-    const digest = hash.digest('hex');
-    if (m.sha256 && digest !== m.sha256) {
-      await fs.rm(part, { force: true });
-      throw new Error('Prüfsumme des heruntergeladenen Modells stimmt nicht.');
-    }
-    await fs.rename(part, target);
     onProgress?.({ id, received: total, total, done: true });
-    return target;
+    return path.join(DOWNLOAD_DIR(), m.file);
   })();
 
   downloads.set(id, p);
   p.finally(() => downloads.delete(id)).catch(() => {});
   return p;
+}
+
+/** Lädt eine Datei, prüft die SHA-256-Prüfsumme und legt sie erst danach ab. */
+async function downloadFile(part, target, onBytes) {
+  const tmp = `${target}.part`;
+  const res = await net.fetch(part.url);
+  if (!res.ok) throw new Error(`Download fehlgeschlagen (HTTP ${res.status})`);
+  const hash = crypto.createHash('sha256');
+  const out = fsSync.createWriteStream(tmp);
+  let received = 0;
+  let lastReport = 0;
+  try {
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      hash.update(value);
+      received += value.length;
+      if (!out.write(value)) await new Promise((r) => out.once('drain', r));
+      const now = Date.now();
+      if (now - lastReport > 150) {
+        lastReport = now;
+        onBytes(received);
+      }
+    }
+    await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve())));
+  } catch (err) {
+    out.destroy();
+    await fs.rm(tmp, { force: true });
+    throw err;
+  }
+  if (part.sha256 && hash.digest('hex') !== part.sha256) {
+    await fs.rm(tmp, { force: true });
+    throw new Error('Prüfsumme des heruntergeladenen Modells stimmt nicht.');
+  }
+  await fs.rename(tmp, target);
 }
 
 async function ensure(id, onProgress) {
@@ -185,7 +234,7 @@ async function remove(id) {
   const m = getModel(id);
   const file = path.join(DOWNLOAD_DIR(), m.file);
   if (worker.proc) worker.proc.postMessage({ type: 'drop', file });
-  await fs.rm(path.join(DOWNLOAD_DIR(), m.file), { force: true });
+  for (const part of modelParts(m)) await fs.rm(path.join(DOWNLOAD_DIR(), part.file), { force: true });
 }
 
 /* ------------------------------------------------------------------ */

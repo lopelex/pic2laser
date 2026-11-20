@@ -25,7 +25,13 @@ async function createSession(file) {
     const ort = require('onnxruntime-web');
     ort.env.wasm.numThreads = Math.max(1, Math.min(4, os.cpus().length));
     const bytes = await fs.readFile(file);
-    return { ort, session: await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] }) };
+    const options = { executionProviders: ['wasm'] };
+    // externe Gewichte (z. B. SCUNet: *.onnx.data) mitgeben
+    const dataFile = `${file}.data`;
+    if (require('fs').existsSync(dataFile)) {
+      options.externalData = [{ path: require('path').basename(dataFile), data: await fs.readFile(dataFile) }];
+    }
+    return { ort, session: await ort.InferenceSession.create(bytes, options) };
   }
 }
 

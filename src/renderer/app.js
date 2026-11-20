@@ -55,6 +55,12 @@ const DEFAULTS = Object.freeze({
   noseStrength: 0.5,
   chinStrength: 0.5,
   cheekStrength: 0,
+  // Altes Foto restaurieren
+  restoreDenoise: false,
+  restoreScratches: false,
+  scratchSensitivity: 50,
+  restoreFaces: false,
+  faceRestoreStrength: 1,
   // Schrift & Logos
   textClean: false,
   textPad: 1,
@@ -134,6 +140,8 @@ const FORMATTERS = {
   noseStrength: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
   chinStrength: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
   cheekStrength: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
+  scratchSensitivity: (v) => `${v}`,
+  faceRestoreStrength: (v) => `${Math.round(Number(v) * 100)} %`,
   textPad: (v) => (Number(v) ? `${Number(v).toFixed(1)} × Zeilenhöhe` : 'nur Schrift'),
   textBold: (v) => (Number(v) > 0 ? `+${v}` : `${v}`),
 };
@@ -329,6 +337,11 @@ const BUILTIN_PRESETS = [
     settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 832, threshold: 150, bgRemove: 'modnet', faceBoost: true, faceStrength: 1, mouthStrength: 1.2, noseStrength: 0.8, chinStrength: 0.8, cheekStrength: 0.5 },
   },
   {
+    group: 'Porträts & Personen', name: 'Altes Porträtfoto restaurieren',
+    desc: 'Für alte, verrauschte oder zerkratzte Porträts: Rauschen und Kratzer entfernen, Gesichter per KI restaurieren, dann Fotogravur.',
+    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, contrast: 15, sharpen: 0.3, restoreDenoise: true, restoreScratches: true, scratchSensitivity: 50, restoreFaces: true, faceRestoreStrength: 1, faceBoost: true, faceStrength: 0.8, mouthStrength: 0.8, noseStrength: 0.4, chinStrength: 0.4, cheekStrength: 0.2 },
+  },
+  {
     group: 'Porträts & Personen', name: 'Gruppenfoto / Person im Alltag',
     desc: 'Für Fotos mit mehreren Personen oder unruhigem Hintergrund: präzises Freistellen, Dithering.',
     settings: { mode: 'dither', ditherAlgo: 'floyd', dpi: 254, contrast: 15, sharpen: 0.5, bgRemove: 'isnet', subjectLine: true, subjectLineMm: 0.25, faceBoost: true, faceStrength: 1, mouthStrength: 0.8, noseStrength: 0.4, chinStrength: 0.4, cheekStrength: 0.2 },
@@ -379,8 +392,8 @@ const BUILTIN_PRESETS = [
   },
   {
     group: 'Fotos & Landschaft', name: 'Altes / kleines Foto restaurieren',
-    desc: 'Für kleine, alte oder unscharfe Fotos: KI-Vergrößerung vor dem Dithering.',
-    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, upscale: true, contrast: 20, sharpen: 0.4 },
+    desc: 'Für alte Fotos ohne Personen im Vordergrund: Rauschen und Kratzer entfernen, KI-Vergrößerung, dann Dithering.',
+    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, upscale: true, contrast: 20, sharpen: 0.4, restoreDenoise: true, restoreScratches: true, scratchSensitivity: 50 },
   },
 
   // ---- Material ----
@@ -584,6 +597,9 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   state.cache = new Map();
   state.inflight = new Map();
   state.faceCount = null;
+  state.restoreFaceCount = null;
+  state.restoreInfo = '';
+  $('#restore-info').textContent = '';
   $('#face-info').textContent = '';
   $('#text-info').textContent = '';
   state.mask = null;
@@ -841,10 +857,17 @@ const MODEL_NAMES = {
   u2netp: 'Freistellen (schnell)', isnet: 'Freistellen (präzise)', birefnet: 'Freistellen (beste Qualität)',
   modnet: 'Porträt-Freistellen', sam_encoder: 'Objekt anklicken', sam_decoder: 'Objekt anklicken',
   lineart: 'KI-Strichzeichnung', esrgan: 'KI-Vergrößerung', depth: 'Tiefenkarte', faces: 'Gesichtserkennung',
+  scunet: 'Rauschen entfernen', lama: 'Kratzer auffüllen', restoreformer: 'Gesichter restaurieren', yunet: 'Gesichtspunkte',
   text: 'Texterkennung',
 };
 
-const upTag = (s) => (s.upscale ? 'up' : 'orig');
+/** Kennung der Restaurierungs-Einstellungen ('' = keine Restaurierung). */
+function restoreSig(s) {
+  if (!s.restoreDenoise && !s.restoreScratches && !s.restoreFaces) return '';
+  return `r${s.restoreDenoise ? 'D' : ''}${s.restoreScratches ? `S${s.scratchSensitivity}` : ''}${s.restoreFaces ? `F${s.faceRestoreStrength}` : ''}`;
+}
+// Alle KI-Zwischenergebnisse hängen am Eingangsbild: Restaurierung + Vergrößerung
+const upTag = (s) => `${s.upscale ? 'up' : 'orig'}${restoreSig(s) ? `|${restoreSig(s)}` : ''}`;
 const KEYS = {
   seg: (method, up) => `seg:${method}:${up}`,
   samEmb: (up) => `sam-emb:${up}`,
@@ -904,10 +927,19 @@ function planSteps(s) {
   };
 
   let work = { w: b.width, h: b.height };
-  if (s.upscale && upscaleApplies(b)) {
-    const sc = Math.min(1, 1024 / Math.max(b.width, b.height));
-    const iw = Math.round(b.width * sc), ih = Math.round(b.height * sc);
-    add('upscale', 'KI-Vergrößerung', 'upscale', Math.ceil(iw / 192) * Math.ceil(ih / 192), 450, 'upscale');
+  const sig = restoreSig(s);
+  if (sig) {
+    const sc = Math.min(1, Restore.MAX_SIDE / Math.max(b.width, b.height));
+    work = { w: Math.round(b.width * sc), h: Math.round(b.height * sc) };
+    const key = `restore:${sig}`;
+    if (s.restoreDenoise) add('restore-denoise', 'Rauschen entfernen', 'restore-denoise', Restore.denoiseTiles(work.w, work.h), 6000, key);
+    if (s.restoreScratches) add('restore-scratch', 'Kratzer & Staub entfernen', 'restore-scratch', 1, 6000, key);
+    if (s.restoreFaces) add('restore-faces', 'Gesichter restaurieren', 'restore-faces', state.restoreFaceCount ?? 1, 5000, key);
+  }
+  if (s.upscale && upscaleApplies({ width: work.w, height: work.h })) {
+    const sc = Math.min(1, 1024 / Math.max(work.w, work.h));
+    const iw = Math.round(work.w * sc), ih = Math.round(work.h * sc);
+    add('upscale', 'KI-Vergrößerung', 'upscale', Math.ceil(iw / 192) * Math.ceil(ih / 192), 450, `upscale:${sig}`);
     work = { w: iw * 4, h: ih * 4 };
   }
 
@@ -980,6 +1012,8 @@ async function runProcess() {
     // 1. Optional KI-Vergrößerung
     const work = await workingBitmap(s);
     if (stale()) return;
+    const viewBase = restoreSig(s) ? await restoredBitmap(s) : state.source.bitmap;
+    $('#restore-info').textContent = restoreSig(s) ? (state.restoreInfo || '') : '';
 
     // Schrift & Logos erkennen (vor der Vorschau, damit die Bereiche dort markiert werden)
     s.textBlocks = textWanted(s) ? await detectText(s, work) : [];
@@ -988,7 +1022,7 @@ async function runProcess() {
     // 2. Freistellen
     const mask = await ensureMask(s, work);
     if (stale()) return;
-    await updateOriginalView(s, mask);
+    await updateOriginalView(s, mask, viewBase);
     if (stale()) return;
 
     // Gesichter erkennen (für „Gesichtszüge hervorheben“)
@@ -1074,7 +1108,7 @@ function showResult(blob, pixelated) {
 
 /** Bild nach optionaler KI-Vergrößerung. */
 async function workingBitmap(s) {
-  const bitmap = state.source.bitmap;
+  const bitmap = await restoredBitmap(s);
   if (!s.upscale) return bitmap;
   if (!upscaleApplies(bitmap)) {
     if (!state.cache.has('upscale-skip')) {
@@ -1083,9 +1117,48 @@ async function workingBitmap(s) {
     }
     return bitmap;
   }
-  if (!state.cache.has('upscale')) await ensureModelReady('esrgan');
-  return Run.track('upscale', cached('upscale', () =>
+  const key = `upscale:${restoreSig(s)}`;
+  if (!state.cache.has(key)) await ensureModelReady('esrgan');
+  return Run.track('upscale', cached(key, () =>
     AI.upscale(bitmap, (done, total) => Run.progress('upscale', done / total))));
+}
+
+/** Altes Foto restaurieren: Rauschen, Kratzer/Staub, Gesichter (zwischengespeichert). */
+async function restoredBitmap(s) {
+  const sig = restoreSig(s);
+  if (!sig) return state.source.bitmap;
+  const key = `restore:${sig}`;
+  if (!state.cache.has(key)) {
+    // Modelle vorher laden, damit der Download nicht in die Zeitmessung fällt
+    if (s.restoreDenoise) await ensureModelReady('scunet');
+    if (s.restoreScratches) await ensureModelReady('lama');
+    if (s.restoreFaces || s.restoreScratches) await ensureModelReady('yunet');
+    if (s.restoreFaces) await ensureModelReady('restoreformer');
+  }
+  return cached(key, async () => {
+    const canvas = Restore.workingCopy(state.source.bitmap);
+    const info = [];
+    if (s.restoreDenoise) {
+      await Run.track('restore-denoise', Restore.denoise(canvas, (d, t) => Run.progress('restore-denoise', d / t)));
+      info.push('Rauschen entfernt');
+    }
+    const faces = s.restoreFaces || s.restoreScratches ? await Restore.landmarks(canvas) : [];
+    if (s.restoreScratches) {
+      await Run.track('restore-scratch', (async () => {
+        const { mask, count } = Restore.detectScratches(canvas, s.scratchSensitivity, Restore.protectZones(faces));
+        if (count) await Restore.inpaint(canvas, mask, (d, t) => Run.progress('restore-scratch', d / t));
+        info.push(count ? `${count} Kratzer/Staubstellen aufgefüllt` : 'keine Kratzer gefunden');
+      })());
+    }
+    if (s.restoreFaces) {
+      state.restoreFaceCount = faces.length;
+      await Run.track('restore-faces', Restore.restoreFaces(canvas, faces, s.faceRestoreStrength,
+        (d, t) => Run.progress('restore-faces', d / t)));
+      info.push(faces.length ? `${faces.length} Gesicht${faces.length === 1 ? '' : 'er'} restauriert` : 'kein Gesicht gefunden');
+    }
+    state.restoreInfo = info.join(' · ');
+    return canvas;
+  });
 }
 
 async function ensureModelReady(id) {
@@ -1207,12 +1280,12 @@ async function contentSource(s, bitmap, mask) {
 }
 
 /** Zeigt im Original-Fenster das freigestellte Bild bzw. das unveränderte Original. */
-async function updateOriginalView(s, mask) {
+async function updateOriginalView(s, mask, base = state.source.bitmap) {
   const markers = s.bgRemove === 'color'
     ? s.bgSeeds.map((p) => ({ ...p, positive: false }))
     : s.bgRemove === 'sam' ? s.samPoints : [];
   const boxes = s.textBlocks || [];
-  const key = `${mask ? state.mask.key : 'plain'}|${JSON.stringify(markers)}|${JSON.stringify(boxes)}`;
+  const key = `${mask ? state.mask.key : 'plain'}|${JSON.stringify(markers)}|${JSON.stringify(boxes)}|${restoreSig(s)}`;
   if (state.originalViewKey === key) return;
   state.originalViewKey = key;
   const img = $('#img-original');
@@ -1220,12 +1293,12 @@ async function updateOriginalView(s, mask) {
     URL.revokeObjectURL(state.originalUrl);
     state.originalUrl = null;
   }
-  if (!mask && !markers.length && !boxes.length) {
+  if (!mask && !markers.length && !boxes.length && base === state.source.bitmap) {
     img.src = state.source.url;
     $('#pane-original').classList.remove('checker');
     return;
   }
-  const png = await Pipeline.cutout(state.source.bitmap, mask, markers, boxes);
+  const png = await Pipeline.cutout(base, mask, markers, boxes);
   state.originalUrl = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
   img.src = state.originalUrl;
   $('#pane-original').classList.toggle('checker', !!mask);

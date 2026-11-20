@@ -546,5 +546,5 @@ const AI = (() => {
     return canvas;
   }
 
-  return { detectText, segment, samEmbedding, samMask, lineArt, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
+  return { run, pixels, toNCHW, detectText, segment, samEmbedding, samMask, lineArt, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
 })();
