@@ -25,14 +25,15 @@ const handlers = {
     if (mask) mask.close();
     if (lineMask) lineMask.close();
     const r = { w, h, bits, gray8 };
-    const out = { w, h, bits, gray8, tracePng: null, imagePng: null, imageB64: null, sil: null };
+    // trace: Binärbild soll vektorisiert werden (die Bits gehen direkt an Potrace, kein PNG nötig)
+    const out = { w, h, bits, gray8, trace: false, imagePng: null, imageB64: null, sil: null };
 
     if (!(s.outline && s.outlineOnly)) {
       if (s.mode === 'dither' || s.mode === 'relief') {
         out.imagePng = await Encoders.canvasBytes(Processing.resultCanvas(r, s.transparent), 'image/png');
         out.imageB64 = Encoders.toBase64(out.imagePng); // fürs SVG – teuer bei großen Bildern
       } else {
-        out.tracePng = await Encoders.canvasBytes(Processing.bitsToCanvas(bits, w, h, false), 'image/png');
+        out.trace = true;
       }
     }
 
@@ -47,15 +48,10 @@ const handlers = {
       }
       const mmPerPx = s.widthMm / w;
       const sil = Processing.silhouette(src, w, h, s.outlineOffsetMm / mmPerPx, s.outlineCloseMm / mmPerPx);
-      out.sil = {
-        w: sil.w,
-        h: sil.h,
-        pad: sil.pad,
-        png: await Encoders.canvasBytes(Processing.bitsToCanvas(sil.bits, sil.w, sil.h, false), 'image/png'),
-      };
+      out.sil = { w: sil.w, h: sil.h, pad: sil.pad, bits: sil.bits };
     }
 
-    const transfer = [out.bits, out.gray8, out.tracePng, out.imagePng, out.sil && out.sil.png]
+    const transfer = [out.bits, out.gray8, out.imagePng, out.sil && out.sil.bits]
       .filter(Boolean)
       .map((a) => a.buffer);
     return { result: out, transfer };

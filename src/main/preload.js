@@ -3,7 +3,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
-  trace: (pngBytes, params) => ipcRenderer.invoke('trace', pngBytes, params),
+  // image: { bits: Uint8Array (1 = schwarz), w, h }; lane: eigener Prozess je Spur (Füllung/Umriss laufen parallel)
+  trace: (image, params, lane) => ipcRenderer.invoke('trace', image, params, lane),
   system: {
     profile: () => ipcRenderer.invoke('system-profile'),
   },

@@ -139,23 +139,43 @@ const Processing = (() => {
   /** Fehlerdiffusion mit Serpentinen-Durchlauf (weniger Artefakte). */
   function errorDiffusion(gray, w, h, algo) {
     const { div, k } = KERNELS[algo];
+    // Kernel als flache Typed Arrays (schneller als verschachtelte JS-Arrays)
+    const n = k.length;
+    const kdx = new Int32Array(n), kdy = new Int32Array(n), kw = new Float64Array(n);
+    for (let j = 0; j < n; j++) { kdx[j] = k[j][0]; kdy[j] = k[j][1]; kw[j] = k[j][2]; }
+    // Index-Versatz je Nachbar für beide Laufrichtungen (Innenbereich ohne Randprüfung)
+    const offL = new Int32Array(n), offR = new Int32Array(n);
+    let reach = 0;
+    for (let j = 0; j < n; j++) {
+      offL[j] = kdy[j] * w + kdx[j];
+      offR[j] = kdy[j] * w - kdx[j];
+      reach = Math.max(reach, Math.abs(kdx[j]), kdy[j]);
+    }
     const buf = Float32Array.from(gray);
     const out = new Uint8Array(gray.length);
     for (let y = 0; y < h; y++) {
       const ltr = (y & 1) === 0;
+      const sx = ltr ? 1 : -1;
+      const off = ltr ? offL : offR;
+      const row = y * w;
+      const inner = y < h - reach;
       for (let i = 0; i < w; i++) {
         const x = ltr ? i : w - 1 - i;
-        const idx = y * w + x;
+        const idx = row + x;
         const old = buf[idx];
         const black = old < 128;
         out[idx] = black ? 1 : 0;
         const err = old - (black ? 0 : 255);
-        for (let n = 0; n < k.length; n++) {
-          const dx = ltr ? k[n][0] : -k[n][0];
-          const nx = x + dx;
-          const ny = y + k[n][1];
+        if (err === 0) continue;
+        if (inner && x >= reach && x < w - reach) {
+          for (let j = 0; j < n; j++) buf[idx + off[j]] += (err * kw[j]) / div;
+          continue;
+        }
+        for (let j = 0; j < n; j++) {
+          const nx = x + sx * kdx[j];
+          const ny = y + kdy[j];
           if (nx < 0 || nx >= w || ny >= h) continue;
-          buf[ny * w + nx] += (err * k[n][2]) / div;
+          buf[ny * w + nx] += (err * kw[j]) / div;
         }
       }
     }
@@ -209,66 +229,86 @@ const Processing = (() => {
   }
 
   /**
-   * Euklidische Distanztransformation (Felzenszwalb).
-   * Liefert für jedes Pixel den Abstand (px) zum nächsten Pixel mit set[i] = 1.
+   * Euklidische Distanztransformation (exakt), als QUADRIERTER Abstand (px²) jedes Pixels
+   * zum nächsten Pixel mit set[i] === want (Standard 1). Kein Pixel gesetzt → Infinity.
+   * Schritt 1 (spaltenweise, nach Meijster) läuft zeilenweise über den Speicher und ist
+   * damit cachefreundlich; Schritt 2 ist die untere Parabel-Hülle nach Felzenszwalb je Zeile.
+   * Zeilen ohne endlichen Wert werden übersprungen.
+   * maxDist: Abstände bis maxDist sind exakt, größere nur „größer als maxDist“ (deutlich schneller,
+   * wenn nur ein Radius-Vergleich gebraucht wird).
    */
-  function distanceTransform(set, w, h) {
-    const INF = 1e20;
-    const f = new Float64Array(Math.max(w, h));
-    const d = new Float64Array(Math.max(w, h));
-    const v = new Int32Array(Math.max(w, h));
-    const z = new Float64Array(Math.max(w, h) + 1);
-    const grid = new Float64Array(w * h);
-    for (let i = 0; i < grid.length; i++) grid[i] = set[i] ? 0 : INF;
+  function distanceTransformSq(set, w, h, want = 1, maxDist = Infinity) {
+    const INF = Infinity;
+    const g = new Float32Array(w * h); // erst senkrechter Abstand, am Ende quadrierter Abstand
+    // senkrechter Abstand: von oben nach unten, dann von unten nach oben
+    for (let x = 0; x < w; x++) g[x] = (set[x] ? 1 : 0) === want ? 0 : INF;
+    for (let y = 1; y < h; y++) {
+      const row = y * w, prev = row - w;
+      for (let x = 0; x < w; x++) g[row + x] = (set[row + x] ? 1 : 0) === want ? 0 : g[prev + x] + 1;
+    }
+    for (let y = h - 2; y >= 0; y--) {
+      const row = y * w, next = row + w;
+      for (let x = 0; x < w; x++) {
+        const below = g[next + x] + 1;
+        if (below < g[row + x]) g[row + x] = below;
+      }
+    }
 
-    const edt1d = (n) => {
-      let k = 0;
-      v[0] = 0; z[0] = -INF; z[1] = INF;
-      for (let q = 1; q < n; q++) {
+    const f = new Float64Array(w);
+    const v = new Int32Array(w);
+    const z = new Float64Array(w + 1);
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      // nur Parabeln mit endlichem Scheitel in die Hülle aufnehmen
+      let k = -1;
+      for (let q = 0; q < w; q++) {
+        const gq = g[row + q];
+        if (gq > maxDist) continue; // auch Infinity
+        const fq = gq * gq;
+        f[q] = fq;
+        if (k < 0) {
+          k = 0; v[0] = q; z[0] = -INF; z[1] = INF;
+          continue;
+        }
         let s0;
-        do {
+        for (;;) { // endet spätestens bei k = 0, weil z[0] = -Infinity
           const r = v[k];
-          s0 = (f[q] + q * q - (f[r] + r * r)) / (2 * q - 2 * r);
-        } while (s0 <= z[k] && --k >= 0);
+          s0 = (fq + q * q - (f[r] + r * r)) / (2 * q - 2 * r);
+          if (s0 > z[k]) break;
+          k--;
+        }
         k++;
         v[k] = q; z[k] = s0; z[k + 1] = INF;
       }
+      if (k < 0) {
+        for (let q = 0; q < w; q++) g[row + q] = INF;
+        continue;
+      }
       k = 0;
-      for (let q = 0; q < n; q++) {
+      for (let q = 0; q < w; q++) {
         while (z[k + 1] < q) k++;
         const r = v[k];
-        d[q] = (q - r) * (q - r) + f[r];
+        g[row + q] = (q - r) * (q - r) + f[r];
       }
-    };
-
-    for (let x = 0; x < w; x++) {
-      for (let y = 0; y < h; y++) f[y] = grid[y * w + x];
-      edt1d(h);
-      for (let y = 0; y < h; y++) grid[y * w + x] = d[y];
     }
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) f[x] = grid[y * w + x];
-      edt1d(w);
-      for (let x = 0; x < w; x++) grid[y * w + x] = Math.sqrt(d[x]);
-    }
-    return grid;
+    return g;
   }
 
   function dilate(bits, w, h, r) {
     if (r <= 0) return bits;
-    const dist = distanceTransform(bits, w, h);
+    const d2 = distanceTransformSq(bits, w, h, 1, r);
+    const r2 = r * r;
     const out = new Uint8Array(bits.length);
-    for (let i = 0; i < out.length; i++) out[i] = dist[i] <= r ? 1 : 0;
+    for (let i = 0; i < out.length; i++) out[i] = d2[i] <= r2 ? 1 : 0;
     return out;
   }
 
   function erode(bits, w, h, r) {
     if (r <= 0) return bits;
-    const inv = new Uint8Array(bits.length);
-    for (let i = 0; i < inv.length; i++) inv[i] = bits[i] ? 0 : 1;
-    const dist = distanceTransform(inv, w, h);
+    const d2 = distanceTransformSq(bits, w, h, 0, r); // Abstand zum nächsten Hintergrundpixel
+    const r2 = r * r;
     const out = new Uint8Array(bits.length);
-    for (let i = 0; i < out.length; i++) out[i] = bits[i] && dist[i] > r ? 1 : 0;
+    for (let i = 0; i < out.length; i++) out[i] = bits[i] && d2[i] > r2 ? 1 : 0;
     return out;
   }
 
@@ -293,6 +333,8 @@ const Processing = (() => {
     return out;
   }
 
+  const TAN22 = Math.tan(Math.PI / 8), TAN67 = Math.tan((3 * Math.PI) / 8);
+
   /** Canny-Kantenerkennung. sensitivity 1..100 (höher = mehr Kanten). */
   function canny(gray, w, h, sensitivity) {
     const mag = new Float32Array(w * h);
@@ -305,10 +347,10 @@ const Processing = (() => {
         const bl = gray[i + w - 1], b = gray[i + w], br = gray[i + w + 1];
         const gx = -tl - 2 * l - bl + tr + 2 * r + br;
         const gy = -tl - 2 * t - tr + bl + 2 * b + br;
-        mag[i] = Math.hypot(gx, gy);
-        let a = (Math.atan2(gy, gx) * 180) / Math.PI;
-        if (a < 0) a += 180;
-        dir[i] = a < 22.5 || a >= 157.5 ? 0 : a < 67.5 ? 1 : a < 112.5 ? 2 : 3;
+        mag[i] = Math.sqrt(gx * gx + gy * gy);
+        // Richtung in 4 Sektoren (0°, 45°, 90°, 135°) ohne atan2: Vergleich über tan(22,5°)/tan(67,5°)
+        const ax = gx < 0 ? -gx : gx, ay = gy < 0 ? -gy : gy;
+        dir[i] = ay < TAN22 * ax ? 0 : ay >= TAN67 * ax ? 2 : (gx > 0) === (gy > 0) ? 1 : 3;
       }
     }
     // Non-Maximum-Suppression
@@ -332,20 +374,22 @@ const Processing = (() => {
     const high = 20 + (100 - sensitivity) * 6;
     const low = high * 0.4;
     const out = new Uint8Array(w * h);
-    const stack = [];
-    for (let i = 0; i < nms.length; i++) {
+    const stack = new Int32Array(w * h); // jedes Pixel kommt höchstens einmal auf den Stapel
+    const n = nms.length;
+    for (let i = 0; i < n; i++) {
       if (nms[i] >= high && !out[i]) {
         out[i] = 1;
-        stack.push(i);
-        while (stack.length) {
-          const j = stack.pop();
+        let sp = 0;
+        stack[sp++] = i;
+        while (sp) {
+          const j = stack[--sp];
           const jx = j % w;
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const nx = jx + dx;
-              const k = j + dy * w + dx;
-              if (nx < 0 || nx >= w || k < 0 || k >= nms.length || out[k]) continue;
-              if (nms[k] >= low) { out[k] = 1; stack.push(k); }
+          const xa = jx > 0 ? -1 : 0, xb = jx < w - 1 ? 1 : 0;
+          for (let dy = -w; dy <= w; dy += w) {
+            for (let dx = xa; dx <= xb; dx++) {
+              const k = j + dy + dx;
+              if (k < 0 || k >= n || out[k]) continue;
+              if (nms[k] >= low) { out[k] = 1; stack[sp++] = k; }
             }
           }
         }
@@ -775,10 +819,11 @@ const Processing = (() => {
       if (alpha[i] < 0.5) { bg[i] = 1; any = true; }
     }
     if (!any) return bits;
-    const dist = distanceTransform(bg, w, h);
     const r = Math.max(0.75, widthPx);
+    const d2 = distanceTransformSq(bg, w, h, 1, r);
+    const r2 = r * r;
     for (let i = 0; i < bits.length; i++) {
-      if (!bg[i] && dist[i] <= r) bits[i] = 1;
+      if (!bg[i] && d2[i] <= r2) bits[i] = 1;
     }
     return bits;
   }

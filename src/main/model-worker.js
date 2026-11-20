@@ -13,11 +13,12 @@ const os = require('os');
  * Bevorzugt die native Laufzeit (onnxruntime-node, schnell). Wo es keine nativen
  * Binärdateien gibt (z. B. Intel-Macs), wird onnxruntime-web (WebAssembly) genutzt.
  */
-async function createSession(file) {
+async function createSession(file, arena = false) {
   try {
     const ort = require('onnxruntime-node');
-    // Ohne Speicher-Arena: etwas langsamer, aber z. B. BiRefNet braucht ~0,5 statt ~8 GB RAM
-    const options = { enableCpuMemArena: false, enableMemPattern: false, logSeverityLevel: 3 };
+    // Standard ohne Speicher-Arena: etwas langsamer, aber z. B. BiRefNet braucht ~0,5 statt ~8 GB RAM.
+    // Kleine, oft aufgerufene Modelle (Kacheln) laufen mit Arena schneller.
+    const options = { enableCpuMemArena: arena, enableMemPattern: arena, logSeverityLevel: 3 };
     const threads = Number(process.env.PIC2LASER_THREADS) || 0;
     if (threads > 0) options.intraOpNumThreads = threads;
     return { ort, session: await ort.InferenceSession.create(file, options) };
@@ -73,12 +74,12 @@ async function makeRoom(file, needed) {
   }
 }
 
-async function getSession(file) {
+async function getSession(file, arena) {
   let entry = sessions.get(file);
   if (!entry) {
     const size = await fileSize(file);
     await makeRoom(file, size);
-    const p = createSession(file);
+    const p = createSession(file, arena);
     entry = { p, size, lastUsed: Date.now() };
     sessions.set(file, entry);
     p.catch(() => sessions.delete(file));
@@ -87,8 +88,8 @@ async function getSession(file) {
   return entry.p;
 }
 
-async function runOnce(file, feeds, outputs) {
-  const { ort, session } = await getSession(file);
+async function runOnce(file, feeds, outputs, arena) {
+  const { ort, session } = await getSession(file, arena);
   const inputs = {};
   for (const [name, t] of Object.entries(feeds)) {
     inputs[name] = new ort.Tensor(t.type || 'float32', t.data, t.dims);
@@ -102,15 +103,15 @@ async function runOnce(file, feeds, outputs) {
 
 const isOutOfMemory = (err) => /bad_alloc|failed to allocate|out of memory|allocation/i.test(String(err && err.message || err));
 
-async function run(file, feeds, outputs) {
+async function run(file, feeds, outputs, arena) {
   try {
-    return await runOnce(file, feeds, outputs);
+    return await runOnce(file, feeds, outputs, arena);
   } catch (err) {
     if (!isOutOfMemory(err)) throw err;
     // Speicher voll: alle Modelle freigeben und einmal neu versuchen
     for (const f of [...sessions.keys()]) await release(f);
     try {
-      return await runOnce(file, feeds, outputs);
+      return await runOnce(file, feeds, outputs, arena);
     } catch (err2) {
       if (isOutOfMemory(err2)) {
         throw new Error('Nicht genug Arbeitsspeicher für dieses KI-Modell. Bitte andere Programme schließen oder ein kleineres Modell bzw. Bild verwenden.');
@@ -125,6 +126,11 @@ let queue = Promise.resolve();
 
 process.parentPort.on('message', (e) => {
   const msg = e.data;
+  if (msg.type === 'warm') {
+    // native Laufzeit vorab laden (dauert beim ersten require spürbar)
+    queue = queue.then(() => { try { require('onnxruntime-node'); } catch { /* Fallback WebAssembly */ } });
+    return;
+  }
   if (msg.type === 'drop') {
     queue = queue.then(() => release(msg.file));
     return;
@@ -138,7 +144,7 @@ process.parentPort.on('message', (e) => {
   }
   queue = queue.then(async () => {
     try {
-      const result = await run(msg.file, msg.feeds, msg.outputs);
+      const result = await run(msg.file, msg.feeds, msg.outputs, !!msg.arena);
       process.parentPort.postMessage({ id: msg.id, ok: true, result });
     } catch (err) {
       process.parentPort.postMessage({ id: msg.id, ok: false, error: String((err && err.message) || err) });

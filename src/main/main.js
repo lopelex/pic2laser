@@ -29,6 +29,12 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  // Hintergrundprozesse vorstarten, sobald das Fenster steht – die erste Umwandlung
+  // muss dann nicht auf Prozessstart und Laden der Bibliotheken warten
+  mainWindow.webContents.once('did-finish-load', () => {
+    for (const t of Object.values(tracers)) t.ensureProc();
+    models.warmUp();
+  });
 
   // Links nie im App-Fenster öffnen
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -51,18 +57,19 @@ app.on('window-all-closed', () => {
 /* Vektorisierung                                                     */
 /* ------------------------------------------------------------------ */
 
-// Potrace läuft in einem eigenen Utility-Prozess, damit das Fenster nie blockiert.
-// Es läuft immer nur eine Vektorisierung; von den wartenden zählt nur die neueste
+// Potrace läuft in eigenen Utility-Prozessen, damit das Fenster nie blockiert.
+// Je Spur (Füllung, Umrisslinie) ein Prozess, damit beide parallel rechnen. Pro Spur
+// läuft immer nur eine Vektorisierung; von den wartenden zählt nur die neueste
 // (ältere gehören zu überholten Einstellungen und werden verworfen).
-const tracer = {
+const makeTracer = (name) => ({
   proc: null,
   nextId: 1,
   running: null, // { id, resolve, reject }
-  pending: null, // { png, params, resolve, reject }
+  pending: null, // { image, params, resolve, reject }
 
   ensureProc() {
     if (this.proc) return;
-    const proc = utilityProcess.fork(path.join(__dirname, 'trace-worker.js'), [], { serviceName: 'Pic2Laser Vektorisierung' });
+    const proc = utilityProcess.fork(path.join(__dirname, 'trace-worker.js'), [], { serviceName: `Pic2Laser Vektorisierung (${name})` });
     this.proc = proc;
     proc.on('message', (msg) => {
       if (proc !== this.proc) return; // Antwort eines abgebrochenen Prozesses ignorieren
@@ -99,6 +106,7 @@ const tracer = {
       this.running.reject(new Error('cancelled'));
       this.running = null;
       old.kill();
+      this.ensureProc(); // Ersatzprozess gleich vorstarten (Start + Laden von Potrace kostet Zeit)
     }
   },
 
@@ -108,27 +116,29 @@ const tracer = {
     this.pending = null;
     this.ensureProc();
     this.running = { id: this.nextId++, resolve: job.resolve, reject: job.reject };
-    this.proc.postMessage({ id: this.running.id, png: job.png, params: job.params });
+    this.proc.postMessage({ id: this.running.id, image: job.image, params: job.params });
   },
 
-  trace(png, params) {
+  trace(image, params) {
     return new Promise((resolve, reject) => {
       if (this.pending) {
         const cancelled = new Error('cancelled');
         cancelled.cancelled = true;
         this.pending.reject(cancelled);
       }
-      this.pending = { png, params, resolve, reject };
+      this.pending = { image, params, resolve, reject };
       this.next();
     });
   },
-};
+});
 
-ipcMain.handle('trace', (_e, pngBytes, params) => tracer.trace(pngBytes, params || {}));
+const tracers = { fill: makeTracer('Füllung'), outline: makeTracer('Umriss') };
+
+ipcMain.handle('trace', (_e, image, params, lane) => (tracers[lane] || tracers.fill).trace(image, params || {}));
 
 // „Abbrechen“: Vektorisierung, KI-Berechnungen und Modell-Downloads stoppen
 ipcMain.handle('cancel-all', () => {
-  tracer.cancel();
+  for (const t of Object.values(tracers)) t.cancel();
   models.cancelAll();
   return true;
 });

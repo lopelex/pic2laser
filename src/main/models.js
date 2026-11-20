@@ -308,6 +308,12 @@ const worker = {
     for (const job of this.pending.values()) job.reject(new Error('cancelled'));
     this.pending.clear();
     old.kill();
+    this.warmUp(); // Ersatzprozess gleich vorstarten
+  },
+
+  /** Prozess starten und die KI-Laufzeit vorab laden (spart Zeit beim ersten KI-Schritt). */
+  warmUp() {
+    this.ensureProc().postMessage({ type: 'warm' });
   },
 
   /** Alle zwischengespeicherten Modelle außer `keep` freigeben. */
@@ -315,12 +321,12 @@ const worker = {
     if (this.proc) this.proc.postMessage({ type: 'trim', keep });
   },
 
-  run(file, feeds, outputs) {
+  run(file, feeds, outputs, arena = false) {
     const proc = this.ensureProc();
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      proc.postMessage({ id, file, feeds, outputs });
+      proc.postMessage({ id, file, feeds, outputs, arena });
     });
   },
 };
@@ -336,8 +342,15 @@ async function run(id, feeds, outputs, onProgress) {
   await checkMemory(id, file, feeds);
   // inzwischen abgebrochen (z. B. während der Speicherprüfung)? Dann nicht mehr rechnen.
   if (epoch !== worker.epoch) throw new Error('cancelled');
-  return worker.run(file, feeds, outputs);
+  return worker.run(file, feeds, outputs, ARENA_MODELS.has(id));
 }
+
+/**
+ * Modelle, die mit Speicher-Arena laufen: kleine Modelle mit vielen gleich großen Aufrufen
+ * (Kacheln). Gemessen bei Real-ESRGAN: ca. 10–30 % schneller pro Kachel bei ca. 50 MB mehr
+ * Speicher. Große Modelle bleiben ohne Arena (BiRefNet bräuchte sonst ~8 statt ~0,5 GB).
+ */
+const ARENA_MODELS = new Set(['esrgan']);
 
 /**
  * Prüft vor dem Rechnen, ob genug Arbeitsspeicher frei ist (gemessener Bedarf des Modells).
@@ -384,4 +397,4 @@ function cancelAll() {
   for (const ctrl of activeDownloads) ctrl.abort();
 }
 
-module.exports = { register, cancelAll, MODELS };
+module.exports = { register, cancelAll, warmUp: () => worker.warmUp(), MODELS };

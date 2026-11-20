@@ -1095,7 +1095,10 @@ async function runProcess() {
   try {
     const t0 = performance.now();
     const stale = () => gen !== state.generation;
-    await refreshSystem(); // aktuell freien Speicher berücksichtigen
+    // Grenzen hängen nur von der Leistungsstufe ab: einmal abwarten, danach nur im
+    // Hintergrund aktualisieren (Anzeige des freien Speichers), statt jeden Durchlauf zu bremsen
+    if (state.sys) refreshSystem();
+    else await refreshSystem();
     if (stale()) return;
     applyLimits(s);
     Run.start(planSteps(s));
@@ -1134,7 +1137,7 @@ async function runProcess() {
     }
 
     // 4. Rasterverarbeitung im Worker (blockiert die Oberfläche nicht)
-    const { w, h, bits, gray8, tracePng, imagePng, imageB64, sil } =
+    const { w, h, bits, gray8, trace, imagePng, imageB64, sil } =
       await Run.track('render', Pipeline.render(source, mask, s, lineMask, s.textBlocks.length && source !== work ? work : null));
     if (stale()) return;
     const widthMm = s.widthMm;
@@ -1142,23 +1145,25 @@ async function runProcess() {
     const mmPerPx = widthMm / w;
     const dpi = s.mode === 'dither' || s.mode === 'relief' ? s.dpi : w / (widthMm / 25.4);
 
-    // 5. Vektorisierung (Potrace im eigenen Prozess)
-    let fillPath = null;
-    if (tracePng) {
-      fillPath = await Run.track('trace',
-        window.api.trace(tracePng, { turdSize: s.turdSize, alphaMax: s.alphaMax, optTolerance: s.optTolerance }));
-      if (stale()) return;
-    }
-    let outline = null;
-    if (sil) {
-      const d = await Run.track('trace-outline', window.api.trace(sil.png, {
+    // 5. Vektorisierung (Potrace im eigenen Prozess) – Füllung und Umrisslinie parallel
+    const fillJob = trace
+      ? Run.track('trace', window.api.trace({ bits, w, h },
+        { turdSize: s.turdSize, alphaMax: s.alphaMax, optTolerance: s.optTolerance }, 'fill'))
+      : null;
+    const outlineJob = sil
+      ? Run.track('trace-outline', window.api.trace({ bits: sil.bits, w: sil.w, h: sil.h }, {
         turdSize: Math.round(sil.w * sil.h * 0.0005), // Kleinteile ignorieren
         alphaMax: 1.2,
         optTolerance: 0.5,
-      }));
-      if (stale()) return;
-      outline = { d, pad: sil.pad };
-    }
+      }, 'outline'))
+      : null;
+    // beide abwarten, auch wenn einer scheitert (sonst bliebe eine Ablehnung unbehandelt)
+    const [fillRes, outlineRes] = await Promise.allSettled([fillJob, outlineJob]);
+    if (stale()) return;
+    if (fillRes.status === 'rejected') throw fillRes.reason;
+    if (outlineRes.status === 'rejected') throw outlineRes.reason;
+    const fillPath = fillRes.value;
+    const outline = sil ? { d: outlineRes.value, pad: sil.pad } : null;
 
     const doc = { w, h, widthMm, fillPath, imageB64, outline };
     const svg = Encoders.svgDocument(doc);

@@ -132,6 +132,9 @@ Läuft vor allen anderen Schritten (Arbeitsgröße je nach Rechner 1024–1600 p
 - **Abbrechen** (Knopf im Fortschrittsfeld oder Esc): stoppt Berechnungen, KI, Vektorisierung
   und Downloads; das letzte Ergebnis bleibt erhalten.
 - **Zwischenspeicher:** KI-Ergebnisse werden pro Bild gemerkt – Umschalten geht sofort.
+- **Schnelle Vektorisierung:** Das Binärbild geht direkt an Potrace (kein PNG-Umweg), die
+  Pfadsuche ist beschleunigt, Füllung und Umrisslinie laufen parallel in eigenen Prozessen.
+  Vektorisierungs- und KI-Prozess werden beim Start vorgestartet.
 
 ## Anpassung an den Rechner
 
