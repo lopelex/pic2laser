@@ -192,10 +192,10 @@ function download(id, onProgress) {
   return p;
 }
 
-/** Lädt eine Datei, prüft die SHA-256-Prüfsumme und legt sie erst danach ab. */
 // laufende Downloads (zum Abbrechen)
 const activeDownloads = new Set();
 
+/** Lädt eine Datei, prüft die SHA-256-Prüfsumme und legt sie erst danach ab (abbrechbar). */
 async function downloadFile(part, target, onBytes) {
   const tmp = `${target}.part`;
   const ctrl = new AbortController();
@@ -274,29 +274,40 @@ const worker = {
       serviceName: 'Pic2Laser KI',
       env: { ...process.env, PIC2LASER_MODEL_BUDGET_MB: String(limits.modelBudgetMB), PIC2LASER_THREADS: String(limits.threads) },
     });
-    this.proc.on('message', (msg) => {
+    const proc = this.proc;
+    proc.on('message', (msg) => {
+      if (proc !== this.proc) return; // Antwort eines abgebrochenen Prozesses ignorieren
       const job = this.pending.get(msg.id);
       if (!job) return;
       this.pending.delete(msg.id);
       if (msg.ok) job.resolve(msg.result);
       else job.reject(new Error(msg.error));
     });
-    this.proc.on('exit', () => {
+    proc.on('exit', () => {
+      if (proc !== this.proc) return; // abgebrochener Prozess – dessen Jobs sind schon abgelehnt
       this.proc = null;
-      // beim bewussten Abbrechen „cancelled“ melden (der Renderer zeigt dann keine Fehlermeldung)
-      const msg = this.cancelling ? 'cancelled' : 'KI-Prozess wurde beendet';
-      this.cancelling = false;
-      for (const job of this.pending.values()) job.reject(new Error(msg));
+      for (const job of this.pending.values()) job.reject(new Error('KI-Prozess wurde beendet'));
       this.pending.clear();
     });
-    return this.proc;
+    return proc;
   },
 
-  /** Laufende und wartende KI-Berechnungen abbrechen (Prozess beenden, startet bei Bedarf neu). */
+  // Zählt Abbrüche – ein Lauf, der vor dem Abbruch begonnen hat, rechnet danach nicht weiter
+  epoch: 0,
+
+  /**
+   * Laufende und wartende KI-Berechnungen abbrechen. Der Prozess wird nur beendet, wenn er
+   * tatsächlich etwas rechnet (sonst bleiben die geladenen Modelle erhalten). Neue Anfragen
+   * gehen sofort an einen neuen Prozess, nicht an den sterbenden.
+   */
   cancel() {
-    if (!this.proc) return;
-    this.cancelling = true;
-    this.proc.kill();
+    this.epoch++;
+    if (!this.proc || this.pending.size === 0) return;
+    const old = this.proc;
+    this.proc = null;
+    for (const job of this.pending.values()) job.reject(new Error('cancelled'));
+    this.pending.clear();
+    old.kill();
   },
 
   /** Alle zwischengespeicherten Modelle außer `keep` freigeben. */
@@ -320,8 +331,11 @@ const worker = {
  * Rückgabe: { name: { data, dims } }
  */
 async function run(id, feeds, outputs, onProgress) {
+  const epoch = worker.epoch;
   const file = await ensure(id, onProgress);
   await checkMemory(id, file, feeds);
+  // inzwischen abgebrochen (z. B. während der Speicherprüfung)? Dann nicht mehr rechnen.
+  if (epoch !== worker.epoch) throw new Error('cancelled');
   return worker.run(file, feeds, outputs);
 }
 

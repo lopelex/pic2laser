@@ -62,8 +62,10 @@ const tracer = {
 
   ensureProc() {
     if (this.proc) return;
-    this.proc = utilityProcess.fork(path.join(__dirname, 'trace-worker.js'), [], { serviceName: 'Pic2Laser Vektorisierung' });
-    this.proc.on('message', (msg) => {
+    const proc = utilityProcess.fork(path.join(__dirname, 'trace-worker.js'), [], { serviceName: 'Pic2Laser Vektorisierung' });
+    this.proc = proc;
+    proc.on('message', (msg) => {
+      if (proc !== this.proc) return; // Antwort eines abgebrochenen Prozesses ignorieren
       const job = this.running;
       if (!job || job.id !== msg.id) return;
       this.running = null;
@@ -71,27 +73,32 @@ const tracer = {
       else job.reject(new Error(msg.error));
       this.next();
     });
-    this.proc.on('exit', () => {
+    proc.on('exit', () => {
+      if (proc !== this.proc) return; // abgebrochener Prozess – schon abgekoppelt
       this.proc = null;
       if (this.running) {
-        this.running.reject(new Error(this.cancelling ? 'cancelled' : 'Vektorisierung abgebrochen'));
+        this.running.reject(new Error('Vektorisierung abgebrochen'));
         this.running = null;
       }
-      this.cancelling = false;
       this.next();
     });
   },
 
-  /** Laufende und wartende Vektorisierungen abbrechen. */
+  /**
+   * Laufende und wartende Vektorisierungen abbrechen. Der laufende Prozess wird sofort
+   * abgekoppelt und beendet – neue Aufträge gehen an einen neuen Prozess.
+   */
   cancel() {
     if (this.pending) {
-      const err = new Error('cancelled');
-      this.pending.reject(err);
+      this.pending.reject(new Error('cancelled'));
       this.pending = null;
     }
     if (this.proc && this.running) {
-      this.cancelling = true;
-      this.proc.kill();
+      const old = this.proc;
+      this.proc = null;
+      this.running.reject(new Error('cancelled'));
+      this.running = null;
+      old.kill();
     }
   },
 

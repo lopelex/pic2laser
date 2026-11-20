@@ -1,11 +1,15 @@
 # Bekannte Fehler
 
+> **Status:** Alle neun Punkte sind in Version 1.1.3 behoben und getestet (Download abbrechen,
+> Esc im Ruhezustand, erneuter Download, Abbrechen ohne laufende KI, neues Bild, Umrisslinie,
+> Abbrechen während KI-Berechnung).
+
 Ergebnis einer Code-Prüfung vom 20.11.2026 (Stand: Version 1.1.2 plus noch nicht committete
 Abbrechen-Funktion und Ergebnis-Info). Zeilennummern beziehen sich auf diesen Stand.
 
 ## Wichtig
 
-### 1. Fortschrittsleiste bleibt nach abgebrochenem Download hängen
+### 1. Fortschrittsleiste bleibt nach abgebrochenem Download hängen – ✅ behoben
 **Ort:** `src/renderer/app.js:1509–1521` (Download-Fortschritt), `src/renderer/app.js:1706–1716` (`cancelAll`)
 
 `cancelAll()` setzt nur `Run.downloading = false`, leert aber `downloadStarts` nicht. Ein
@@ -27,7 +31,7 @@ Bei fehlgeschlagenen Downloads passiert das schon heute, durch das Abbrechen jet
 **Lösung:** In `cancelAll()` (und bei Download-Fehlern) `downloadStarts` leeren bzw. den
 betroffenen Eintrag entfernen.
 
-### 2. „Download fehlgeschlagen: cancelled“ nach dem Abbrechen
+### 2. „Download fehlgeschlagen: cancelled“ nach dem Abbrechen – ✅ behoben
 **Ort:** `src/renderer/app.js:1477–1483` (Knopf „laden“ in der Modellliste)
 
 Im `catch` fehlt die Prüfung `isCancelled(err)`. Wird ein Download aus der Modellliste
@@ -37,13 +41,13 @@ abgebrochen, erscheint nach „Berechnung abgebrochen.“ zusätzlich eine Fehle
 
 ## Kleinigkeiten
 
-### 3. Kommentar über der falschen Stelle
+### 3. Kommentar über der falschen Stelle – ✅ behoben
 **Ort:** `src/main/models.js:195–197`
 
 Der Kommentar „Lädt eine Datei, prüft die SHA-256-Prüfsumme…“ steht über `const activeDownloads`
 statt über `async function downloadFile`. Editor und Hover ordnen ihn deshalb falsch zu.
 
-### 4. Abbrechen trifft nachfolgende Vektorisierung
+### 4. Abbrechen trifft nachfolgende Vektorisierung – ✅ behoben
 **Ort:** `src/main/main.js:66–73`, `86–96` (`tracer`)
 
 Kommt das Ergebnis des laufenden Jobs nach `kill()`, aber vor `exit`, wird `running = null`
@@ -51,7 +55,7 @@ gesetzt und `next()` schickt einen inzwischen neu eingereihten Job an den sterbe
 Der folgende `exit` lehnt diesen gültigen Job mit „cancelled“ ab. Der Durchlauf endet ohne
 Ergebnis und ohne Meldung. Das Zeitfenster ist eng.
 
-### 5. KI-Prozess: Abbruch wirkt in zwei Zeitfenstern nicht richtig
+### 5. KI-Prozess: Abbruch wirkt in zwei Zeitfenstern nicht richtig – ✅ behoben
 **Ort:** `src/main/models.js:269–270`, `296–300`, `322–326`
 
 - **(a) Abbruch während `checkMemory`:** `run()` wartet bei knappem Speicher bis zu 300 ms in
@@ -62,7 +66,7 @@ Ergebnis und ohne Meldung. Das Zeitfenster ist eng.
   landet beim sterbenden Prozess, weil `this.proc` noch gesetzt ist. Sie wird still mit
   „cancelled“ abgelehnt.
 
-### 6. Abbrechen verwirft geladene Modelle unnötig
+### 6. Abbrechen verwirft geladene Modelle unnötig – ✅ behoben
 **Ort:** `src/main/models.js:296–300` (`worker.cancel()`)
 
 `worker.cancel()` beendet den KI-Prozess auch dann, wenn er gerade nichts rechnet, etwa beim
@@ -71,14 +75,14 @@ ONNX-Sessions verloren, und der nächste KI-Schritt muss die Modelle neu laden.
 
 **Lösung:** Nur beenden, wenn Jobs in `pending` liegen.
 
-### 7. Ergebnis-Info bleibt nach neuem Bild stehen
+### 7. Ergebnis-Info bleibt nach neuem Bild stehen – ✅ behoben
 **Ort:** `src/renderer/app.js:635`, `1679–1690` (`renderResultInfo`)
 
 Beim Laden eines neuen Bildes wird nur `state.result = null` gesetzt, `#result-info` aber nicht
 ausgeblendet. Wird die neue Umwandlung abgebrochen oder schlägt sie fehl, bleibt die Info
 „⤴ Herausziehen: … mm“ des alten Ergebnisses sichtbar, obwohl sich nichts herausziehen lässt.
 
-### 8. Ergebnis-Info zeigt zuerst die Größe ohne Umrisslinie
+### 8. Ergebnis-Info zeigt zuerst die Größe ohne Umrisslinie – ✅ behoben
 **Ort:** `src/renderer/app.js:1165–1173`
 
 `scheduleDragPrepare()` ruft `renderResultInfo` auf, bevor `totalWmm` und `totalHmm` gesetzt sind.
@@ -88,7 +92,7 @@ stehen.
 
 **Lösung:** `totalWmm`/`totalHmm` direkt im Objekt-Literal von `state.result` setzen.
 
-### 9. Abbrechen kann einen gerade neu gestarteten Durchlauf treffen
+### 9. Abbrechen kann einen gerade neu gestarteten Durchlauf treffen – ✅ behoben
 **Ort:** `src/renderer/app.js:1706–1716` (`cancelAll`)
 
 `cancelAll` erhöht `state.generation` gleich am Anfang, ruft `Run.stop()`, `hideProgress()` und

@@ -633,6 +633,8 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   state.source = { name, ext, bytes, bitmap, url, savedId: historyId };
   state.historyId = historyId;
   state.result = null;
+  dragReady = false; // altes Ergebnis lässt sich nicht mehr herausziehen
+  renderResultInfo(null);
   state.cache = new Map();
   state.inflight = new Map();
   state.faceCount = null;
@@ -1162,15 +1164,14 @@ async function runProcess() {
     const svg = Encoders.svgDocument(doc);
     const previewSvg = Encoders.svgDocument({ ...doc, preview: true });
 
+    const pad = outline ? outline.pad : 0;
+    const totalW = (w + 2 * pad) * mmPerPx, totalH = (h + 2 * pad) * mmPerPx;
     state.result = {
       w, h, bits, gray8, svg, widthMm, heightMm, dpi, mode: s.mode, transparent: s.transparent,
       mmPerPx, outline, outlineOnly: !!(s.outline && s.outlineOnly), // für Rasterexporte mit Umrisslinie
+      totalWmm: totalW, totalHmm: totalH, // inkl. Umrisslinie (SVG-Gesamtgröße)
     };
     scheduleDragPrepare();
-    const pad = outline ? outline.pad : 0;
-    const totalW = (w + 2 * pad) * mmPerPx, totalH = (h + 2 * pad) * mmPerPx;
-    state.result.totalWmm = totalW; // inkl. Umrisslinie (SVG-Gesamtgröße)
-    state.result.totalHmm = totalH;
     // Rasterergebnisse ohne Umriss als PNG anzeigen (schärfer), sonst das SVG
     if (imagePng && !outline) showResult(new Blob([imagePng], { type: 'image/png' }), s.mode === 'dither');
     else showResult(new Blob([previewSvg], { type: 'image/svg+xml' }), false);
@@ -1429,7 +1430,13 @@ async function ensureModel(id) {
   if (info && !info.available && info.downloadable) {
     showProgress(`Lade Modell „${MODEL_NAMES[id] || id}“ (${fmtMB(info.size)}) …`, 0);
   }
-  await window.api.models.ensure(id);
+  try {
+    await window.api.models.ensure(id);
+  } finally {
+    // abgebrochene/fehlgeschlagene Downloads senden kein „done“ – Eintrag hier aufräumen
+    downloadStarts.delete(id);
+    Run.downloading = downloadStarts.size > 0;
+  }
   if (info && !info.available) await refreshModels();
 }
 
@@ -1480,7 +1487,7 @@ function renderModels() {
           await ensureModel(m.id);
           toast(`Modell „${m.label}“ installiert`);
         } catch (err) {
-          toast(`Download fehlgeschlagen: ${cleanError(err)}`, true);
+          if (!isCancelled(err)) toast(`Download fehlgeschlagen: ${cleanError(err)}`, true);
         } finally {
           hideProgress();
           refreshModels();
@@ -1704,15 +1711,20 @@ async function dragIcon(r) {
  * Modell-Downloads. Das letzte fertige Ergebnis bleibt stehen.
  */
 async function cancelAll() {
-  state.generation++; // laufende Durchläufe gelten als veraltet
+  const gen = ++state.generation; // laufende Durchläufe gelten als veraltet
   clearTimeout(processTimer);
   Pipeline.cancel();
-  try { await window.api.cancelAll(); } catch { /* ignorieren */ }
+  // Oberfläche sofort zurücksetzen (vor dem Warten auf den Main-Prozess)
   Run.stop();
+  downloadStarts.clear();
   Run.downloading = false;
   hideProgress();
   setBusy(false);
   toast('Berechnung abgebrochen.');
+  try { await window.api.cancelAll(); } catch { /* ignorieren */ }
+  // Hat inzwischen eine neue Berechnung begonnen (z. B. durch eine geänderte Einstellung),
+  // kann der Abbruch im Main-Prozess sie mit erwischt haben – dann neu starten.
+  if (state.generation !== gen) scheduleProcess(0);
 }
 
 function bindCancel() {
