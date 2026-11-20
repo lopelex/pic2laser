@@ -1,7 +1,7 @@
 {
   "name": "pic2laser",
-  "version": "1.0.0",
-  "description": "Bilder in Schwarz-Wei\u00df-SVGs f\u00fcr LightBurn umwandeln",
+  "version": "1.1.0",
+  "description": "Bilder in Schwarz-Weiß-SVGs für LightBurn umwandeln",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
