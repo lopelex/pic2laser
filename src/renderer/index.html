@@ -15,7 +15,7 @@
       <span class="brand-sub">Bild → Schwarz-Weiß-SVG für LightBurn</span>
     </div>
     <!-- Fortschritt & Restzeit im freien Bereich der Kopfzeile -->
-    <div class="progress" id="progress" hidden><div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div><span id="progress-label"></span></div>
+    <div class="progress" id="progress" hidden><div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div><span id="progress-label"></span><button class="btn btn-small" id="btn-cancel" title="Alle laufenden Berechnungen und Downloads abbrechen (Esc)">Abbrechen</button></div>
     <div class="topbar-actions">
       <button id="btn-open" class="btn">Bild öffnen…</button>
       <button id="btn-save-history" class="btn" disabled>In Historie speichern</button>
@@ -315,7 +315,7 @@
             <input type="range" data-key="outlineCloseMm" min="0" max="15" step="0.1" />
           </label>
           <label class="check"><input type="checkbox" data-key="outlineOnly" /> Nur Umrisslinie (ohne Gravur)</label>
-          <p class="hint">Rote Linie im SVG = eigene Ebene in LightBurn, z.&nbsp;B. zum Ausschneiden. Nur im SVG enthalten.</p>
+          <p class="hint">Im SVG rote Linie = eigene Ebene in LightBurn, z.&nbsp;B. zum Ausschneiden. In exportierten Bildern (PNG/JPG/BMP) als schwarze Linie enthalten – gleiche Größe und Lage wie das SVG.</p>
         </div>
       </section>
 
@@ -380,6 +380,7 @@
         </div>
         <div class="pane checker" id="pane-result">
           <div class="pane-label">Ergebnis</div>
+          <div class="pane-info" id="result-info" hidden></div>
           <div class="pane-scroll"><img id="img-result" alt="" draggable="true" title="Ziehen, um die Datei z. B. direkt in LightBurn abzulegen" /></div>
           <div class="busy" id="busy"><div class="spinner"></div></div>
         </div>

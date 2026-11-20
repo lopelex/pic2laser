@@ -340,7 +340,7 @@ body.has-image .dropzone:not(.dragging) { display: none; }
 }
 .progress[hidden] { display: none; }
 .progress-bar {
-  flex: 0 1 220px; min-width: 80px; height: 6px;
+  flex: 0 1 140px; min-width: 60px; height: 6px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
   overflow: hidden; position: relative;
 }
@@ -428,3 +428,25 @@ body.panning, body.panning * { cursor: grabbing !important; user-select: none; }
 /* Ergebnis lässt sich herausziehen (Drag & Drop, z. B. in LightBurn) */
 #img-result { cursor: grab; -webkit-user-drag: element; }
 #img-result:active { cursor: grabbing; }
+
+/* Kleine Info im Ergebnisfeld (Herausziehen, Formate, Größe) */
+.pane-info {
+  position: absolute; left: 8px; bottom: 8px; z-index: 2;
+  max-width: calc(100% - 16px);
+  background: rgba(0, 0, 0, .65);
+  color: #fff;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 10px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+}
+.pane-info[hidden] { display: none; }
+
+/* Abbrechen-Knopf im Fortschrittsbereich */
+#btn-cancel { flex: none; margin-left: 4px; }
+#btn-cancel:hover { border-color: var(--danger); color: #fff; background: rgba(255, 77, 94, .25); }
+/* Restzeit-Text hat Vorrang vor der Balkenbreite */
+#progress-label { flex: 0 1 auto; }
+.progress-bar { flex-shrink: 3; }
+.progress { margin: 0 12px; }

@@ -26,7 +26,9 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
 ## Funktionen
 
 - **Drag & Drop**, Datei-Dialog (Strg+O) oder Einfügen aus der Zwischenablage (Strg+V)
-- **Live-Vorschau** Original/Ergebnis nebeneinander, Zoom (Strg+Mausrad), synchrones Scrollen
+- **Live-Vorschau** Original/Ergebnis nebeneinander, synchrones Scrollen.
+  Mausrad bzw. Strg+Mausrad/Pinch zoomt auf die Mausposition, Verschieben durch Ziehen
+  (im Ergebnis mit der mittleren Maustaste)
 - **Presets**: mitgelieferte Vorlagen (Logo, Foto, Porträt-Strichzeichnung, Sticker mit Schnittkontur,
   Holz-Relief …) und eigene Presets speichern/überschreiben/löschen (`<userData>/presets.json`)
 - **Vier Modi**
@@ -35,7 +37,9 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
   - *Foto*: Dithering mit Floyd-Steinberg, Atkinson, Jarvis, Stucki, Bayer, Schwellwert
   - *Relief*: KI-Tiefenkarte als Graustufenbild für 3D-Reliefgravur
 - **Freistellen**: KI schnell / präzise / beste Qualität / Porträt, Objekt per Klick auswählen (MobileSAM)
-  oder nach Farbe (Hintergrund vom Rand + Klickpunkte)
+  oder nach Farbe (Hintergrund vom Rand + Klickpunkte). Bei MobileSAM schließen Rechtsklick oder Alt+Klick
+  Bereiche aus; ein Klick auf einen vorhandenen Punkt entfernt ihn. Entfernter Hintergrund wird in der
+  Vorschau rot schraffiert oder wahlweise ausgeblendet.
 - **Altes Foto restaurieren**: Rauschen/Körnung entfernen, Kratzer & Staub finden und per KI auffüllen
   (Augen, Nase und Mund geschützt), Gesichter per KI restaurieren (ausgerichtet über 5 Gesichtspunkte,
   Tonwerte vom Original)
@@ -52,9 +56,39 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
   Doppelklick auf einen Regler setzt ihn zurück.
 - **Ausgabegröße in mm**: SVGs enthalten `width/height` in mm, Rasterbilder die DPI –
   LightBurn importiert alles direkt in der richtigen Größe.
-- **Export** als SVG, PNG, JPG und/oder 1-Bit-BMP (Strg+S)
+- **Export** als SVG, PNG, JPG und/oder 1-Bit-BMP (Strg+S oder Strg+E)
+- **Herausziehen**: Das Ergebnis lässt sich per Drag & Drop direkt in LightBurn, Explorer oder Finder ziehen
+  (in den gewählten Exportformaten). Eine Info im Ergebnisfeld zeigt Formate, Größe in mm und DPI.
+- **Abbrechen**: Knopf neben dem Fortschrittsbalken oder Esc stoppt laufende Berechnungen,
+  KI-Prozess, Vektorisierung und Modell-Downloads; das letzte fertige Ergebnis bleibt stehen.
 - **Historie**: Jede exportierte Umwandlung wird mit Original, Einstellungen, SVG und PNG gespeichert
-  (`<userData>/history`). Ein Klick öffnet sie wieder mit allen Einstellungen.
+  (`<userData>/history`); zusätzlich über „In Historie speichern“ ohne Export. Ein Klick öffnet sie wieder
+  mit allen Einstellungen, die Liste ist durchsuchbar.
+
+## Tastenkürzel
+
+| Kürzel | Aktion |
+|---|---|
+| Strg/⌘+O | Bild öffnen |
+| Strg/⌘+V | Bild aus der Zwischenablage einfügen |
+| Strg/⌘+S, Strg/⌘+E | Exportieren |
+| Esc | Laufende Berechnung abbrechen |
+| Doppelklick auf Regler | Regler zurücksetzen |
+
+## Speicher & Leistung
+
+Beim Start wird der Arbeitsspeicher ermittelt und eine Leistungsstufe gewählt
+(`src/main/resources.js`). Sie begrenzt u. a. gleichzeitig geladene Modelle, Arbeitsgröße
+beim Restaurieren, Kachelgröße fürs Entrauschen, Eingangsgröße der KI-Vergrößerung und Threads:
+
+| Stufe | Gesamt-RAM | Modell-Budget | max. Arbeitsbild | Threads |
+|---|---|---|---|---|
+| niedrig | < 7 GB | 600 MB | 16 MP | 2 |
+| mittel | < 14 GB | 1500 MB | 36 MP | 4 |
+| hoch | ab 14 GB | 3000 MB | 50 MP | alle Kerne |
+
+Zum Testen lässt sich ein kleinerer Rechner simulieren:
+`PIC2LASER_SIMULATE_RAM_MB=8192 npm start`
 
 ## KI-Modelle
 
@@ -82,11 +116,19 @@ Downloads sind auf feste Versionen gepinnt und werden per SHA-256 geprüft; sie 
 
 ## Aufbau
 
-- `src/main/main.js` – Fenster, Potrace-Vektorisierung, Dateidialoge, Historie, Presets
-- `src/main/models.js` – KI-Modelle: Registry, Download mit Prüfsumme, Inferenz
+- `src/main/main.js` – Fenster, Steuerung der Vektorisierung, Dateidialoge, Drag & Drop, Historie, Presets, Abbrechen
+- `src/main/trace-worker.js` – Potrace-Vektorisierung als Utility-Prozess (blockiert das Fenster nicht)
+- `src/main/models.js` – KI-Modelle: Registry, Download mit Prüfsumme (abbrechbar), Steuerung des KI-Prozesses
+- `src/main/model-worker.js` – KI-Inferenz als Utility-Prozess (onnxruntime-node, Fallback onnxruntime-web)
+- `src/main/resources.js` – Arbeitsspeicher/CPU ermitteln, Leistungsstufen und Grenzen
 - `src/main/preload.js` – sichere IPC-Brücke (`window.api`)
+- `src/renderer/pipeline-worker.js` – Web Worker für die rechenintensive Bildverarbeitung
 - `src/renderer/processing.js` – Bildverarbeitung (Anpassungen, Schwellwert, Dithering, Kanten, Umriss)
 - `src/renderer/ai.js` – Vor-/Nachverarbeitung für alle KI-Modelle
 - `src/renderer/segmentation.js` – Freistellen (Masken, Farbmaske, Klickpunkte)
+- `src/renderer/restore.js` – Altes Foto restaurieren (Entrauschen, Kratzer, Gesichter)
 - `src/renderer/encoders.js` – SVG-, PNG-, JPG- und BMP-Ausgabe mit DPI-Angaben
-- `src/renderer/app.js` – Oberfläche, Vorschau, Export, Historie
+- `src/renderer/app.js` – Oberfläche, Presets, Vorschau, Zoom, Export, Historie
+- `src/renderer/index.html`, `styles.css` – Oberfläche
+- `models/` – mitgelieferte ONNX-Modelle
+- `build/` – Icon, macOS-Intel-Konfiguration, Ad-hoc-Signierskript

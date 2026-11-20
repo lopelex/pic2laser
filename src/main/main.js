@@ -74,11 +74,25 @@ const tracer = {
     this.proc.on('exit', () => {
       this.proc = null;
       if (this.running) {
-        this.running.reject(new Error('Vektorisierung abgebrochen'));
+        this.running.reject(new Error(this.cancelling ? 'cancelled' : 'Vektorisierung abgebrochen'));
         this.running = null;
       }
+      this.cancelling = false;
       this.next();
     });
+  },
+
+  /** Laufende und wartende Vektorisierungen abbrechen. */
+  cancel() {
+    if (this.pending) {
+      const err = new Error('cancelled');
+      this.pending.reject(err);
+      this.pending = null;
+    }
+    if (this.proc && this.running) {
+      this.cancelling = true;
+      this.proc.kill();
+    }
   },
 
   next() {
@@ -104,6 +118,13 @@ const tracer = {
 };
 
 ipcMain.handle('trace', (_e, pngBytes, params) => tracer.trace(pngBytes, params || {}));
+
+// „Abbrechen“: Vektorisierung, KI-Berechnungen und Modell-Downloads stoppen
+ipcMain.handle('cancel-all', () => {
+  tracer.cancel();
+  models.cancelAll();
+  return true;
+});
 
 /* ------------------------------------------------------------------ */
 /* Presets (eigene Einstellungs-Vorlagen)                             */

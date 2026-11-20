@@ -193,9 +193,25 @@ function download(id, onProgress) {
 }
 
 /** Lädt eine Datei, prüft die SHA-256-Prüfsumme und legt sie erst danach ab. */
+// laufende Downloads (zum Abbrechen)
+const activeDownloads = new Set();
+
 async function downloadFile(part, target, onBytes) {
   const tmp = `${target}.part`;
-  const res = await net.fetch(part.url);
+  const ctrl = new AbortController();
+  activeDownloads.add(ctrl);
+  try {
+    return await downloadFileInner(part, target, tmp, onBytes, ctrl.signal);
+  } catch (err) {
+    await fs.rm(tmp, { force: true });
+    throw ctrl.signal.aborted ? new Error('cancelled') : err;
+  } finally {
+    activeDownloads.delete(ctrl);
+  }
+}
+
+async function downloadFileInner(part, target, tmp, onBytes, signal) {
+  const res = await net.fetch(part.url, { signal });
   if (!res.ok) throw new Error(`Download fehlgeschlagen (HTTP ${res.status})`);
   const hash = crypto.createHash('sha256');
   const out = fsSync.createWriteStream(tmp);
@@ -267,10 +283,20 @@ const worker = {
     });
     this.proc.on('exit', () => {
       this.proc = null;
-      for (const job of this.pending.values()) job.reject(new Error('KI-Prozess wurde beendet'));
+      // beim bewussten Abbrechen „cancelled“ melden (der Renderer zeigt dann keine Fehlermeldung)
+      const msg = this.cancelling ? 'cancelled' : 'KI-Prozess wurde beendet';
+      this.cancelling = false;
+      for (const job of this.pending.values()) job.reject(new Error(msg));
       this.pending.clear();
     });
     return this.proc;
+  },
+
+  /** Laufende und wartende KI-Berechnungen abbrechen (Prozess beenden, startet bei Bedarf neu). */
+  cancel() {
+    if (!this.proc) return;
+    this.cancelling = true;
+    this.proc.kill();
   },
 
   /** Alle zwischengespeicherten Modelle außer `keep` freigeben. */
@@ -338,4 +364,10 @@ function register(ipcMain) {
   ipcMain.handle('system-profile', () => resources.profile());
 }
 
-module.exports = { register, MODELS };
+/** Alles abbrechen: KI-Berechnungen und Modell-Downloads. */
+function cancelAll() {
+  worker.cancel();
+  for (const ctrl of activeDownloads) ctrl.abort();
+}
+
+module.exports = { register, cancelAll, MODELS };

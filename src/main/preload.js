@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   exportFiles: (payload) => ipcRenderer.invoke('export-files', payload),
   dragPrepare: (payload) => ipcRenderer.invoke('drag-prepare', payload),
   dragStart: () => ipcRenderer.send('drag-start'),
+  cancelAll: () => ipcRenderer.invoke('cancel-all'),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
 
   history: {

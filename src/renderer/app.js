@@ -755,6 +755,14 @@ const Pipeline = (() => {
   }
 
   return {
+    /** Laufenden Auftrag sofort abbrechen (Worker beenden). */
+    cancel() {
+      if (!job) return;
+      worker.terminate();
+      worker = null;
+      job.reject(cancelled());
+      job = null;
+    },
     async render(source, mask, s, lineMask = null, textSource = null) {
       const src = await createImageBitmap(source);
       const m = mask ? await createImageBitmap(mask) : null;
@@ -1154,10 +1162,15 @@ async function runProcess() {
     const svg = Encoders.svgDocument(doc);
     const previewSvg = Encoders.svgDocument({ ...doc, preview: true });
 
-    state.result = { w, h, bits, gray8, svg, widthMm, heightMm, dpi, mode: s.mode, transparent: s.transparent };
+    state.result = {
+      w, h, bits, gray8, svg, widthMm, heightMm, dpi, mode: s.mode, transparent: s.transparent,
+      mmPerPx, outline, outlineOnly: !!(s.outline && s.outlineOnly), // für Rasterexporte mit Umrisslinie
+    };
     scheduleDragPrepare();
     const pad = outline ? outline.pad : 0;
     const totalW = (w + 2 * pad) * mmPerPx, totalH = (h + 2 * pad) * mmPerPx;
+    state.result.totalWmm = totalW; // inkl. Umrisslinie (SVG-Gesamtgröße)
+    state.result.totalHmm = totalH;
     // Rasterergebnisse ohne Umriss als PNG anzeigen (schärfer), sonst das SVG
     if (imagePng && !outline) showResult(new Blob([imagePng], { type: 'image/png' }), s.mode === 'dither');
     else showResult(new Blob([previewSvg], { type: 'image/svg+xml' }), false);
@@ -1565,20 +1578,60 @@ function baseName() {
   return state.source.name.replace(/\.[^.]+$/, '') || 'bild';
 }
 
+/**
+ * Rasterbild des Ergebnisses – mit Umrisslinie, falls aktiv. Das Bild wird dann um den
+ * Rand der Umrisslinie erweitert (gleiche Größe und Lage wie das SVG). In Bildern ist die
+ * Linie schwarz (1-Bit-Formate kennen keine Farbe), mind. 0,2 mm breit.
+ */
+function rasterCanvas(r, transparent) {
+  const o = r.outline;
+  if (!o || !o.d) return { canvas: Processing.resultCanvas(r, transparent), w: r.w, h: r.h, composed: false };
+  const W = r.w + 2 * o.pad, H = r.h + 2 * o.pad;
+  const c = new OffscreenCanvas(W, H);
+  const ctx = c.getContext('2d');
+  if (!transparent) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (!r.outlineOnly) ctx.drawImage(Processing.resultCanvas(r, transparent), o.pad, o.pad);
+  // Pfad liegt im Koordinatensystem des erweiterten Bildes (Bild bei pad/pad)
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = Math.max(1, 0.2 / r.mmPerPx);
+  ctx.lineJoin = 'round';
+  ctx.stroke(new Path2D(o.d));
+  return { canvas: c, w: W, h: H, composed: true };
+}
+
 async function buildRasterFiles(r, formats) {
   const files = [];
   if (formats.png) {
-    const canvas = Processing.resultCanvas(r, r.transparent);
+    const { canvas } = rasterCanvas(r, r.transparent);
     const png = await Encoders.canvasBytes(canvas, 'image/png');
     files.push({ ext: 'png', data: Encoders.pngWithDpi(png, r.dpi) });
   }
   if (formats.jpg) {
-    const canvas = Processing.resultCanvas(r, false);
+    const { canvas } = rasterCanvas(r, false);
     const jpg = await Encoders.canvasBytes(canvas, 'image/jpeg', 0.95);
     files.push({ ext: 'jpg', data: Encoders.jpgWithDpi(jpg, r.dpi) });
   }
   if (formats.bmp) {
-    const bmp = r.gray8 ? Encoders.bmp8gray(r.gray8, r.w, r.h, r.dpi) : Encoders.bmp1bit(r.bits, r.w, r.h, r.dpi);
+    let bmp;
+    const { canvas, w, h, composed } = rasterCanvas(r, false);
+    if (!composed) {
+      bmp = r.gray8 ? Encoders.bmp8gray(r.gray8, r.w, r.h, r.dpi) : Encoders.bmp1bit(r.bits, r.w, r.h, r.dpi);
+    } else {
+      // zusammengesetztes Bild (mit Umrisslinie) wieder in Bits bzw. Graustufen umwandeln
+      const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+      if (r.gray8) {
+        const g = new Uint8ClampedArray(w * h);
+        for (let p = 0; p < w * h; p++) g[p] = d[p * 4];
+        bmp = Encoders.bmp8gray(g, w, h, r.dpi);
+      } else {
+        const bits = new Uint8Array(w * h);
+        for (let p = 0; p < w * h; p++) bits[p] = d[p * 4] < 128 ? 1 : 0;
+        bmp = Encoders.bmp1bit(bits, w, h, r.dpi);
+      }
+    }
     files.push({ ext: 'bmp', data: bmp });
   }
   return files;
@@ -1595,6 +1648,14 @@ let dragTimer = null;
 function scheduleDragPrepare(delay = 250) {
   dragReady = false;
   clearTimeout(dragTimer);
+  // Info sofort mit den gewählten Formaten aktualisieren (Dateien folgen im Hintergrund)
+  const fs0 = state.settings;
+  const exts = [];
+  if (fs0.fmtSvg || (!fs0.fmtPng && !fs0.fmtJpg && !fs0.fmtBmp)) exts.push('svg');
+  if (fs0.fmtPng) exts.push('png');
+  if (fs0.fmtJpg) exts.push('jpg');
+  if (fs0.fmtBmp) exts.push('bmp');
+  renderResultInfo(exts);
   dragTimer = setTimeout(async () => {
     const r = state.result;
     if (!r) return;
@@ -1607,21 +1668,60 @@ function scheduleDragPrepare(delay = 250) {
       if (r !== state.result) return; // inzwischen neu berechnet
       await window.api.dragPrepare({ baseName: baseName(), files, icon });
       dragReady = r === state.result;
+      renderResultInfo(files.map((f) => f.ext));
     } catch (err) {
       console.error(err);
     }
   }, delay);
 }
 
+/** Kleine Info im Ergebnisfeld: herausziehbar, welche Dateien, welche Größe. */
+function renderResultInfo(exts) {
+  const el = $('#result-info');
+  const r = state.result;
+  if (!r || !exts || !exts.length) { el.hidden = true; return; }
+  const mm = (v) => (Math.round(v * 10) / 10).toString().replace('.', ',');
+  const size = `${mm(r.totalWmm ?? r.widthMm)} × ${mm(r.totalHmm ?? r.heightMm)} mm`;
+  const raster = exts.some((e) => e !== 'svg') ? ` · ${Math.round(r.dpi)} DPI` : '';
+  el.textContent = `⤴ Herausziehen: ${exts.map((e) => e.toUpperCase()).join(' + ')} · ${size}${raster}`;
+  el.title = 'Ergebnis mit der Maus herausziehen, z. B. direkt in LightBurn, den Finder oder Explorer. Formate unter „Exportformate“.';
+  el.hidden = false;
+}
+
 /** Kleines Vorschaubild für den Mauszeiger beim Ziehen. */
 async function dragIcon(r) {
-  const full = Processing.resultCanvas(r, false);
-  const sc = Math.min(1, 96 / Math.max(r.w, r.h));
-  const c = new OffscreenCanvas(Math.max(1, Math.round(r.w * sc)), Math.max(1, Math.round(r.h * sc)));
+  const { canvas: full, w: fw, h: fh } = rasterCanvas(r, false); // inkl. Umrisslinie
+  const sc = Math.min(1, 96 / Math.max(fw, fh));
+  const c = new OffscreenCanvas(Math.max(1, Math.round(fw * sc)), Math.max(1, Math.round(fh * sc)));
   const ctx = c.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(full, 0, 0, c.width, c.height);
   return Encoders.canvasBytes(c, 'image/png');
+}
+
+/**
+ * Alles abbrechen: laufende Berechnung (Worker), KI-Prozess, Vektorisierung und
+ * Modell-Downloads. Das letzte fertige Ergebnis bleibt stehen.
+ */
+async function cancelAll() {
+  state.generation++; // laufende Durchläufe gelten als veraltet
+  clearTimeout(processTimer);
+  Pipeline.cancel();
+  try { await window.api.cancelAll(); } catch { /* ignorieren */ }
+  Run.stop();
+  Run.downloading = false;
+  hideProgress();
+  setBusy(false);
+  toast('Berechnung abgebrochen.');
+}
+
+function bindCancel() {
+  $('#btn-cancel').addEventListener('click', cancelAll);
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const busy = $('#busy').classList.contains('on') || !$('#progress').hidden;
+    if (busy) { e.preventDefault(); cancelAll(); }
+  });
 }
 
 function bindResultDrag() {
@@ -1665,10 +1765,10 @@ async function exportCurrent() {
 }
 
 async function makeThumb(r) {
-  const full = Processing.resultCanvas(r, false);
-  const scale = Math.min(1, 240 / Math.max(r.w, r.h));
-  const tw = Math.max(1, Math.round(r.w * scale));
-  const th = Math.max(1, Math.round(r.h * scale));
+  const { canvas: full, w: fw, h: fh } = rasterCanvas(r, false); // inkl. Umrisslinie
+  const scale = Math.min(1, 240 / Math.max(fw, fh));
+  const tw = Math.max(1, Math.round(fw * scale));
+  const th = Math.max(1, Math.round(fh * scale));
   const c = new OffscreenCanvas(tw, th);
   const ctx = c.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
@@ -1995,6 +2095,7 @@ function toast(msg, isError = false, action = null) {
 bindControls();
 bindPresets();
 bindResultDrag();
+bindCancel();
 $('#img-original').addEventListener('load', renderMarkers);
 window.addEventListener('resize', renderMarkers);
 for (const b of $$('#view-mode button')) b.addEventListener('click', () => requestAnimationFrame(renderMarkers));
