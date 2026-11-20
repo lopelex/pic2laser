@@ -424,3 +424,7 @@ body.has-image .dropzone:not(.dragging) { display: none; }
 /* Verschieben mit gedrückter Maustaste */
 body.panning, body.panning * { cursor: grabbing !important; user-select: none; }
 .pane-scroll img { -webkit-user-drag: none; }
+
+/* Ergebnis lässt sich herausziehen (Drag & Drop, z. B. in LightBurn) */
+#img-result { cursor: grab; -webkit-user-drag: element; }
+#img-result:active { cursor: grabbing; }

@@ -209,6 +209,7 @@ function setSetting(key, value) {
   if (key === 'bgSeeds' || key === 'samPoints' || key === 'bgRemove') renderMarkers();
   updatePresetHint();
   if (!key.startsWith('fmt')) scheduleProcess();
+  else scheduleDragPrepare(); // andere Formate zum Herausziehen
 }
 
 function bindControls() {
@@ -1154,6 +1155,7 @@ async function runProcess() {
     const previewSvg = Encoders.svgDocument({ ...doc, preview: true });
 
     state.result = { w, h, bits, gray8, svg, widthMm, heightMm, dpi, mode: s.mode, transparent: s.transparent };
+    scheduleDragPrepare();
     const pad = outline ? outline.pad : 0;
     const totalW = (w + 2 * pad) * mmPerPx, totalH = (h + 2 * pad) * mmPerPx;
     // Rasterergebnisse ohne Umriss als PNG anzeigen (schärfer), sonst das SVG
@@ -1582,6 +1584,59 @@ async function buildRasterFiles(r, formats) {
   return files;
 }
 
+/* ------------------------------------------------------------------ */
+/* Drag & Drop des Ergebnisses                                        */
+/* ------------------------------------------------------------------ */
+
+let dragReady = false;
+let dragTimer = null;
+
+/** Bereitet die Dateien zum Herausziehen vor (gewählte Exportformate), im Hintergrund. */
+function scheduleDragPrepare(delay = 250) {
+  dragReady = false;
+  clearTimeout(dragTimer);
+  dragTimer = setTimeout(async () => {
+    const r = state.result;
+    if (!r) return;
+    const s = state.settings;
+    try {
+      const files = [];
+      if (s.fmtSvg || (!s.fmtPng && !s.fmtJpg && !s.fmtBmp)) files.push({ ext: 'svg', data: r.svg });
+      files.push(...(await buildRasterFiles(r, { png: s.fmtPng, jpg: s.fmtJpg, bmp: s.fmtBmp })));
+      const icon = await dragIcon(r);
+      if (r !== state.result) return; // inzwischen neu berechnet
+      await window.api.dragPrepare({ baseName: baseName(), files, icon });
+      dragReady = r === state.result;
+    } catch (err) {
+      console.error(err);
+    }
+  }, delay);
+}
+
+/** Kleines Vorschaubild für den Mauszeiger beim Ziehen. */
+async function dragIcon(r) {
+  const full = Processing.resultCanvas(r, false);
+  const sc = Math.min(1, 96 / Math.max(r.w, r.h));
+  const c = new OffscreenCanvas(Math.max(1, Math.round(r.w * sc)), Math.max(1, Math.round(r.h * sc)));
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(full, 0, 0, c.width, c.height);
+  return Encoders.canvasBytes(c, 'image/png');
+}
+
+function bindResultDrag() {
+  $('#img-result').addEventListener('dragstart', (e) => {
+    e.preventDefault(); // eigenes System-Drag mit echten Dateien statt Bild-URL
+    if (!state.result) return;
+    if (!dragReady) {
+      toast('Die Dateien werden noch vorbereitet – bitte gleich noch einmal ziehen.');
+      return;
+    }
+    window.api.dragStart();
+    saveToHistory(true); // wie beim Export in der Historie festhalten
+  });
+}
+
 async function exportCurrent() {
   const r = state.result;
   if (!r) return toast('Noch kein Ergebnis vorhanden.', true);
@@ -1785,6 +1840,9 @@ function bindView() {
   for (const scroller of $$('.pane-scroll')) {
     scroller.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 && e.button !== 1) return;
+      // Im Ergebnis startet Linksziehen Drag & Drop der Datei – verschoben wird dort mit der mittleren Taste
+      if (e.button === 0 && scroller.closest('#pane-result')) return;
+      if (e.button === 1) e.preventDefault(); // kein Auto-Scroll-Modus
       drag = { scroller, x: e.clientX, y: e.clientY, left: scroller.scrollLeft, top: scroller.scrollTop, moved: false, id: e.pointerId };
     });
   }
@@ -1936,6 +1994,7 @@ function toast(msg, isError = false, action = null) {
 
 bindControls();
 bindPresets();
+bindResultDrag();
 $('#img-original').addEventListener('load', renderMarkers);
 window.addEventListener('resize', renderMarkers);
 for (const b of $$('#view-mode button')) b.addEventListener('click', () => requestAnimationFrame(renderMarkers));

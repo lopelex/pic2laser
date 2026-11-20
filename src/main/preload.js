@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   openImage: () => ipcRenderer.invoke('open-image'),
   exportFiles: (payload) => ipcRenderer.invoke('export-files', payload),
+  dragPrepare: (payload) => ipcRenderer.invoke('drag-prepare', payload),
+  dragStart: () => ipcRenderer.send('drag-start'),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
 
   history: {

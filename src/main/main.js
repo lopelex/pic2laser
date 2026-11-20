@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, utilityProcess } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, utilityProcess, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const crypto = require('crypto');
@@ -193,6 +193,36 @@ ipcMain.handle('export-files', async (_e, { baseName, files }) => {
 
 ipcMain.handle('show-in-folder', (_e, filePath) => {
   if (typeof filePath === 'string') shell.showItemInFolder(filePath);
+});
+
+/* ------------------------------------------------------------------ */
+/* Drag & Drop des Ergebnisses (z. B. direkt in LightBurn)            */
+/* ------------------------------------------------------------------ */
+
+// Die Dateien werden nach jeder Berechnung vorbereitet, damit das Ziehen sofort starten kann
+// (startDrag muss synchron während der Mausbewegung aufgerufen werden).
+const DRAG_DIR = () => path.join(app.getPath('temp'), 'pic2laser-drag');
+let dragPrepared = null; // { paths, icon }
+
+ipcMain.handle('drag-prepare', async (_e, { baseName, files, icon }) => {
+  const dir = DRAG_DIR();
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+  const paths = [];
+  for (const f of files) {
+    const target = path.join(dir, `${sanitize(baseName)}.${f.ext}`);
+    await fs.writeFile(target, typeof f.data === 'string' ? f.data : Buffer.from(f.data));
+    paths.push(target);
+  }
+  let img = icon ? nativeImage.createFromBuffer(Buffer.from(icon)) : nativeImage.createEmpty();
+  if (img.isEmpty()) img = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=');
+  dragPrepared = { paths, icon: img };
+  return paths;
+});
+
+ipcMain.on('drag-start', (e) => {
+  if (!dragPrepared || !dragPrepared.paths.length) return;
+  e.sender.startDrag({ file: dragPrepared.paths[0], files: dragPrepared.paths, icon: dragPrepared.icon });
 });
 
 function sanitize(name) {
