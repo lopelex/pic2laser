@@ -77,7 +77,8 @@ const ui = (() => {
 function saveUi() {
   try { localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(ui)); } catch { /* ignorieren */ }
 }
-const ZOOM_STEPS = [1, 1.5, 2, 3, 4, 6, 8, 12];
+const ZOOM_STEPS = [1, 1.5, 2, 3, 4, 6, 8, 12, 16];
+const ZOOM_MAX = 16;
 
 const MODE_HINTS = {
   vector: 'Ideal für Logos, Schriften, Strichzeichnungen und Silhouetten. Ergebnis sind echte Vektorpfade – in LightBurn als Füllung (Fill) gravieren.',
@@ -101,7 +102,7 @@ const state = {
   historyId: null,
   history: [],
   generation: 0,
-  zoomIndex: 0,
+  zoom: 1,
   viewMode: 'split',
   resultUrl: null,
 };
@@ -1758,16 +1759,58 @@ function bindView() {
   }
   $('#panes').dataset.view = state.viewMode;
 
-  $('#zoom-in').addEventListener('click', () => setZoom(state.zoomIndex + 1));
-  $('#zoom-out').addEventListener('click', () => setZoom(state.zoomIndex - 1));
-  $('#zoom-fit').addEventListener('click', () => setZoom(0));
+  // Knöpfe: zur nächsten Zoomstufe, Mittelpunkt der Ansicht bleibt stehen
+  $('#zoom-in').addEventListener('click', () => setZoomValue(ZOOM_STEPS.find((z) => z > state.zoom + 0.01) ?? ZOOM_MAX));
+  $('#zoom-out').addEventListener('click', () => setZoomValue([...ZOOM_STEPS].reverse().find((z) => z < state.zoom - 0.01) ?? 1));
+  $('#zoom-fit').addEventListener('click', () => setZoomValue(1));
 
-  // Strg + Mausrad zoomt
+  // Mausrad zoomt auf die Mausposition (Trackpad: Pinch zoomt, zwei Finger verschieben)
   $('#panes').addEventListener('wheel', (e) => {
-    if (!e.ctrlKey) return;
+    if (!state.source) return;
+    // Mausrad: deltaY in festen Schritten (meist 100/120 bzw. Zeilen), kein seitlicher Anteil.
+    // Trackpad-Wischen liefert kleine, fließende Werte – das bleibt normales Scrollen.
+    const mouseWheel = e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
+    if (!e.ctrlKey && !mouseWheel) return;
     e.preventDefault();
-    setZoom(state.zoomIndex + (e.deltaY < 0 ? 1 : -1));
+    const scroller = e.target.closest('.pane-scroll');
+    if (!scroller) return;
+    const delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+    const factor = Math.exp(-delta * (e.ctrlKey && !mouseWheel ? 0.01 : 0.0015));
+    setZoomValue(state.zoom * factor, { scroller, x: e.clientX, y: e.clientY });
   }, { passive: false });
+
+  // Verschieben mit gedrückter Maustaste (erst ab einigen Pixeln – ein Klick setzt weiterhin Punkte)
+  let drag = null;
+  let suppressClick = false;
+  for (const scroller of $$('.pane-scroll')) {
+    scroller.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.button !== 1) return;
+      drag = { scroller, x: e.clientX, y: e.clientY, left: scroller.scrollLeft, top: scroller.scrollTop, moved: false, id: e.pointerId };
+    });
+  }
+  window.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      document.body.classList.add('panning');
+    }
+    drag.scroller.scrollLeft = drag.left - dx;
+    drag.scroller.scrollTop = drag.top - dy;
+  });
+  window.addEventListener('pointerup', () => {
+    if (drag && drag.moved) suppressClick = true;
+    drag = null;
+    document.body.classList.remove('panning');
+  });
+  // Klick nach dem Verschieben nicht als Punkt werten
+  $('#img-original').addEventListener('click', (e) => {
+    if (!suppressClick) return;
+    suppressClick = false;
+    e.stopImmediatePropagation();
+  }, true);
+  window.addEventListener('pointerdown', () => { suppressClick = false; }, true);
 
   // Scrollpositionen beider Ansichten synchron halten
   const scrolls = $$('.pane-scroll');
@@ -1811,11 +1854,34 @@ function bindView() {
 }
 
 function setZoom(i) {
-  state.zoomIndex = Math.max(0, Math.min(ZOOM_STEPS.length - 1, i));
-  const z = ZOOM_STEPS[state.zoomIndex];
+  setZoomValue(ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, i))]);
+}
+
+/**
+ * Stufenloser Zoom. anchor = { scroller, x, y }: Der Bildpunkt unter (x, y) bleibt stehen.
+ * Ohne anchor bleibt die Mitte der Ansicht stehen.
+ */
+function setZoomValue(value, anchor = null) {
+  const z = Math.max(1, Math.min(ZOOM_MAX, value));
+  const scroller = anchor?.scroller || $$('.pane-scroll').find((el) => el.offsetParent) || $('.pane-scroll');
+  const img = scroller.querySelector('img');
+  const rect = scroller.getBoundingClientRect();
+  const ax = anchor ? anchor.x : rect.left + rect.width / 2;
+  const ay = anchor ? anchor.y : rect.top + rect.height / 2;
+  // relative Lage des Ankerpunkts im Bild vor dem Zoom
+  const before = img.getBoundingClientRect();
+  const fx = before.width ? (ax - before.left) / before.width : 0.5;
+  const fy = before.height ? (ay - before.top) / before.height : 0.5;
+
+  state.zoom = z;
   document.documentElement.style.setProperty('--zoom', z);
   $('#zoom-label').textContent = `${Math.round(z * 100)} %`;
-  requestAnimationFrame(renderMarkers);
+
+  // nach dem Umbruch so scrollen, dass derselbe Bildpunkt wieder unter dem Anker liegt
+  const after = img.getBoundingClientRect();
+  scroller.scrollLeft += after.left + fx * after.width - ax;
+  scroller.scrollTop += after.top + fy * after.height - ay;
+  renderMarkers();
 }
 
 /**

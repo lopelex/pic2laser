@@ -420,3 +420,7 @@ body.has-image .dropzone:not(.dragging) { display: none; }
 }
 .marker::before { width: 8px; height: 2px; }
 .marker.plus::after { width: 2px; height: 8px; }
+
+/* Verschieben mit gedrückter Maustaste */
+body.panning, body.panning * { cursor: grabbing !important; user-select: none; }
+.pane-scroll img { -webkit-user-drag: none; }
