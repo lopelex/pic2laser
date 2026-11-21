@@ -107,6 +107,14 @@ body.history-hidden .history { display: none; }
   color: var(--muted);
 }
 .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.group h4 {
+  margin: 14px 0 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: #c9cdd5;
+}
 
 /* ---------- Formularelemente ---------- */
 .slider, .field { display: block; margin-bottom: 10px; }

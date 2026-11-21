@@ -73,6 +73,14 @@ const handlers = {
     const bitmap = canvas.transferToImageBitmap();
     return { result: bitmap, transfer: [bitmap] };
   },
+
+  /** Freistellmaske verfeinern (Kante verschieben/glätten, Flecken und Löcher). */
+  async refineMask({ mask, opts }) {
+    const canvas = Segmentation.refineMask(mask, opts);
+    mask.close();
+    const bitmap = canvas.transferToImageBitmap();
+    return { result: bitmap, transfer: [bitmap] };
+  },
 };
 
 self.onmessage = async (e) => {

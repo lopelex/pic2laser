@@ -51,6 +51,151 @@ const Segmentation = (() => {
   }
 
   /**
+   * Maske verfeinern (läuft im Worker). o: {
+   *   shiftPx     Kante verschieben: > 0 Motiv größer, < 0 kleiner (Pixel der Maske)
+   *   smoothPx    Kante glätten: Zacken und kleine Ausbuchtungen abrunden (Radius in Pixeln)
+   *   speckPct    lose Flecken des Motivs entfernen, die kleiner als so viel % der Bildfläche sind
+   *   holePct     Löcher im Motiv füllen, die kleiner als so viel % der Bildfläche sind
+   *   largestOnly nur das größte zusammenhängende Motiv behalten
+   * }
+   * Reihenfolge: Flecken → Löcher → Glätten → Kante verschieben (mit geglätteter Kante).
+   */
+  function refineMask(source, o) {
+    const w = source.width, h = source.height, n = w * h;
+    const c = new OffscreenCanvas(w, h);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(source, 0, 0);
+    const img = ctx.getImageData(0, 0, w, h);
+    const a = img.data;
+    let bin = new Uint8Array(n);
+    for (let p = 0; p < n; p++) bin[p] = a[p * 4 + 3] >= 128 ? 1 : 0;
+
+    if (o.speckPct > 0 || o.largestOnly) removeSpecks(bin, w, h, (o.speckPct / 100) * n, o.largestOnly);
+    if (o.holePct > 0) fillSmallHoles(bin, w, h, (o.holePct / 100) * n);
+    if (o.smoothPx > 0) bin = smoothBinary(bin, w, h, o.smoothPx);
+
+    // Vorzeichenbehafteter Abstand zur Kante (innen > 0) → Kante verschieben und weich auslaufen lassen
+    const shift = o.shiftPx || 0;
+    const reach = Math.abs(shift) + 2;
+    const toInside = Processing.distanceTransformSq(bin, w, h, 1, reach);
+    const toOutside = Processing.distanceTransformSq(bin, w, h, 0, reach);
+    for (let p = 0; p < n; p++) {
+      const sd = bin[p] ? Math.sqrt(toOutside[p]) - 0.5 : 0.5 - Math.sqrt(toInside[p]);
+      const t = Math.min(1, Math.max(0, sd + shift + 0.5));
+      a[p * 4] = a[p * 4 + 1] = a[p * 4 + 2] = 0;
+      a[p * 4 + 3] = Math.round(t * 255);
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+
+  /**
+   * Markiert zusammenhängende Bereiche mit Wert `want` (8er-Nachbarschaft für das Motiv,
+   * 4er für den Hintergrund – so gelten diagonal verbundene Motivteile als ein Stück).
+   * Rückgabe: { label (Int32Array, -1 = anderer Wert), sizes, touchesBorder }.
+   */
+  function components(bin, w, h, want) {
+    const n = w * h;
+    const label = new Int32Array(n).fill(-1);
+    const stack = new Int32Array(n);
+    const sizes = [], touchesBorder = [];
+    const diag = want === 1;
+    const xMax = w - 1, yMaxRow = (h - 1) * w;
+    for (let start = 0; start < n; start++) {
+      if (bin[start] !== want || label[start] !== -1) continue;
+      const id = sizes.length;
+      let size = 0, border = false, sp = 0;
+      label[start] = id;
+      stack[sp++] = start;
+      while (sp) {
+        const i = stack[--sp];
+        size++;
+        const x = i % w;
+        const left = x > 0, right = x < xMax, up = i >= w, down = i < yMaxRow;
+        if (!left || !right || !up || !down) border = true;
+        let k;
+        if (left && bin[k = i - 1] === want && label[k] === -1) { label[k] = id; stack[sp++] = k; }
+        if (right && bin[k = i + 1] === want && label[k] === -1) { label[k] = id; stack[sp++] = k; }
+        if (up && bin[k = i - w] === want && label[k] === -1) { label[k] = id; stack[sp++] = k; }
+        if (down && bin[k = i + w] === want && label[k] === -1) { label[k] = id; stack[sp++] = k; }
+        if (diag) {
+          if (up && left && bin[k = i - w - 1] === want && label[k] === -1) { label[k] = id; stack[sp++] = k; }
+          if (up && right && bin[k = i - w + 1] === want && label[k] === -1) { label[k] = id; stack[sp++] = k; }
+          if (down && left && bin[k = i + w - 1] === want && label[k] === -1) { label[k] = id; stack[sp++] = k; }
+          if (down && right && bin[k = i + w + 1] === want && label[k] === -1) { label[k] = id; stack[sp++] = k; }
+        }
+      }
+      sizes.push(size);
+      touchesBorder.push(border);
+    }
+    return { label, sizes, touchesBorder };
+  }
+
+  /** Entfernt Motivteile unter minArea Pixeln bzw. alle außer dem größten. */
+  function removeSpecks(bin, w, h, minArea, largestOnly) {
+    const { label, sizes } = components(bin, w, h, 1);
+    if (!sizes.length) return;
+    let largest = 0;
+    for (let id = 1; id < sizes.length; id++) if (sizes[id] > sizes[largest]) largest = id;
+    const keep = sizes.map((sz, id) => (largestOnly ? id === largest : sz >= minArea || id === largest));
+    for (let p = 0; p < bin.length; p++) if (bin[p] && !keep[label[p]]) bin[p] = 0;
+  }
+
+  /** Füllt Löcher im Motiv bis maxArea Pixel (Hintergrund, der den Bildrand berührt, bleibt). */
+  function fillSmallHoles(bin, w, h, maxArea) {
+    const { label, sizes, touchesBorder } = components(bin, w, h, 0);
+    const fill = sizes.map((sz, id) => !touchesBorder[id] && sz <= maxArea);
+    for (let p = 0; p < bin.length; p++) if (!bin[p] && fill[label[p]]) bin[p] = 1;
+  }
+
+  /** Weichzeichnen (3 × Boxfilter ≈ Gauß) und wieder bei 50 % trennen: rundet Zacken und Spitzen ab. */
+  function smoothBinary(bin, w, h, radius) {
+    const r = Math.max(1, Math.round(radius / Math.sqrt(3)));
+    const f = Float32Array.from(bin);
+    const tmp = new Float32Array(f.length);
+    for (let pass = 0; pass < 3; pass++) {
+      boxBlurRows(f, tmp, w, h, r);
+      boxBlurCols(tmp, f, w, h, r);
+    }
+    const out = new Uint8Array(bin.length);
+    for (let p = 0; p < out.length; p++) out[p] = f[p] >= 0.5 ? 1 : 0;
+    return out;
+  }
+
+  /** Gleitender Mittelwert je Zeile (Randwerte werden fortgesetzt). */
+  function boxBlurRows(src, dst, w, h, r) {
+    const norm = 1 / (2 * r + 1);
+    for (let y = 0; y < h; y++) {
+      const row = y * w, last = row + w - 1;
+      let sum = 0;
+      for (let i = -r; i <= r; i++) sum += src[Math.min(last, Math.max(row, row + i))];
+      for (let x = 0; x < w; x++) {
+        dst[row + x] = sum * norm;
+        const add = row + x + r + 1, sub = row + x - r;
+        sum += src[add > last ? last : add] - src[sub < row ? row : sub];
+      }
+    }
+  }
+
+  /** Gleitender Mittelwert je Spalte, zeilenweise über den Speicher (cachefreundlich). */
+  function boxBlurCols(src, dst, w, h, r) {
+    const norm = 1 / (2 * r + 1);
+    const sum = new Float32Array(w);
+    for (let i = -r; i <= r; i++) {
+      const row = Math.min(h - 1, Math.max(0, i)) * w;
+      for (let x = 0; x < w; x++) sum[x] += src[row + x];
+    }
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      const addRow = Math.min(h - 1, y + r + 1) * w, subRow = Math.max(0, y - r) * w;
+      for (let x = 0; x < w; x++) {
+        dst[row + x] = sum[x] * norm;
+        sum[x] += src[addRow + x] - src[subRow + x];
+      }
+    }
+  }
+
+  /**
    * Farbbasiertes Freistellen. tolerance 0..100.
    * seeds: [{x, y}] in relativen Koordinaten (0..1) – zusätzliche Hintergrundpunkte.
    */
@@ -235,5 +380,5 @@ const Segmentation = (() => {
     }
   }
 
-  return { aiMask, colorMask, cutoutPreview, analysisSize };
+  return { aiMask, colorMask, refineMask, cutoutPreview, analysisSize };
 })();

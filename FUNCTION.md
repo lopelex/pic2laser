@@ -24,7 +24,7 @@ Alle KI-Funktionen laufen lokal und offline.
 | Modus | Wofür | Ergebnis |
 |---|---|---|
 | **Fläche** | Logos, Schrift, Silhouetten, Grafiken | Schwellwert + Vektorisierung (Potrace) → gefüllte Vektorpfade |
-| **Linien** | Strichzeichnungen | KI-Strichzeichnung (Informative Drawings) oder Kantenerkennung (Canny) → Linien als Vektor |
+| **Linien** | Strichzeichnungen | KI-Strichzeichnung (wählbares Modell, s. u.) oder Kantenerkennung (Canny) → Linien als Vektor |
 | **Foto** | Fotogravur | Dithering: Floyd-Steinberg, Atkinson, Jarvis, Stucki, Bayer 8×8 oder Schwellwert |
 | **Relief** | 3D-Reliefgravur in Holz | KI-Tiefenkarte (Depth Anything V2) als Graustufenbild – hell = erhaben, dunkel = tief |
 
@@ -34,8 +34,18 @@ Alle KI-Funktionen laufen lokal und offline.
   Doppelklick auf einen Regler setzt ihn zurück.
 - **Vektorisierung:** Schwellwert (inkl. „Auto“/Otsu), Flecken entfernen, Ecken glätten,
   Kurven-Toleranz, Arbeitsauflösung.
-- **Linien:** Detailgrad, Linienschwelle, Linien verstärken (KI) bzw. Empfindlichkeit und
-  Linienstärke in mm (Canny).
+- **Linien:** Modell, Detailgrad, Linienschwelle, Linien verstärken (KI) bzw. Empfindlichkeit und
+  Linienstärke in mm (Canny). Modelle der KI-Strichzeichnung:
+  - *Feine Linien* (Informative Drawings, anime – mitgeliefert): viele Details und Schraffur.
+  - *Kräftige Konturen* (Informative Drawings, contour): dicke, geschlossene Umrisse.
+  - *Zarte Skizze* (Informative Drawings, opensketch): wenige, leichte Bleistiftstriche.
+  - *Tusche-Porträt* (U²-Net Portrait): nur für Gesichter, Haare als Fläche; rechnet fest mit
+    512 × 512 px, der Detailgrad ist dann ausgeblendet.
+  - *Feine Kanten* (TEED): Kantendetektor, zeichnet auch Strukturen wie Holzmaserung mit.
+
+  Mit „Gesichtszüge hervorheben“ wird jedes Gesicht mit dem gewählten Modell neu gezeichnet;
+  die vergrößerte Nachzeichnung von Mund, Nase, Kinn und Wangen nutzt nur *Feine Linien* –
+  die anderen Modelle malen dort Hautschattierung, die als Flecken erscheinen würde.
 - **Dithering / Relief:** Verfahren, Auflösung in DPI, Tiefen-Detail.
 - **Ausgabegröße:** Breite oder Höhe in mm (Seitenverhältnis bleibt erhalten); Weiß optional
   transparent.
@@ -46,12 +56,23 @@ Alle KI-Funktionen laufen lokal und offline.
 |---|---|---|
 | KI – schnell | U²-Net | mitgeliefert |
 | KI – präzise | IS-Net | Download bei Bedarf |
-| KI – beste Qualität | BiRefNet lite | Download; braucht ca. 6,7 GB RAM, weicht sonst automatisch auf IS-Net aus |
+| KI – beste Qualität | BiRefNet lite | Download; braucht ca. 6,7 GB RAM, weicht sonst automatisch auf BEN2, notfalls IS-Net aus |
+| KI – gut & sparsam | BEN2 Base (int8) | Download; ca. 3 GB RAM, etwa doppelt so schnell wie BiRefNet; bei sauberen Fotos fast gleich gut, bei alten/verrauschten Fotos deutlich schwächer; weicht bei zu wenig Speicher auf IS-Net aus |
 | KI – Porträt/Haare | MODNet | Download |
 | KI – Objekt anklicken | MobileSAM | Linksklick = Motiv (+), Rechtsklick/Alt+Klick = ausschließen (−) |
 | Nach Farbe | – | Hintergrund vom Bildrand aus + zusätzliche Klickpunkte, Farbtoleranz |
 
 - **Maskenschwelle** für die KI-Methoden.
+- **Maske verfeinern** (für alle Methoden, auch „Nach Farbe“ und „Objekt anklicken“):
+  - *Kante verschieben* (−3…+3 mm): Plus lässt einen Rand um das Motiv stehen, Minus schneidet
+    Hintergrundreste und Lichtsäume weg.
+  - *Kante glätten* (0…3 mm): rundet Zacken und kleine Ausbuchtungen ab, für ruhigere Vektoren.
+  - *Flecken entfernen* (0…5 % der Bildfläche): lose, fälschlich erkannte Motivteile.
+  - *Löcher füllen* (0…5 % der Bildfläche): Lücken im Motiv; Hintergrund am Bildrand bleibt weg.
+  - *Nur das größte Motiv behalten.*
+  - Reihenfolge: Flecken → Löcher → Glätten → Kante verschieben. Die neue Kante wird leicht
+    kantengeglättet. Rechnet im Verarbeitungs-Worker (2048 × 2048 px: unter 1 s mit allen Optionen);
+    die Rohmaske bleibt zwischengespeichert, beim Verstellen wird nur neu verfeinert.
 - **Klickpunkte** (Plus/Minus) werden immer gut sichtbar angezeigt; ein Klick auf einen Punkt
   entfernt ihn wieder.
 - **Vorschau:** Der entfernte Hintergrund wird rot schraffiert mit Schnittlinie markiert, das
@@ -174,14 +195,16 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   statt eines Absturzes.
 - Geht beim Rechnen doch der Speicher aus oder beendet das System den KI-Prozess, wird er
   frisch gestartet und die Berechnung einmal wiederholt.
-- „Freistellen – beste Qualität“ (BiRefNet) weicht nur dann auf „präzise“ (IS-Net) aus, wenn
-  trotz aller Freigaben nicht genug Speicher frei wird.
+- „Freistellen – beste Qualität“ (BiRefNet, ca. 6,7 GB) weicht nur dann auf „gut & sparsam“
+  (BEN2, ca. 3 GB) aus, wenn trotz aller Freigaben nicht genug Speicher frei wird; reicht auch
+  das nicht, auf „präzise“ (IS-Net, ca. 0,75 GB). Ein Hinweis nennt das tatsächlich verwendete
+  Modell. Die Kette steht in `SEG_FALLBACK` (src/renderer/app.js).
 
 ## KI-Modelle
 
 | Mitgeliefert | Download bei Bedarf (geprüft per SHA-256) |
 |---|---|
-| U²-Net, Informative Drawings, Real-ESRGAN, MobileSAM, UltraFace, YuNet, PaddleOCR-Detektor | MODNet, IS-Net, BiRefNet lite, Depth Anything V2 Small, SCUNet, LaMa, RestoreFormer++ |
+| U²-Net, Informative Drawings (anime), Real-ESRGAN, MobileSAM, UltraFace, YuNet, PaddleOCR-Detektor | Informative Drawings (contour, opensketch), U²-Net Portrait, TEED, MODNet, IS-Net, BiRefNet lite, BEN2 Base, Depth Anything V2 Small, SCUNet, LaMa, RestoreFormer++ |
 
 - Alle Modelle sind für kommerzielle Nutzung lizenziert (MIT, Apache-2.0, BSD-3).
 - Im Bereich „KI-Modelle“: Status, Größe, Speicherbedarf; Laden und Entfernen per Klick.

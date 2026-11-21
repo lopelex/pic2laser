@@ -116,9 +116,10 @@ const AI = (() => {
   /* ---------------------------------------------------------------- */
 
   const SEG_MODELS = {
-    ai: { model: 'u2netp', size: 320, mean: IMAGENET.mean, std: IMAGENET.std, scale: 'max' },
-    isnet: { model: 'isnet', size: 1024, mean: [0.5, 0.5, 0.5], std: [1, 1, 1], scale: 'max' },
-    birefnet: { model: 'birefnet', size: 1024, mean: IMAGENET.mean, std: IMAGENET.std, scale: 1 / 255 },
+    ai: { model: 'u2netp', size: 320, mean: IMAGENET.mean, std: IMAGENET.std, scale: 'max', input: 'input.1' },
+    isnet: { model: 'isnet', size: 1024, mean: [0.5, 0.5, 0.5], std: [1, 1, 1], scale: 'max', input: 'input_image' },
+    birefnet: { model: 'birefnet', size: 1024, mean: IMAGENET.mean, std: IMAGENET.std, scale: 1 / 255, input: 'input_image' },
+    ben2: { model: 'ben2', size: 1024, scale: 1 / 255, input: 'input.1' },
   };
 
   /** Liefert die rohe Motivmaske { data (0..1), w, h }. */
@@ -140,8 +141,7 @@ const AI = (() => {
     if (!cfg) throw new Error(`Unbekannte Freistell-Methode: ${method}`);
     const { size } = cfg;
     const input = toNCHW(pixels(bitmap, size, size), size, size, cfg);
-    const name = method === 'ai' ? 'input.1' : 'input_image';
-    const out = await run(cfg.model, { [name]: { data: input, dims: [1, 3, size, size] } });
+    const out = await run(cfg.model, { [cfg.input]: { data: input, dims: [1, 3, size, size] } });
     let data = out.data;
     if (method === 'birefnet') {
       // Je nach Export Logits oder Wahrscheinlichkeiten
@@ -224,14 +224,96 @@ const AI = (() => {
     return out;
   }
 
+  /**
+   * Strichzeichnungs-Modelle (Ausgabe immer: Linien dunkel auf Weiß, 0..1):
+   * fine/contour/sketch = Informative Drawings (anime = mitgeliefert, contour, opensketch),
+   * portrait = U²-Net Portrait (Tusche-Porträt, feste Eingabe 512×512),
+   * teed = TEED-Kantendetektor (sehr klein, feine Umrisse).
+   */
+  const LINE_STYLES = {
+    fine: { model: 'lineart', input: 'input', kind: 'drawings' },
+    contour: { model: 'lineart_contour', input: 'image', kind: 'drawings' },
+    sketch: { model: 'lineart_sketch', input: 'image', kind: 'drawings' },
+    portrait: { model: 'lineart_portrait', input: 'serving_default_args_0', kind: 'portrait' },
+    teed: { model: 'lineart_teed', input: 'image', kind: 'edges' },
+  };
+  const lineCfg = (style) => LINE_STYLES[style] || LINE_STYLES.fine;
+  const lineModel = (style) => lineCfg(style).model;
+  /** Rechnet das Modell mit fester Auflösung (Detailgrad ohne Wirkung)? */
+  const lineFixedSize = (style) => lineCfg(style).kind === 'portrait';
+
+  /** Quantil von Werten im Bereich 0..1 (Histogramm, ohne Sortieren). */
+  function quantile01(data, q) {
+    const bins = new Uint32Array(1024);
+    for (let i = 0; i < data.length; i++) bins[Math.max(0, Math.min(1023, Math.floor(data[i] * 1024)))]++;
+    const target = data.length * q;
+    for (let b = 0, acc = 0; b < 1024; b++) {
+      acc += bins[b];
+      if (acc >= target) return (b + 0.5) / 1024;
+    }
+    return 1;
+  }
+
+  /**
+   * Kantenwahrscheinlichkeit → dunkle Linien auf Weiß. TEED liefert auch in leeren Flächen
+   * einen Grundwert (~0,44); der Median gilt als „Papier“, die stärksten Kanten als Schwarz.
+   */
+  function edgeLevels(data) {
+    const base = quantile01(data, 0.5);
+    const top = Math.max(base + 0.05, quantile01(data, 0.999));
+    const out = new Float32Array(data.length);
+    for (let i = 0; i < data.length; i++) out[i] = 1 - Math.min(1, Math.max(0, (data[i] - base) / (top - base)));
+    return out;
+  }
+
+  /** U²-Net Portrait: quadratisch auf Weiß einpassen, 512×512 rechnen, Ausschnitt zurückgeben. */
+  async function portraitLineArt(source, cfg, outW, outH) {
+    const S = 512;
+    const n = Math.max(source.width, source.height);
+    const sq = new OffscreenCanvas(S, S);
+    const sctx = sq.getContext('2d');
+    sctx.fillStyle = '#fff';
+    sctx.fillRect(0, 0, S, S);
+    sctx.imageSmoothingQuality = 'high';
+    const dw = (source.width / n) * S, dh = (source.height / n) * S;
+    const ox = (S - dw) / 2, oy = (S - dh) / 2;
+    sctx.drawImage(source, ox, oy, dw, dh);
+    const input = toNCHW(pixels(sq, S, S), S, S, { mean: IMAGENET.mean, std: IMAGENET.std, scale: 'max' });
+    const out = await run(cfg.model, { [cfg.input]: { data: input, dims: [1, 3, S, S] } });
+    const norm = minMax(out.data);
+    for (let i = 0; i < norm.length; i++) norm[i] = 1 - norm[i];
+    const full = grayToCanvas(norm, S, S, S, S);
+    const c = new OffscreenCanvas(outW, outH);
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(full, ox, oy, dw, dh, 0, 0, outW, outH);
+    return c;
+  }
+
   /** Liefert eine Canvas mit dunklen Linien auf Weiß, gleiche Seitenverhältnisse wie die Quelle. */
-  async function lineArt(source, maxSide) {
+  async function lineArt(source, maxSide, style = 'fine') {
+    const cfg = lineCfg(style);
     const sc = maxSide / Math.max(source.width, source.height);
+    const outW = Math.round(source.width * sc), outH = Math.round(source.height * sc);
+    if (cfg.kind === 'portrait') return portraitLineArt(source, cfg, outW, outH);
     const w = roundTo(source.width * sc, 8);
     const h = roundTo(source.height * sc, 8);
-    const input = toNCHW(pixels(source, w, h), w, h);
-    const out = await run('lineart', { input: { data: input, dims: [1, 3, h, w] } });
-    const outW = Math.round(source.width * sc), outH = Math.round(source.height * sc);
+    const rgba = pixels(source, w, h);
+    if (cfg.kind === 'edges') {
+      // TEED: BGR 0..255 minus Mittelwert (BIPED)
+      const n = w * h;
+      const input = new Float32Array(3 * n);
+      for (let p = 0, i = 0; p < n; p++, i += 4) {
+        input[p] = rgba[i + 2] - 104.007;
+        input[n + p] = rgba[i + 1] - 116.669;
+        input[2 * n + p] = rgba[i] - 122.679;
+      }
+      const out = await run(cfg.model, { [cfg.input]: { data: input, dims: [1, 3, h, w] } });
+      return grayToCanvas(edgeLevels(out.data), w, h, outW, outH);
+    }
+    const input = toNCHW(rgba, w, h);
+    const out = await run(cfg.model, { [cfg.input]: { data: input, dims: [1, 3, h, w] } });
     return grayToCanvas(lineLevels(out.data), w, h, outW, outH);
   }
 
@@ -361,7 +443,7 @@ const AI = (() => {
    * Zeichnet jedes Gesicht zusätzlich in hoher Auflösung als Strichzeichnung,
    * verstärkt die Linien und blendet es weich in die Gesamtzeichnung ein.
    */
-  async function enhanceFacesLineArt(input, base, faces, strength, levels = {}) {
+  async function enhanceFacesLineArt(input, base, faces, strength, levels = {}, style = 'fine') {
     const out = new OffscreenCanvas(base.width, base.height);
     const octx = out.getContext('2d');
     octx.drawImage(base, 0, 0);
@@ -372,7 +454,7 @@ const AI = (() => {
       if (sw < 8 || sh < 8) continue;
       const crop = new OffscreenCanvas(Math.round(sw), Math.round(sh));
       crop.getContext('2d').drawImage(input, sx, sy, sw, sh, 0, 0, crop.width, crop.height);
-      const face = await lineArt(crop, Math.round(512 + 192 * Math.min(2, strength)));
+      const face = await lineArt(crop, Math.round(512 + 192 * Math.min(2, strength)), style);
 
       // Linien kräftiger machen: Grauwerte nach unten ziehen (Weiß bleibt Weiß)
       const fctx = face.getContext('2d', { willReadFrequently: true });
@@ -410,7 +492,7 @@ const AI = (() => {
       for (const [key, level] of Object.entries(levels)) {
         if (!(level > 0)) continue;
         for (const region of Processing.faceFeatureRegions(f, key, true)) {
-          await enhanceFeatureLineArt(input, octx, base.width, base.height, region, level);
+          await enhanceFeatureLineArt(input, octx, base.width, base.height, region, level, style);
         }
       }
     }
@@ -424,7 +506,7 @@ const AI = (() => {
    * 2. dunkle „Täler“ direkt im Foto finden und als Linie ergänzen
    * m: { cx, cy, rx, ry } relativ zum Bild
    */
-  async function enhanceFeatureLineArt(input, octx, bw, bh, m, strength) {
+  async function enhanceFeatureLineArt(input, octx, bw, bh, m, strength, style = 'fine') {
     const x1 = Math.max(0, m.cx - m.rx), x2 = Math.min(1, m.cx + m.rx);
     const y1 = Math.max(0, m.cy - m.ry), y2 = Math.min(1, m.cy + m.ry);
     const sw = (x2 - x1) * input.width, sh = (y2 - y1) * input.height;
@@ -432,8 +514,19 @@ const AI = (() => {
     const crop = new OffscreenCanvas(Math.max(1, Math.round(sw)), Math.max(1, Math.round(sh)));
     crop.getContext('2d').drawImage(input, x1 * input.width, y1 * input.height, sw, sh, 0, 0, crop.width, crop.height);
 
-    // 1. Strichzeichnung des Mundes in hoher Vergrößerung
-    const lines = await lineArt(crop, 512);
+    // 1. Strichzeichnung des Mundes in hoher Vergrößerung. Nur das Standardmodell zeichnet
+    // glatte Haut stark vergrößert sauber; Konturen/Skizze/Porträt/Kanten malen dort
+    // Schattierung, die nach der Verstärkung als Flecken erscheint → nur Schritt 2.
+    let lines;
+    if (style === 'fine') {
+      lines = await lineArt(crop, 512, style);
+    } else {
+      const sc = 512 / Math.max(crop.width, crop.height);
+      lines = new OffscreenCanvas(Math.max(1, Math.round(crop.width * sc)), Math.max(1, Math.round(crop.height * sc)));
+      const wctx = lines.getContext('2d');
+      wctx.fillStyle = '#fff';
+      wctx.fillRect(0, 0, lines.width, lines.height);
+    }
     const W = lines.width, H = lines.height;
     const lctx = lines.getContext('2d', { willReadFrequently: true });
     const img = lctx.getImageData(0, 0, W, H);
@@ -582,5 +675,5 @@ const AI = (() => {
     if (upscaleMaxInput) UPSCALE_MAX_INPUT = upscaleMaxInput;
   }
 
-  return { configure, run, pipelined, get cacheHits() { return cacheHits; }, pixels, toNCHW, detectText, segment, samEmbedding, samMask, lineArt, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
+  return { configure, run, pipelined, get cacheHits() { return cacheHits; }, pixels, toNCHW, detectText, segment, samEmbedding, samMask, lineArt, lineModel, lineFixedSize, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
 })();

@@ -828,5 +828,5 @@ const Processing = (() => {
     return bits;
   }
 
-  return { faceFeatureRegions, faceFeatureLevels, process, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate, addSubjectLine };
+  return { faceFeatureRegions, faceFeatureLevels, process, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate, distanceTransformSq, addSubjectLine };
 })();

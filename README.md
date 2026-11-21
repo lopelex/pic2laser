@@ -36,7 +36,8 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
   Holz-Relief …) und eigene Presets speichern/überschreiben/löschen (`<userData>/presets.json`)
 - **Vier Modi**
   - *Fläche*: Schwellwert + Potrace → echte Vektorpfade (Logos, Schrift, Silhouetten)
-  - *Linien*: KI-Strichzeichnung oder klassische Kantenerkennung (Canny) → Strichzeichnung als Vektor
+  - *Linien*: KI-Strichzeichnung (Modelle: Feine Linien, Kräftige Konturen, Zarte Skizze, Tusche-Porträt,
+    Feine Kanten) oder klassische Kantenerkennung (Canny) → Strichzeichnung als Vektor
   - *Foto*: Dithering mit Floyd-Steinberg, Atkinson, Jarvis, Stucki, Bayer, Schwellwert
   - *Relief*: KI-Tiefenkarte als Graustufenbild für 3D-Reliefgravur
 - **Freistellen**: KI schnell / präzise / beste Qualität / Porträt, Objekt per Klick auswählen (MobileSAM)
@@ -101,7 +102,10 @@ Alle Modelle laufen lokal und offline über onnxruntime (nativ, mit WebAssembly-
 | Modell | Zweck | Lizenz | Herkunft |
 |---|---|---|---|
 | U²-Net (u2netp) | Freistellen – schnell | Apache-2.0 | mitgeliefert |
-| Informative Drawings | KI-Strichzeichnung | MIT | mitgeliefert |
+| Informative Drawings (anime) | KI-Strichzeichnung „Feine Linien“ | MIT | mitgeliefert |
+| Informative Drawings (contour, opensketch; fp16, ipsilondev) | KI-Strichzeichnung „Kräftige Konturen“, „Zarte Skizze“ | MIT | Download bei Bedarf (je 9 MB); offizielle Gewichte, gegen PyTorch geprüft |
+| U²-Net Portrait (ONNX von mlboydaisuke) | KI-Strichzeichnung „Tusche-Porträt“ | Apache-2.0 | Download bei Bedarf (176 MB) |
+| TEED (ONNX von Shaboomi) | KI-Strichzeichnung „Feine Kanten“ | MIT | Download bei Bedarf (0,3 MB) |
 | Real-ESRGAN general x4v3 | KI-Vergrößerung | BSD-3-Clause | mitgeliefert (aus den offiziellen Gewichten nach ONNX konvertiert) |
 | MobileSAM | Objekt anklicken | Apache-2.0 | mitgeliefert |
 | YuNet (OpenCV Zoo) | Gesichtspunkte für die Gesichtsrestaurierung | MIT | mitgeliefert |
@@ -113,6 +117,7 @@ Alle Modelle laufen lokal und offline über onnxruntime (nativ, mit WebAssembly-
 | MODNet | Freistellen – Porträt | Apache-2.0 | Download bei Bedarf (26 MB) |
 | IS-Net | Freistellen – präzise | Apache-2.0 | Download bei Bedarf (179 MB) |
 | BiRefNet lite | Freistellen – beste Qualität | MIT | Download bei Bedarf (224 MB) |
+| BEN2 Base (int8-Gewichte von moonbox-dev) | Freistellen – gut & sparsam | MIT | Download bei Bedarf (131 MB) |
 | Depth Anything V2 Small | Tiefenkarte (Relief) | Apache-2.0 | Download bei Bedarf (99 MB) |
 
 Downloads sind auf feste Versionen gepinnt und werden per SHA-256 geprüft; sie landen in

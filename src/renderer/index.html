@@ -62,17 +62,18 @@
             <option value="ai">KI – schnell (U²-Net)</option>
             <option value="isnet">KI – präzise (IS-Net) ⤓</option>
             <option value="birefnet">KI – beste Qualität (BiRefNet) ⤓</option>
+            <option value="ben2" title="Bei sauberen Fotos fast so gut wie BiRefNet, braucht aber nur ca. 3 statt 6,7 GB Arbeitsspeicher und rechnet etwa doppelt so schnell. Schwächer bei alten, verrauschten oder kontrastarmen Fotos.">KI – gut &amp; sparsam (BEN2) ⤓</option>
             <option value="modnet">KI – Porträt/Haare (MODNet) ⤓</option>
             <option value="sam">KI – Objekt anklicken (MobileSAM)</option>
             <option value="color">Nach Farbe</option>
           </select>
         </label>
-        <label class="check" data-bg="ai isnet birefnet modnet sam color"><input type="checkbox" id="bg-hide" /> Entfernten Hintergrund ausblenden (statt rot schraffieren)</label>
+        <label class="check" data-bg="ai isnet birefnet ben2 modnet sam color"><input type="checkbox" id="bg-hide" /> Entfernten Hintergrund ausblenden (statt rot schraffieren)</label>
         <div data-bg="sam">
           <p class="hint"><b>Linksklick</b> ins Original markiert das Motiv, <b>Rechtsklick</b> (oder Alt+Klick) schließt Bereiche aus. Klick auf einen Punkt entfernt ihn wieder.</p>
           <button class="btn btn-small" id="btn-clear-sam">Punkte zurücksetzen</button>
         </div>
-        <div data-bg="ai isnet birefnet modnet sam">
+        <div data-bg="ai isnet birefnet ben2 modnet sam">
           <label class="slider">
             <span>Maskenschwelle <output data-for="maskThreshold"></output></span>
             <input type="range" data-key="maskThreshold" min="0.05" max="0.95" step="0.01" />
@@ -87,6 +88,27 @@
           <label class="check"><input type="checkbox" data-key="bgBorder" /> Hintergrund vom Bildrand aus entfernen</label>
           <p class="hint">Klicke ins <b>Original</b>, um weitere Hintergrundbereiche zu entfernen. Klick auf einen Punkt entfernt ihn wieder.</p>
           <button class="btn btn-small" id="btn-clear-seeds">Klickpunkte zurücksetzen</button>
+        </div>
+        <div data-bg="ai isnet birefnet ben2 modnet sam color">
+          <h4>Maske verfeinern</h4>
+          <label class="slider" title="Verschiebt die Schnittkante: Plus lässt einen Rand um das Motiv stehen, Minus schneidet Reste des Hintergrunds (z. B. Lichtsäume) weg.">
+            <span>Kante verschieben <output data-for="maskShiftMm"></output></span>
+            <input type="range" data-key="maskShiftMm" min="-3" max="3" step="0.1" />
+          </label>
+          <label class="slider" title="Rundet Zacken, Treppenstufen und kleine Ausbuchtungen der Kante ab – ergibt ruhigere Umrisse beim Vektorisieren und Gravieren. Sehr feine Details (Haare, Finger) können dabei verschwinden.">
+            <span>Kante glätten <output data-for="maskSmoothMm"></output></span>
+            <input type="range" data-key="maskSmoothMm" min="0" max="3" step="0.1" />
+          </label>
+          <label class="slider" title="Entfernt lose Flecken, die fälschlich zum Motiv gezählt wurden und kleiner als dieser Anteil der Bildfläche sind.">
+            <span>Flecken entfernen <output data-for="maskSpeckPct"></output></span>
+            <input type="range" data-key="maskSpeckPct" min="0" max="5" step="0.1" />
+          </label>
+          <label class="slider" title="Füllt Lücken im Motiv (z. B. ausgestanzte helle Stellen), die kleiner als dieser Anteil der Bildfläche sind. Hintergrund, der den Bildrand berührt, bleibt immer entfernt.">
+            <span>Löcher füllen <output data-for="maskHolePct"></output></span>
+            <input type="range" data-key="maskHolePct" min="0" max="5" step="0.1" />
+          </label>
+          <label class="check" title="Behält nur das größte zusammenhängende Motiv – alles andere wird entfernt."><input type="checkbox" data-key="maskLargest" /> Nur das größte Motiv behalten</label>
+          <p class="hint">Größen in mm beziehen sich auf die Ausgabegröße, Flecken und Löcher auf die Bildfläche.</p>
         </div>
       </section>
 
@@ -162,7 +184,21 @@
           </select>
         </label>
         <div data-edge="ai">
-          <label class="slider">
+          <label class="field">
+            <span>Modell</span>
+            <select data-key="lineStyle">
+              <optgroup label="Informative Drawings">
+                <option value="fine" title="Viele Details und Schraffur – mitgeliefert">Feine Linien</option>
+                <option value="contour" title="Dicke, geschlossene Umrisse, wenig Schraffur – robust beim Gravieren (Download 9 MB)">Kräftige Konturen</option>
+                <option value="sketch" title="Wenige, leichte Bleistiftstriche (Download 9 MB)">Zarte Skizze</option>
+              </optgroup>
+              <optgroup label="Weitere Modelle">
+                <option value="portrait" title="U²-Net Portrait: Porträt wie mit Tusche gezeichnet, Haare als Fläche – nur für Gesichter (Download 176 MB)">Tusche-Porträt (U²-Net)</option>
+                <option value="teed" title="TEED: Kantendetektor, feine durchgehende Umrisse; zeichnet auch Strukturen wie Holzmaserung (Download 0,3 MB)">Feine Kanten (TEED)</option>
+              </optgroup>
+            </select>
+          </label>
+          <label class="slider" data-line-hide="portrait">
             <span>Detailgrad <output data-for="lineRes"></output></span>
             <input type="range" data-key="lineRes" min="384" max="1280" step="64" />
           </label>
@@ -174,7 +210,7 @@
             <span>Linien verstärken <output data-for="lineBoldMm"></output></span>
             <input type="range" data-key="lineBoldMm" min="0" max="1.5" step="0.05" />
           </label>
-          <p class="hint">Zeichnet Fotos wie von Hand nach. Höherer Detailgrad = feinere Linien, dauert länger.</p>
+          <p class="hint" id="line-model-hint"></p>
         </div>
         <div data-edge="canny">
           <label class="slider">

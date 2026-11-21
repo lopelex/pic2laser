@@ -133,12 +133,17 @@ const MODEL_PEAK_MB = {
   text: 250,
   esrgan: 150,
   lineart: 800,
+  lineart_contour: 800,
+  lineart_sketch: 800,
+  lineart_portrait: 600, // feste Eingabe 512×512
+  lineart_teed: 250,
   sam_encoder: 350,
   sam_decoder: 150,
   modnet: 250,
   depth: 450,
   isnet: 750,
   birefnet: 6700,
+  ben2: 3000,
   lama: 850,
   restoreformer: 1250,
 };
@@ -149,7 +154,7 @@ function peakMB(id, feeds) {
     const dims = Object.values(feeds || {})[0]?.dims || [1, 3, 384, 384];
     return Math.round(2000 * ((dims[2] * dims[3]) / (384 * 384)) + 120);
   }
-  if (id === 'lineart') {
+  if (id === 'lineart' || id === 'lineart_contour' || id === 'lineart_sketch') {
     const dims = Object.values(feeds || {})[0]?.dims || [1, 3, 1024, 768];
     return Math.round(800 * ((dims[2] * dims[3]) / (1024 * 768)) + 70);
   }

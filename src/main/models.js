@@ -25,9 +25,46 @@ const MODELS = {
     license: 'Apache-2.0',
   },
   lineart: {
-    label: 'Strichzeichnung (Informative Drawings)',
+    label: 'Strichzeichnung – Feine Linien (Informative Drawings, anime)',
     file: 'lineart.onnx',
     license: 'MIT',
+  },
+  // Weitere Stile desselben Modells (offizielle Gewichte, fp16 mit float32-Ein-/Ausgabe)
+  lineart_contour: {
+    label: 'Strichzeichnung – Kräftige Konturen (Informative Drawings, contour)',
+    file: 'informative-drawings-contour.onnx',
+    license: 'MIT',
+    url: `${HF}/ipsilondev/informative-drawings-onnx/resolve/8b82fc0163faed5e4e2c002c51cfa9cdaddee1cc/contour.onnx`,
+    size: 8602686,
+    sha256: 'df4e518f3a958d2eba69cbc4e1fea63d3b0feb57f6aa4f8315a7575efcbc5e11',
+  },
+  lineart_sketch: {
+    label: 'Strichzeichnung – Zarte Skizze (Informative Drawings, opensketch)',
+    file: 'informative-drawings-opensketch.onnx',
+    license: 'MIT',
+    url: `${HF}/ipsilondev/informative-drawings-onnx/resolve/8b82fc0163faed5e4e2c002c51cfa9cdaddee1cc/opensketch.onnx`,
+    size: 8602686,
+    sha256: 'e4abb6849fc3f3e47ab07dcdc44ee93a7b2b60cb3a841b77c95483633d812cad',
+  },
+  // U²-Net Portrait (xuebinqin/U-2-Net, Apache-2.0) über LiteRT → ONNX (tf2onnx, opset 17).
+  // Feste Eingabe 1×3×512×512 (x/max, ImageNet-Norm), Ausgabe 0..1 (Striche hell).
+  lineart_portrait: {
+    label: 'Strichzeichnung – Tusche-Porträt (U²-Net Portrait)',
+    file: 'u2net_portrait.onnx',
+    license: 'Apache-2.0',
+    url: `${HF}/mlboydaisuke/U2Net-Portrait-Sketch-OpenVINO/resolve/7ce77a23cec25d110578610dcfa69f1a11fac3e1/portrait.onnx`,
+    size: 176264390,
+    sha256: '21583a62c262134c1e975b79f2d13eaa24f7e81b945847feb59cd2fc0d678057',
+  },
+  // TEED (xavysp/TEED, MIT, 58 K Parameter): Kantendetektor. Eingabe BGR 0..255 minus Mittelwert,
+  // Ausgabe Kantenwahrscheinlichkeit 0..1.
+  lineart_teed: {
+    label: 'Strichzeichnung – Feine Kanten (TEED)',
+    file: 'teed.onnx',
+    license: 'MIT',
+    url: `${HF}/Shaboomi/teed-onnx/resolve/21b62020eba372c54ef1d9c07f9a3eb8adc364ab/teed.onnx`,
+    size: 248429,
+    sha256: 'b81f5787d21a6021a3608f9db2e0bbb5d8c1df0ed0938abd9522128f3dba1f98',
   },
   esrgan: {
     label: 'KI-Vergrößerung (Real-ESRGAN general x4v3)',
@@ -113,6 +150,16 @@ const MODELS = {
     url: `${HF}/onnx-community/BiRefNet_lite-ONNX/resolve/de15b22ba131738a16dff04aab8bdf8dc32e3ac1/onnx/model.onnx`,
     size: 224005088,
     sha256: '5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333',
+  },
+  // BEN2 Base (PramaLLC, MIT), int8-Gewichte von moonbox-dev – laut deren Messung auf DIS5K
+  // gleichauf mit fp16 (IoU 0,9965). Eingabe RGB 0..1, Ausgabe Maske (min/max-normiert).
+  ben2: {
+    label: 'Freistellen – gut & sparsam (BEN2 Base)',
+    file: 'ben2_base_int8.onnx',
+    license: 'MIT',
+    url: `${HF}/moonbox-dev/BEN2-ONNX/resolve/c9244145da7534dbfc0005f4f7d748f9802cacba/int8/model.onnx`,
+    size: 130627316,
+    sha256: 'dc60def496e0625875a3241cc2859aa189bc2143ff9f2c65fd5ec424e82f05f2',
   },
   depth: {
     label: 'Tiefenkarte für Relief (Depth Anything V2 Small)',

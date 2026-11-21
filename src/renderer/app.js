@@ -31,6 +31,12 @@ const DEFAULTS = Object.freeze({
   // Freistellen
   bgRemove: 'none',
   maskThreshold: 0.5,
+  // Maske verfeinern (für alle Methoden)
+  maskShiftMm: 0,
+  maskSmoothMm: 0,
+  maskSpeckPct: 0,
+  maskHolePct: 0,
+  maskLargest: false,
   bgTolerance: 20,
   bgBorder: true,
   bgSeeds: [],
@@ -39,6 +45,7 @@ const DEFAULTS = Object.freeze({
   upscale: false,
   // Linien
   edgeMethod: 'ai',
+  lineStyle: 'fine',
   lineRes: 768,
   lineBoldMm: 0,
   edgeSensitivity: 60,
@@ -103,6 +110,7 @@ const state = {
   cache: new Map(), // Zwischenergebnisse der KI-Modelle für das aktuelle Bild (Promises)
   inflight: new Map(), // Cache-Schlüssel → Startzeit noch laufender Berechnungen
   mask: null, // { key, canvas }
+  maskRaw: null, // { key, canvas } – Maske vor dem Verfeinern
   models: [], // Status der KI-Modelle
   sys: null, // Speicher/CPU des Rechners und daraus abgeleitete Grenzen
   presets: [], // eigene Presets
@@ -156,6 +164,10 @@ const FORMATTERS = {
   optTolerance: (v) => Number(v).toFixed(2),
   workRes: (v) => `${v} px`,
   maskThreshold: (v) => Number(v).toFixed(2),
+  maskShiftMm: (v) => (Number(v) ? `${Number(v) > 0 ? '+' : ''}${Number(v).toFixed(1).replace('.', ',')} mm` : 'aus'),
+  maskSmoothMm: (v) => (Number(v) ? `${Number(v).toFixed(1).replace('.', ',')} mm` : 'aus'),
+  maskSpeckPct: (v) => (Number(v) ? `< ${Number(v).toFixed(1).replace('.', ',')} %` : 'aus'),
+  maskHolePct: (v) => (Number(v) ? `< ${Number(v).toFixed(1).replace('.', ',')} %` : 'aus'),
   bgTolerance: (v) => `${v}`,
   edgeSensitivity: (v) => `${v}`,
   lineRes: (v) => `${v} px`,
@@ -175,6 +187,15 @@ const FORMATTERS = {
   textBold: (v) => (Number(v) > 0 ? `+${v}` : `${v}`),
 };
 
+/** Hinweis unter der Modellauswahl (Modus Linien, KI). */
+const LINE_HINTS = {
+  fine: 'Zeichnet Fotos wie von Hand nach, mit vielen Details und Schraffur. Höherer Detailgrad = feinere Linien, dauert länger.',
+  contour: 'Dicke, geschlossene Umrisse mit wenig Schraffur – gut für kleine Gravuren. Höherer Detailgrad = mehr Umrisse.',
+  sketch: 'Zarte, lockere Bleistiftstriche mit wenig Details. Bei blassem Ergebnis die Linienschwelle erhöhen.',
+  portrait: 'Nur für Porträts: Gesicht wie mit Tusche gezeichnet, Haare als dunkle Fläche. Rechnet immer mit 512 px (kein Detailgrad) – Gesicht möglichst groß und mittig.',
+  teed: 'Kantendetektor: feine, durchgehende Umrisse. Zeichnet auch Strukturen wie Stoff oder Holzmaserung mit – ggf. vorher freistellen.',
+};
+
 function syncControls() {
   const s = state.settings;
   for (const el of $$('[data-key]')) {
@@ -191,6 +212,8 @@ function syncControls() {
   for (const el of $$('[data-algo]')) el.hidden = s.ditherAlgo !== el.dataset.algo;
   for (const el of $$('[data-bg]')) el.hidden = !el.dataset.bg.split(' ').includes(s.bgRemove);
   for (const el of $$('[data-edge]')) el.hidden = el.dataset.edge !== s.edgeMethod;
+  for (const el of $$('[data-line-hide]')) el.hidden = el.dataset.lineHide.split(' ').includes(s.lineStyle);
+  $('#line-model-hint').textContent = LINE_HINTS[s.lineStyle] || LINE_HINTS.fine;
   for (const el of $$('[data-show]')) el.hidden = !s[el.dataset.show];
   const seeds = s.bgSeeds.length;
   $('#btn-clear-seeds').textContent = seeds ? `Klickpunkte zurücksetzen (${seeds})` : 'Klickpunkte zurücksetzen';
@@ -661,6 +684,7 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   $('#face-info').textContent = '';
   $('#text-info').textContent = '';
   state.mask = null;
+  state.maskRaw = null;
   state.originalViewKey = null;
 
   if (settings) {
@@ -798,6 +822,10 @@ const Pipeline = (() => {
       const src = await createImageBitmap(source);
       return call('colorMask', { source: src, tolerance, border, seeds }, [src]);
     },
+    async refineMask(mask, opts) {
+      const m = await createImageBitmap(mask);
+      return call('refineMask', { mask: m, opts }, [m]);
+    },
   };
 })();
 
@@ -919,12 +947,13 @@ const Run = {
 /* Zwischenspeicher & Schlüssel                                       */
 /* ------------------------------------------------------------------ */
 
-const SEG_MODEL = { ai: 'u2netp', isnet: 'isnet', birefnet: 'birefnet', modnet: 'modnet', sam: 'sam_encoder' };
-const SEG_SEED_MS = { ai: 1500, isnet: 4000, birefnet: 26000, modnet: 2200 };
+const SEG_MODEL = { ai: 'u2netp', isnet: 'isnet', birefnet: 'birefnet', ben2: 'ben2', modnet: 'modnet', sam: 'sam_encoder' };
+const SEG_SEED_MS = { ai: 1500, isnet: 4000, birefnet: 26000, ben2: 14000, modnet: 2200 };
 const MODEL_NAMES = {
-  u2netp: 'Freistellen (schnell)', isnet: 'Freistellen (präzise)', birefnet: 'Freistellen (beste Qualität)',
+  u2netp: 'Freistellen (schnell)', isnet: 'Freistellen (präzise)', birefnet: 'Freistellen (beste Qualität)', ben2: 'Freistellen (gut & sparsam)',
   modnet: 'Porträt-Freistellen', sam_encoder: 'Objekt anklicken', sam_decoder: 'Objekt anklicken',
-  lineart: 'KI-Strichzeichnung', esrgan: 'KI-Vergrößerung', depth: 'Tiefenkarte', faces: 'Gesichtserkennung',
+  lineart: 'KI-Strichzeichnung', lineart_contour: 'KI-Strichzeichnung (Konturen)', lineart_sketch: 'KI-Strichzeichnung (Skizze)',
+  lineart_portrait: 'KI-Strichzeichnung (Tusche-Porträt)', lineart_teed: 'KI-Strichzeichnung (Kanten)', esrgan: 'KI-Vergrößerung', depth: 'Tiefenkarte', faces: 'Gesichtserkennung',
   scunet: 'Rauschen entfernen', lama: 'Kratzer auffüllen', restoreformer: 'Gesichter restaurieren', yunet: 'Gesichtspunkte',
   text: 'Texterkennung',
 };
@@ -950,7 +979,7 @@ const KEYS = {
   seg: (method, up) => `seg:${method}:${up}`,
   samEmb: (up) => `sam-emb:${up}`,
   samMask: (up, points) => `sam-mask:${up}:${JSON.stringify(points)}`,
-  lineart: (up, res, maskKey) => `lineart:${up}:${res}:${maskKey}`,
+  lineart: (up, res, maskKey, style = 'fine') => `lineart${style === 'fine' ? '' : `-${style}`}:${up}:${res}:${maskKey}`,
   depth: (up, res) => `depth:${up}:${res}`,
   faces: (up, maskKey = null) => (maskKey ? `faces:${up}:cut:${maskKey}` : `faces:${up}`),
   text: (up, maskKey = null) => (maskKey ? `text:${up}:cut:${maskKey}` : `text:${up}`),
@@ -966,12 +995,40 @@ const faceMaskKey = (s) => (s.faceOrder === 'after' ? maskKeyFor(s) : null);
 
 /** Schlüssel der Freistellmaske für die aktuellen Einstellungen (null = keine Maske). */
 function maskKeyFor(s) {
+  const base = rawMaskKeyFor(s);
+  if (!base) return null;
+  const r = maskRefineSig(s);
+  return r ? `${base}|${r}` : base;
+}
+
+/** Schlüssel der Maske vor dem Verfeinern. */
+function rawMaskKeyFor(s) {
   const method = s.bgRemove;
   if (method === 'none' || (method === 'sam' && !s.samPoints.length)) return null;
   const up = maskTag(s);
   if (method === 'color') return `color:${up}:${s.bgTolerance}:${s.bgBorder}:${JSON.stringify(s.bgSeeds)}`;
   if (method === 'sam') return `sam:${up}:${s.maskThreshold}:${JSON.stringify(s.samPoints)}`;
   return `${method}:${up}:${s.maskThreshold}`;
+}
+
+/** Kennung der Maskenverfeinerung ('' = keine). Angaben in mm hängen von der Ausgabebreite ab. */
+function maskRefineSig(s) {
+  const mm = Number(s.maskShiftMm) || 0, smooth = Number(s.maskSmoothMm) || 0;
+  const speck = Number(s.maskSpeckPct) || 0, hole = Number(s.maskHolePct) || 0;
+  if (!mm && !smooth && !speck && !hole && !s.maskLargest) return '';
+  return `r${mm}:${smooth}:${speck}:${hole}:${s.maskLargest ? 1 : 0}${mm || smooth ? `@${s.widthMm}` : ''}`;
+}
+
+/** Verfeinerungs-Optionen in Pixeln der Maske (die Maske deckt die volle Ausgabebreite ab). */
+function maskRefineOpts(s, maskWidth) {
+  const pxPerMm = maskWidth / s.widthMm;
+  return {
+    shiftPx: (Number(s.maskShiftMm) || 0) * pxPerMm,
+    smoothPx: (Number(s.maskSmoothMm) || 0) * pxPerMm,
+    speckPct: Number(s.maskSpeckPct) || 0,
+    holePct: Number(s.maskHolePct) || 0,
+    largestOnly: !!s.maskLargest,
+  };
 }
 
 /** Zwischenspeicher pro Bild: gleiche Anfrage → gleiches Promise. Laufende Berechnungen werden vermerkt. */
@@ -1067,7 +1124,9 @@ function planSteps(s) {
   const method = s.bgRemove;
   const maskKey = maskKeyFor(s);
   if (maskKey && !(state.mask && state.mask.key === maskKey)) {
-    if (method === 'color') {
+    if (state.maskRaw && state.maskRaw.key === rawMaskKeyFor(s)) {
+      // Rohmaske liegt schon vor – nur neu verfeinern
+    } else if (method === 'color') {
       const a = Segmentation.analysisSize({ width: work.w, height: work.h });
       add('colormask', 'Freistellen nach Farbe', 'colormask', (a.w * a.h) / 1e6, 250);
     } else if (method === 'sam') {
@@ -1075,6 +1134,10 @@ function planSteps(s) {
       add('sam-mask', 'Objekt auswählen', 'sam-mask', 1, 500, KEYS.samMask(maskTag(s), s.samPoints));
     } else {
       add('seg', MODEL_NAMES[SEG_MODEL[method]], `seg:${method}`, 1, SEG_SEED_MS[method], KEYS.seg(method, maskTag(s)));
+    }
+    if (maskRefineSig(s)) {
+      const a = Segmentation.analysisSize({ width: work.w, height: work.h });
+      add('maskrefine', 'Maske verfeinern', 'maskrefine', (a.w * a.h) / 1e6, 300);
     }
   }
 
@@ -1085,8 +1148,9 @@ function planSteps(s) {
   if (s.mode === 'edges' && s.edgeMethod === 'ai') {
     const sc = Number(s.lineRes) / Math.max(work.w, work.h);
     src = { w: Math.round(work.w * sc), h: Math.round(work.h * sc) };
-    const lineKey = KEYS.lineart(up, s.lineRes, maskKey || 'none');
-    add('lineart', 'KI-Strichzeichnung', 'lineart', (src.w * src.h) / 1e6, 6000, lineKey);
+    const lineKey = KEYS.lineart(up, s.lineRes, maskKey || 'none', s.lineStyle);
+    const lineModel = AI.lineModel(s.lineStyle);
+    add('lineart', MODEL_NAMES[lineModel], lineModel, (src.w * src.h) / 1e6, 6000, lineKey);
     if (s.faceBoost) {
       const n = state.faceCount ?? 1;
       if (n > 0) add('lineart-faces', 'Gesichtsdetails zeichnen', 'lineart-face', n, 2500, `${lineKey}:faces:${s.faceStrength}:${s.mouthStrength}:${s.noseStrength}:${s.chinStrength}:${s.cheekStrength}`);
@@ -1332,6 +1396,36 @@ async function ensureModelReady(id) {
   await ensureModel(id);
 }
 
+/**
+ * Sparsamere Ausweichmodelle, falls der Speicher nicht reicht: BiRefNet (ca. 6,7 GB) → BEN2
+ * (ca. 3 GB, bei sauberen Fotos fast gleich gut) → IS-Net (ca. 0,75 GB).
+ */
+const SEG_FALLBACK = { birefnet: 'ben2', ben2: 'isnet' };
+const SEG_LABEL = { birefnet: '„beste Qualität“ (BiRefNet)', ben2: '„gut & sparsam“ (BEN2)', isnet: '„präzise“ (IS-Net)' };
+
+/**
+ * Rohe KI-Maske. Der Hauptprozess hat bei LOW_MEMORY schon alle anderen Modelle freigegeben und
+ * den KI-Prozess neu gestartet – reicht es dann immer noch nicht, das nächstsparsamere Modell nehmen.
+ */
+async function segmentWithFallback(method, bitmap, up) {
+  let current = method;
+  for (;;) {
+    try {
+      const run = cached(KEYS.seg(current, up), () => AI.segment(current, bitmap));
+      const raw = await (current === method ? Run.track('seg', run) : run);
+      if (current !== method) {
+        toast(`Auch nach dem Freigeben aller anderen KI-Modelle reicht der Arbeitsspeicher nicht für ${SEG_LABEL[method]} – es wurde ${SEG_LABEL[current]} verwendet. Andere Programme schließen und erneut versuchen.`);
+      }
+      return raw;
+    } catch (err) {
+      const next = SEG_FALLBACK[current];
+      if (!next || !isLowMemory(err)) throw err;
+      current = next;
+      await ensureModelReady(SEG_MODEL[current]);
+    }
+  }
+}
+
 /** Liefert die Freistellmaske (zwischengespeichert) oder null. */
 async function ensureMask(s, bitmap) {
   const method = s.bgRemove;
@@ -1339,10 +1433,13 @@ async function ensureMask(s, bitmap) {
   if (!key) return null;
   if (state.mask && state.mask.key === key) return state.mask.canvas;
   const up = maskTag(s);
+  const rawKey = rawMaskKeyFor(s);
 
   let canvas;
   try {
-    if (method === 'color') {
+    if (state.maskRaw && state.maskRaw.key === rawKey) {
+      canvas = state.maskRaw.canvas; // nur die Verfeinerung hat sich geändert
+    } else if (method === 'color') {
       canvas = await Run.track('colormask', Pipeline.colorMask(bitmap, s.bgTolerance, s.bgBorder, s.bgSeeds));
     } else {
       await ensureModelReady(SEG_MODEL[method]);
@@ -1352,18 +1449,13 @@ async function ensureMask(s, bitmap) {
         const { w, h } = Segmentation.analysisSize(bitmap);
         raw = await Run.track('sam-mask', cached(KEYS.samMask(up, s.samPoints), () => AI.samMask(emb, s.samPoints, w, h)));
       } else {
-        try {
-          raw = await Run.track('seg', cached(KEYS.seg(method, up), () => AI.segment(method, bitmap)));
-        } catch (err) {
-          // BiRefNet braucht ca. 6,7 GB. Der Hauptprozess hat schon alle anderen Modelle freigegeben
-          // und den KI-Prozess neu gestartet – reicht es dann immer noch nicht, notfalls IS-Net verwenden.
-          if (method !== 'birefnet' || !isLowMemory(err)) throw err;
-          await ensureModelReady('isnet');
-          toast('Auch nach dem Freigeben aller anderen KI-Modelle reicht der Arbeitsspeicher nicht für „beste Qualität“ – es wird „präzise“ (IS-Net) verwendet. Andere Programme schließen und erneut versuchen.');
-          raw = await cached(KEYS.seg('isnet', up), () => AI.segment('isnet', bitmap));
-        }
+        raw = await segmentWithFallback(method, bitmap, up);
       }
       canvas = Segmentation.aiMask(raw, bitmap, s.maskThreshold);
+    }
+    state.maskRaw = { key: rawKey, canvas };
+    if (maskRefineSig(s)) {
+      canvas = await Run.track('maskrefine', Pipeline.refineMask(canvas, maskRefineOpts(s, canvas.width)));
     }
   } catch (err) {
     if (isCancelled(err)) throw err;
@@ -1439,8 +1531,8 @@ async function contourMask(s, bitmap) {
 async function contentSource(s, bitmap, mask) {
   const up = upTag(s);
   if (s.mode === 'edges' && s.edgeMethod === 'ai') {
-    const key = KEYS.lineart(up, s.lineRes, mask ? state.mask.key : 'none');
-    if (!state.cache.has(key)) await ensureModelReady('lineart');
+    const key = KEYS.lineart(up, s.lineRes, mask ? state.mask.key : 'none', s.lineStyle);
+    if (!state.cache.has(key)) await ensureModelReady(AI.lineModel(s.lineStyle));
     // Freigestellten Hintergrund vorher entfernen, damit dort keine Linien entstehen
     const lineInput = () => {
       if (!mask) return bitmap;
@@ -1451,11 +1543,11 @@ async function contentSource(s, bitmap, mask) {
       ctx.drawImage(mask, 0, 0, bitmap.width, bitmap.height);
       return c;
     };
-    const base = await Run.track('lineart', cached(key, () => AI.lineArt(lineInput(), Number(s.lineRes))));
+    const base = await Run.track('lineart', cached(key, () => AI.lineArt(lineInput(), Number(s.lineRes), s.lineStyle)));
     if (!s.faceBoost || !s.faces.length) return base;
     // Gesichter zusätzlich in hoher Auflösung nachzeichnen
     return Run.track('lineart-faces', cached(`${key}:faces:${s.faceStrength}:${s.mouthStrength}:${s.noseStrength}:${s.chinStrength}:${s.cheekStrength}`, () =>
-      AI.enhanceFacesLineArt(lineInput(), base, s.faces, s.faceStrength, Processing.faceFeatureLevels(s))));
+      AI.enhanceFacesLineArt(lineInput(), base, s.faces, s.faceStrength, Processing.faceFeatureLevels(s), s.lineStyle)));
   }
   if (s.mode === 'relief') {
     const key = KEYS.depth(up, s.depthRes);
@@ -1601,6 +1693,7 @@ function renderModels() {
         state.models = await window.api.models.remove(m.id);
         state.cache = new Map();
         state.mask = null;
+        state.maskRaw = null;
         renderModels();
       });
       st.append(del);
