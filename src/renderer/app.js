@@ -1355,10 +1355,11 @@ async function ensureMask(s, bitmap) {
         try {
           raw = await Run.track('seg', cached(KEYS.seg(method, up), () => AI.segment(method, bitmap)));
         } catch (err) {
-          // BiRefNet braucht ca. 6,7 GB – bei zu wenig Speicher automatisch IS-Net verwenden
+          // BiRefNet braucht ca. 6,7 GB. Der Hauptprozess hat schon alle anderen Modelle freigegeben
+          // und den KI-Prozess neu gestartet – reicht es dann immer noch nicht, notfalls IS-Net verwenden.
           if (method !== 'birefnet' || !isLowMemory(err)) throw err;
           await ensureModelReady('isnet');
-          toast('Zu wenig freier Arbeitsspeicher für „beste Qualität“ – es wird „präzise“ (IS-Net) verwendet.');
+          toast('Auch nach dem Freigeben aller anderen KI-Modelle reicht der Arbeitsspeicher nicht für „beste Qualität“ – es wird „präzise“ (IS-Net) verwendet. Andere Programme schließen und erneut versuchen.');
           raw = await cached(KEYS.seg('isnet', up), () => AI.segment('isnet', bitmap));
         }
       }

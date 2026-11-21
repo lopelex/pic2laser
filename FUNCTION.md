@@ -168,8 +168,14 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 - **Leistungsstufe** niedrig / mittel / hoch bestimmt Arbeits- und Kachelgrößen, maximale
   Bildgröße, gleichzeitig geladene Modelle und Threads.
 - Vor jeder KI-Berechnung wird der freie Speicher mit dem **gemessenen Bedarf des Modells**
-  verglichen; bei Bedarf werden andere Modelle freigegeben, sonst gibt es eine verständliche
-  Meldung statt eines Absturzes.
+  verglichen. Reicht er nicht, wird stufenweise Speicher freigemacht: zuerst alle anderen
+  geladenen Modelle freigeben, dann den KI-Prozess neu starten (gibt wirklich allen Speicher
+  an das System zurück). Erst wenn auch das nicht reicht, gibt es eine verständliche Meldung
+  statt eines Absturzes.
+- Geht beim Rechnen doch der Speicher aus oder beendet das System den KI-Prozess, wird er
+  frisch gestartet und die Berechnung einmal wiederholt.
+- „Freistellen – beste Qualität“ (BiRefNet) weicht nur dann auf „präzise“ (IS-Net) aus, wenn
+  trotz aller Freigaben nicht genug Speicher frei wird.
 
 ## KI-Modelle
 

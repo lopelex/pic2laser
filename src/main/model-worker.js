@@ -198,7 +198,8 @@ async function run(file, feeds, outputs, arena) {
       return await runOnce(file, feeds, outputs, arena);
     } catch (err2) {
       if (isOutOfMemory(err2)) {
-        throw new Error('Nicht genug Arbeitsspeicher für dieses KI-Modell. Bitte andere Programme schließen oder ein kleineres Modell bzw. Bild verwenden.');
+        // Kennung OOM: Hauptprozess startet den KI-Prozess neu (gibt auch zerstückelten Speicher frei) und versucht es erneut
+        throw new Error('OOM: Nicht genug Arbeitsspeicher für dieses KI-Modell.');
       }
       throw err2;
     }
@@ -220,9 +221,13 @@ process.parentPort.on('message', (e) => {
     return;
   }
   if (msg.type === 'trim') {
-    // vor speicherhungrigen Modellen: alle anderen freigeben
+    // vor speicherhungrigen Modellen: alle anderen freigeben (Antwort: wie viele es waren)
     queue = queue.then(async () => {
-      for (const f of [...sessions.keys()]) if (f !== msg.keep) await release(f);
+      let released = 0;
+      for (const f of [...sessions.keys()]) {
+        if (f !== msg.keep) { await release(f); released++; }
+      }
+      if (msg.id) process.parentPort.postMessage({ id: msg.id, ok: true, result: { released, loaded: sessions.size } });
     });
     return;
   }

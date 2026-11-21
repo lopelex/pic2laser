@@ -307,6 +307,7 @@ const worker = {
       const jobs = [...this.pending.values()];
       this.pending.clear();
       for (const job of jobs) {
+        if (!job.msg) { job.reject(new Error('KI-Prozess wurde beendet')); continue; }
         // Absturz während einer GPU-Berechnung (z. B. Grafiktreiber): Modell künftig auf der CPU, einmal neu versuchen
         if (job.onGpu && !job.retried) {
           blockGpu(job.msg.file);
@@ -354,9 +355,39 @@ const worker = {
     this.ensureProc().postMessage({ type: 'warm' });
   },
 
-  /** Alle zwischengespeicherten Modelle außer `keep` freigeben. */
+  /**
+   * Alle zwischengespeicherten Modelle außer `keep` freigeben. Wartet, bis der KI-Prozess
+   * fertig ist. Rückgabe: { released, loaded } oder null (kein Prozess / keine Antwort).
+   */
   trim(keep) {
-    if (this.proc) this.proc.postMessage({ type: 'trim', keep });
+    const proc = this.proc;
+    if (!proc) return Promise.resolve(null);
+    const id = this.nextId++;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.pending.delete(id); resolve(null); }, 5000);
+      const done = (v) => { clearTimeout(timer); resolve(v); };
+      this.pending.set(id, { resolve: (r) => done(r.result), reject: () => done(null), msg: null, onGpu: false, retried: true });
+      proc.postMessage({ type: 'trim', keep, id });
+    });
+  },
+
+  /**
+   * KI-Prozess beenden, damit wirklich aller Speicher an das System zurückgeht – auch der,
+   * den onnxruntime nach dem Freigeben von Modellen noch zerstückelt im Prozess hält.
+   * Nur aufrufen, wenn nichts rechnet (innerhalb von exclusive). Der nächste Lauf startet neu.
+   */
+  async recycle() {
+    const old = this.proc;
+    if (!old) return false;
+    this.proc = null;
+    for (const job of this.pending.values()) job.reject(new Error('cancelled'));
+    this.pending.clear();
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 3000);
+      old.once('exit', () => { clearTimeout(timer); resolve(); });
+      old.kill();
+    });
+    return true;
   },
 
   run(file, feeds, outputs, arena = false, retried = false) {
@@ -447,11 +478,29 @@ async function run(id, feeds, outputs, onProgress) {
   const file = await ensure(id, onProgress);
   // Speicherprüfung erst, wenn die vorige Berechnung fertig ist – sonst zählt deren Bedarf mit
   // (Kacheln werden vom Fenster schon vorab angefragt). Der KI-Prozess rechnet ohnehin nacheinander.
-  const { result, device } = await exclusive(async () => {
+  const attempt = async () => {
     await checkMemory(id, file, feeds);
     // inzwischen abgebrochen (z. B. während der Speicherprüfung)? Dann nicht mehr rechnen.
     if (epoch !== worker.epoch) throw new Error('cancelled');
     return worker.run(file, feeds, outputs, ARENA_MODELS.has(id));
+  };
+  const { result, device } = await exclusive(async () => {
+    try {
+      return await attempt();
+    } catch (err) {
+      // Speicher reichte beim Rechnen doch nicht (Bedarf ist geschätzt) oder das System hat den
+      // KI-Prozess beendet (Speicher voll): alle Modelle verwerfen, frischen Prozess starten, erneut.
+      if (epoch !== worker.epoch || !isRetryableMemoryError(err)) throw err;
+      console.warn(`${id}: ${err.message} – KI-Prozess wird neu gestartet und die Berechnung wiederholt.`);
+      await worker.recycle();
+      await settleMemory(resources.peakMB(id, feeds));
+      try {
+        return await attempt();
+      } catch (err2) {
+        if (/^OOM: /.test(err2.message)) throw lowMemoryError(id, resources.peakMB(id, feeds), await resources.availableMB());
+        throw err2;
+      }
+    }
   });
   stats.devices[id] = device;
   if (key && epoch === worker.epoch) resultCache.put(key, result);
@@ -509,23 +558,55 @@ const ARENA_MODELS = new Set(['esrgan']);
 
 /**
  * Prüft vor dem Rechnen, ob genug Arbeitsspeicher frei ist (gemessener Bedarf des Modells).
- * Reicht er nicht, werden zuerst zwischengespeicherte Modelle freigegeben. Reicht er dann
- * immer noch nicht, wird mit einer verständlichen Meldung abgebrochen (Code LOW_MEMORY),
- * statt dass das System auslagert oder der KI-Prozess abstürzt.
+ * Reicht er nicht, wird stufenweise Speicher freigemacht:
+ *  1. alle anderen zwischengespeicherten Modelle im KI-Prozess freigeben,
+ *  2. reicht das nicht, den KI-Prozess neu starten (gibt wirklich allen Speicher frei,
+ *     auch den, den onnxruntime nach dem Freigeben noch im Prozess hält).
+ * Erst wenn auch das nicht reicht, wird mit einer verständlichen Meldung abgebrochen
+ * (Code LOW_MEMORY), statt dass das System auslagert oder der KI-Prozess abstürzt.
  */
 async function checkMemory(id, file, feeds) {
   const need = resources.peakMB(id, feeds);
+  // etwas Spielraum nach unten, da der Bedarf geschätzt ist
+  const enough = (avail) => avail >= need * 0.9;
   let avail = await resources.availableMBCached();
   if (avail >= need + 300) return;
-  worker.trim(file);
-  await new Promise((r) => setTimeout(r, 300));
-  avail = await resources.availableMB();
-  // nach dem Freigeben noch einmal messen; etwas Spielraum, da Bedarf geschätzt ist
-  if (avail < need * 0.9) {
-    const gb = (mb) => (mb / 1024).toFixed(1).replace('.', ',');
-    throw new Error(`LOW_MEMORY: Zu wenig freier Arbeitsspeicher für „${getModel(id).label}“ – benötigt ca. ${gb(need)} GB, frei sind ${gb(avail)} GB. Bitte andere Programme schließen oder eine sparsamere Option wählen.`);
+
+  const trimmed = await worker.trim(file);
+  if (trimmed && trimmed.released > 0) {
+    avail = await settleMemory(need);
+    if (enough(avail)) return;
   }
+  if (await worker.recycle()) {
+    console.warn(`${id}: zu wenig Speicher (frei ${avail} MB, Bedarf ${need} MB) – KI-Prozess neu gestartet.`);
+    avail = await settleMemory(need);
+    if (enough(avail)) return;
+  }
+  avail = await resources.availableMB();
+  if (!enough(avail)) throw lowMemoryError(id, need, avail);
 }
+
+/**
+ * Nach dem Freigeben dauert es einen Moment, bis das System den Speicher als verfügbar meldet:
+ * bis zu ca. 1,5 s messen, bis der Bedarf gedeckt ist. Rückgabe: zuletzt gemessener freier Speicher.
+ */
+async function settleMemory(need) {
+  let avail = 0;
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, i === 0 ? 100 : 250));
+    avail = await resources.availableMB();
+    if (avail >= need * 0.9) break;
+  }
+  return avail;
+}
+
+function lowMemoryError(id, need, avail) {
+  const gb = (mb) => (mb / 1024).toFixed(1).replace('.', ',');
+  return new Error(`LOW_MEMORY: Zu wenig freier Arbeitsspeicher für „${getModel(id).label}“ – benötigt ca. ${gb(need)} GB, frei sind ${gb(avail)} GB (nicht genutzte KI-Modelle wurden bereits freigegeben). Bitte andere Programme schließen oder eine sparsamere Option wählen.`);
+}
+
+/** Speicherfehler beim Rechnen oder vom System beendeter KI-Prozess – lohnt einen Neuversuch mit frischem Prozess. */
+const isRetryableMemoryError = (err) => /^OOM: |^KI-Prozess wurde beendet/.test(String(err && err.message));
 
 /* ------------------------------------------------------------------ */
 
