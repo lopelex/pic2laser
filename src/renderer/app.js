@@ -651,6 +651,7 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   state.result = null;
   dragReady = false; // altes Ergebnis lässt sich nicht mehr herausziehen
   renderResultInfo(null);
+  resetOriginalDrag();
   state.cache = new Map();
   state.inflight = new Map();
   state.faceCount = null;
@@ -861,11 +862,13 @@ const Run = {
   async track(id, promise) {
     const st = this.cur?.steps.get(id);
     if (st && st.started == null) st.started = performance.now();
+    const hits = AI.cacheHits;
     this.render();
     const res = await promise;
     if (st && !st.done) {
       st.done = true;
-      if (!st.inherited) Timing.learn(st.tkey, st.units, performance.now() - st.started);
+      // aus dem Festplatten-Cache geholt → nicht als Rechendauer lernen
+      if (!st.inherited && AI.cacheHits === hits) Timing.learn(st.tkey, st.units, performance.now() - st.started);
     }
     return res;
   },
@@ -1160,6 +1163,7 @@ async function runProcess() {
     state.lastTextBlocks = s.textBlocks;
     state.lastViewBase = viewBase;
     await updateOriginalView(s, mask, viewBase);
+    scheduleOriginalDrag(s, work, mask);
     if (stale()) return;
 
     // Gesichter erkennen (für „Gesichtszüge hervorheben“)
@@ -1234,6 +1238,7 @@ async function runProcess() {
     if (gen === state.generation) {
       setBusy(false);
       Run.stop();
+      refreshPerf(); // GPU/CPU je Modell und Cache-Größe aktualisieren
     }
   }
 }
@@ -1496,6 +1501,53 @@ async function refreshModels() {
     state.models = [];
   }
   renderModels();
+}
+
+/* ------------------------------------------------------------------ */
+/* Leistung: GPU & Festplatten-Cache                                  */
+/* ------------------------------------------------------------------ */
+
+function renderPerf(p) {
+  if (!p) return;
+  const gpu = $('#perf-gpu');
+  gpu.checked = !!p.gpu && !!p.gpuAvailable;
+  gpu.disabled = !p.gpuAvailable;
+  $('#perf-cache').checked = !!p.diskCache;
+  $('#perf-cache-info').textContent = p.cache.count
+    ? `Cache: ${fmtMB(p.cache.bytes)} (${p.cache.count} Ergebnisse)`
+    : 'Cache: leer';
+  $('#btn-perf-cache-clear').disabled = !p.cache.count;
+  const used = Object.entries(p.devices);
+  const name = (id) => MODEL_NAMES[id] || id;
+  let info;
+  if (!p.gpuAvailable) info = 'Für dieses System gibt es keine GPU-Beschleunigung – die KI rechnet auf dem Prozessor.';
+  else if (!p.gpu) info = `GPU-Beschleunigung ist ausgeschaltet – verfügbar: ${p.gpuAvailable}.`;
+  else {
+    const onGpu = used.filter(([, d]) => d === 'gpu').map(([id]) => name(id));
+    info = `GPU: ${p.gpuAvailable}.` + (onGpu.length ? ` Auf der GPU: ${onGpu.join(', ')}.` : ' Noch kein Modell gelaufen.');
+    if (p.cpuOnly.length) info += ` Auf dem Prozessor (GPU nicht unterstützt): ${p.cpuOnly.map(name).join(', ')}.`;
+  }
+  $('#perf-info').textContent = info;
+}
+
+async function refreshPerf() {
+  try { renderPerf(await window.api.perf.status()); } catch { /* ignorieren */ }
+}
+
+function bindPerf() {
+  $('#perf-gpu').addEventListener('change', async (e) => {
+    // KI-Prozess startet neu (laufende Berechnung wird abgebrochen) → danach neu umwandeln
+    renderPerf(await window.api.perf.set({ gpu: e.target.checked }));
+    toast(e.target.checked ? 'GPU-Beschleunigung eingeschaltet' : 'GPU-Beschleunigung ausgeschaltet');
+    if (state.source) scheduleProcess(0);
+  });
+  $('#perf-cache').addEventListener('change', async (e) => {
+    renderPerf(await window.api.perf.set({ diskCache: e.target.checked }));
+  });
+  $('#btn-perf-cache-clear').addEventListener('click', async () => {
+    renderPerf(await window.api.perf.clearCache());
+    toast('Cache geleert');
+  });
 }
 
 /** Stellt sicher, dass ein Modell vorhanden ist (lädt es bei Bedarf mit Fortschrittsanzeige). */
@@ -1769,6 +1821,72 @@ function renderResultInfo(exts) {
   el.hidden = false;
 }
 
+/* ---- Optimiertes Original herausziehen (Strg + Ziehen im Originalfeld) ---- */
+
+// Bild, das in die Umwandlung geht: restauriert, KI-vergrößert, freigestellt (Hintergrund transparent)
+const origDrag = { ready: false, key: null, timer: null, info: null };
+const MOD_KEY = /Mac/.test(navigator.platform) ? '⌘' : 'Strg';
+
+function resetOriginalDrag() {
+  clearTimeout(origDrag.timer);
+  Object.assign(origDrag, { ready: false, key: null, info: null });
+  renderOriginalInfo();
+}
+
+/** Bereitet das optimierte Original als PNG zum Herausziehen vor (im Hintergrund, nur bei Änderungen). */
+function scheduleOriginalDrag(s, work, mask) {
+  const key = `${upTag(s)}|${mask ? state.mask.key : 'none'}|${work.width}x${work.height}`;
+  if (key === origDrag.key) return;
+  clearTimeout(origDrag.timer);
+  origDrag.key = key;
+  origDrag.ready = false;
+  const steps = [];
+  if (restoreSig(s)) steps.push('restauriert');
+  if (work.width > state.source.bitmap.width) steps.push('KI-vergrößert');
+  if (mask) steps.push('freigestellt');
+  origDrag.info = { w: work.width, h: work.height, steps };
+  renderOriginalInfo();
+  const source = state.source;
+  origDrag.timer = setTimeout(async () => {
+    try {
+      const c = new OffscreenCanvas(work.width, work.height);
+      const ctx = c.getContext('2d');
+      ctx.drawImage(work, 0, 0);
+      if (mask) {
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(mask, 0, 0, c.width, c.height);
+      }
+      const png = await Encoders.canvasBytes(c, 'image/png');
+      const sc = Math.min(1, 96 / Math.max(c.width, c.height));
+      const ic = new OffscreenCanvas(Math.max(1, Math.round(c.width * sc)), Math.max(1, Math.round(c.height * sc)));
+      const ictx = ic.getContext('2d');
+      ictx.imageSmoothingQuality = 'high';
+      ictx.drawImage(c, 0, 0, ic.width, ic.height);
+      const icon = await Encoders.canvasBytes(ic, 'image/png');
+      if (origDrag.key !== key || state.source !== source) return; // inzwischen geändert
+      const suffix = origDrag.info.steps.length ? '-optimiert' : '-original';
+      await window.api.dragPrepare({ kind: 'original', baseName: baseName() + suffix, files: [{ ext: 'png', data: png }], icon });
+      origDrag.ready = origDrag.key === key;
+      renderOriginalInfo();
+    } catch (err) {
+      console.error(err);
+    }
+  }, 400);
+}
+
+/** Kleine Info im Originalfeld: mit Strg herausziehbar, Größe, was optimiert wurde. */
+function renderOriginalInfo() {
+  const el = $('#original-info');
+  const i = origDrag.info;
+  if (!i || !state.source) { el.hidden = true; return; }
+  const what = i.steps.length ? `optimiert (${i.steps.join(', ')})` : 'Original';
+  el.textContent = `⤴ ${MOD_KEY} + Ziehen: ${what} · PNG · ${i.w} × ${i.h} px${origDrag.ready ? '' : ' · wird vorbereitet …'}`;
+  el.title = `Mit gedrückter ${MOD_KEY}-Taste das Bild herausziehen`
+    + ' – so, wie es in die Umwandlung geht: restauriert, KI-vergrößert und freigestellt (Hintergrund transparent), ohne Markierungen.';
+  el.hidden = false;
+}
+
 /** Kleines Vorschaubild für den Mauszeiger beim Ziehen. */
 async function dragIcon(r) {
   const { canvas: full, w: fw, h: fh } = rasterCanvas(r, false); // inkl. Umrisslinie
@@ -1808,6 +1926,33 @@ function bindCancel() {
     const busy = $('#busy').classList.contains('on') || !$('#progress').hidden;
     if (busy) { e.preventDefault(); cancelAll(); }
   });
+}
+
+function bindOriginalDrag() {
+  const img = $('#img-original');
+  // Strg (Mac: auch Cmd) gedrückt → Originalbild wird zur Drag-Quelle statt zum Verschieben/Punkte setzen
+  const setCtrl = (on) => {
+    on = on && !!state.source;
+    document.body.classList.toggle('ctrl-drag', on);
+    img.draggable = on;
+  };
+  window.addEventListener('keydown', (e) => { if (e.key === 'Control' || e.key === 'Meta') setCtrl(true); });
+  window.addEventListener('keyup', (e) => { if (e.key === 'Control' || e.key === 'Meta') setCtrl(false); });
+  window.addEventListener('blur', () => setCtrl(false));
+  img.addEventListener('pointerdown', (e) => setCtrl(e.ctrlKey || e.metaKey), true);
+  img.addEventListener('dragstart', (e) => {
+    e.preventDefault(); // eigenes System-Drag mit echter Datei statt Bild-URL
+    if (!(e.ctrlKey || e.metaKey) || !state.source) return;
+    if (!origDrag.ready) {
+      toast('Das Bild wird noch vorbereitet – bitte gleich noch einmal ziehen.');
+      return;
+    }
+    window.api.dragStart('original');
+  });
+  // Strg + Klick setzt keinen Punkt (sonst entstünde beim Ziehen-Versuch ohne Bewegung ein Klickpunkt)
+  img.addEventListener('click', (e) => {
+    if (e.ctrlKey || e.metaKey) e.stopImmediatePropagation();
+  }, true);
 }
 
 function bindResultDrag() {
@@ -2037,6 +2182,8 @@ function bindView() {
       if (e.button !== 0 && e.button !== 1) return;
       // Im Ergebnis startet Linksziehen Drag & Drop der Datei – verschoben wird dort mit der mittleren Taste
       if (e.button === 0 && scroller.closest('#pane-result')) return;
+      // Strg + Ziehen im Original = Bild herausziehen statt verschieben
+      if (e.button === 0 && (e.ctrlKey || e.metaKey) && scroller.closest('#pane-original')) return;
       if (e.button === 1) e.preventDefault(); // kein Auto-Scroll-Modus
       drag = { scroller, x: e.clientX, y: e.clientY, left: scroller.scrollLeft, top: scroller.scrollTop, moved: false, id: e.pointerId };
     });
@@ -2190,7 +2337,10 @@ function toast(msg, isError = false, action = null) {
 bindControls();
 bindPresets();
 bindResultDrag();
+bindOriginalDrag();
 bindCancel();
+bindPerf();
+refreshPerf();
 $('#img-original').addEventListener('load', renderMarkers);
 window.addEventListener('resize', renderMarkers);
 for (const b of $$('#view-mode button')) b.addEventListener('click', () => requestAnimationFrame(renderMarkers));

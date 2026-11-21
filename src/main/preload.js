@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld('api', {
   system: {
     profile: () => ipcRenderer.invoke('system-profile'),
   },
+  perf: {
+    status: () => ipcRenderer.invoke('perf-status'),
+    set: (patch) => ipcRenderer.invoke('perf-set', patch),
+    clearCache: () => ipcRenderer.invoke('perf-cache-clear'),
+  },
   presets: {
     list: () => ipcRenderer.invoke('presets-list'),
     save: (preset) => ipcRenderer.invoke('presets-save', preset),
@@ -28,7 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   openImage: () => ipcRenderer.invoke('open-image'),
   exportFiles: (payload) => ipcRenderer.invoke('export-files', payload),
   dragPrepare: (payload) => ipcRenderer.invoke('drag-prepare', payload),
-  dragStart: () => ipcRenderer.send('drag-start'),
+  dragStart: (kind = 'result') => ipcRenderer.send('drag-start', kind),
   cancelAll: () => ipcRenderer.invoke('cancel-all'),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
 

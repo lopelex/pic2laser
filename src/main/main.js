@@ -34,6 +34,13 @@ function createWindow() {
   mainWindow.webContents.once('did-finish-load', () => {
     for (const t of Object.values(tracers)) t.ensureProc();
     models.warmUp();
+    if (crashedGpuModel) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        message: 'Pic2Laser wurde bei einer GPU-Berechnung beendet',
+        detail: `Das Modell „${crashedGpuModel}“ läuft ab jetzt auf dem Prozessor. Die übrigen Modelle nutzen weiter die GPU. Unter „Leistung“ lässt sich die GPU ganz ausschalten.`,
+      });
+    }
   });
 
   // Links nie im App-Fenster öffnen
@@ -41,7 +48,12 @@ function createWindow() {
   mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
 }
 
+// Ist die App zuletzt während einer GPU-Berechnung abgestürzt? Dann das Modell auf die CPU verlegen
+// (muss vor dem Start des KI-Prozesses passieren, der die Liste beim Start übernimmt)
+let crashedGpuModel = null;
+
 app.whenReady().then(() => {
+  crashedGpuModel = models.recoverFromGpuCrash();
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
   createWindow();
   app.on('activate', () => {
@@ -241,11 +253,14 @@ ipcMain.handle('show-in-folder', (_e, filePath) => {
 
 // Die Dateien werden nach jeder Berechnung vorbereitet, damit das Ziehen sofort starten kann
 // (startDrag muss synchron während der Mausbewegung aufgerufen werden).
-const DRAG_DIR = () => path.join(app.getPath('temp'), 'pic2laser-drag');
-let dragPrepared = null; // { paths, icon }
+// Getrennte Plätze: 'result' = Ergebnis, 'original' = optimiertes Original (Strg + Ziehen)
+const DRAG_KINDS = ['result', 'original'];
+const DRAG_DIR = (kind = 'result') => path.join(app.getPath('temp'), 'pic2laser-drag', kind);
+const dragPrepared = {}; // kind -> { paths, icon }
 
-ipcMain.handle('drag-prepare', async (_e, { baseName, files, icon }) => {
-  const dir = DRAG_DIR();
+ipcMain.handle('drag-prepare', async (_e, { baseName, files, icon, kind = 'result' }) => {
+  if (!DRAG_KINDS.includes(kind)) throw new Error('Unbekannte Drag-Art');
+  const dir = DRAG_DIR(kind);
   await fs.rm(dir, { recursive: true, force: true });
   await fs.mkdir(dir, { recursive: true });
   const paths = [];
@@ -256,13 +271,14 @@ ipcMain.handle('drag-prepare', async (_e, { baseName, files, icon }) => {
   }
   let img = icon ? nativeImage.createFromBuffer(Buffer.from(icon)) : nativeImage.createEmpty();
   if (img.isEmpty()) img = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=');
-  dragPrepared = { paths, icon: img };
+  dragPrepared[kind] = { paths, icon: img };
   return paths;
 });
 
-ipcMain.on('drag-start', (e) => {
-  if (!dragPrepared || !dragPrepared.paths.length) return;
-  e.sender.startDrag({ file: dragPrepared.paths[0], files: dragPrepared.paths, icon: dragPrepared.icon });
+ipcMain.on('drag-start', (e, kind = 'result') => {
+  const prepared = dragPrepared[kind];
+  if (!prepared || !prepared.paths.length) return;
+  e.sender.startDrag({ file: prepared.paths[0], files: prepared.paths, icon: prepared.icon });
 });
 
 function sanitize(name) {

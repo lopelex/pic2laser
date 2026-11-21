@@ -13,6 +13,8 @@ const fsSync = require('fs');
 const crypto = require('crypto');
 
 const resources = require('./resources');
+const prefs = require('./prefs');
+const resultCache = require('./result-cache');
 
 const HF = 'https://huggingface.co';
 
@@ -270,24 +272,49 @@ const worker = {
     if (this.proc) return this.proc;
     // Speicherbudget und Thread-Zahl je nach Leistungsstufe des Rechners
     const limits = resources.LIMITS[resources.tierFor(resources.totalMB())];
+    const p = prefs.get();
     this.proc = utilityProcess.fork(path.join(__dirname, 'model-worker.js'), [], {
       serviceName: 'Pic2Laser KI',
-      env: { ...process.env, PIC2LASER_MODEL_BUDGET_MB: String(limits.modelBudgetMB), PIC2LASER_THREADS: String(limits.threads) },
+      env: {
+        ...process.env,
+        PIC2LASER_MODEL_BUDGET_MB: String(limits.modelBudgetMB),
+        PIC2LASER_THREADS: String(limits.threads),
+        PIC2LASER_GPU: p.gpu && GPU_LABEL ? '1' : '0',
+        PIC2LASER_GPU_BLOCKED: JSON.stringify(p.gpuBlocked || []),
+      },
     });
     const proc = this.proc;
     proc.on('message', (msg) => {
+      if (msg.type === 'gpu-failed') {
+        // Modell läuft künftig direkt auf der CPU (spart den erneuten Fehlversuch)
+        blockGpu(msg.file);
+        return;
+      }
+      if (msg.type === 'gpu-unblock') {
+        prefs.set({ gpuBlocked: (prefs.get().gpuBlocked || []).filter((f) => f !== msg.file) });
+        return;
+      }
       if (proc !== this.proc) return; // Antwort eines abgebrochenen Prozesses ignorieren
       const job = this.pending.get(msg.id);
       if (!job) return;
       this.pending.delete(msg.id);
-      if (msg.ok) job.resolve(msg.result);
+      if (msg.ok) job.resolve({ result: msg.result, device: msg.device });
       else job.reject(new Error(msg.error));
     });
     proc.on('exit', () => {
       if (proc !== this.proc) return; // abgebrochener Prozess – dessen Jobs sind schon abgelehnt
       this.proc = null;
-      for (const job of this.pending.values()) job.reject(new Error('KI-Prozess wurde beendet'));
+      const jobs = [...this.pending.values()];
       this.pending.clear();
+      for (const job of jobs) {
+        // Absturz während einer GPU-Berechnung (z. B. Grafiktreiber): Modell künftig auf der CPU, einmal neu versuchen
+        if (job.onGpu && !job.retried) {
+          blockGpu(job.msg.file);
+          this.run(job.msg.file, job.msg.feeds, job.msg.outputs, job.msg.arena, true).then(job.resolve, job.reject);
+        } else {
+          job.reject(new Error('KI-Prozess wurde beendet'));
+        }
+      }
     });
     return proc;
   },
@@ -311,6 +338,17 @@ const worker = {
     this.warmUp(); // Ersatzprozess gleich vorstarten
   },
 
+  /** Prozess neu starten (z. B. nach Umschalten der GPU-Nutzung); laufende Berechnungen werden abgebrochen. */
+  restart() {
+    this.epoch++;
+    const old = this.proc;
+    this.proc = null;
+    for (const job of this.pending.values()) job.reject(new Error('cancelled'));
+    this.pending.clear();
+    if (old) old.kill();
+    this.warmUp();
+  },
+
   /** Prozess starten und die KI-Laufzeit vorab laden (spart Zeit beim ersten KI-Schritt). */
   warmUp() {
     this.ensureProc().postMessage({ type: 'warm' });
@@ -321,15 +359,72 @@ const worker = {
     if (this.proc) this.proc.postMessage({ type: 'trim', keep });
   },
 
-  run(file, feeds, outputs, arena = false) {
+  run(file, feeds, outputs, arena = false, retried = false) {
     const proc = this.ensureProc();
     const id = this.nextId++;
+    const msg = { id, file, feeds, outputs, arena };
+    const onGpu = gpuEligible(file);
+    // Absturzschutz: vermerken, welches Modell gerade auf der GPU rechnet (siehe recoverFromGpuCrash)
+    if (onGpu) gpuGuard.start(file);
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      proc.postMessage({ id, file, feeds, outputs, arena });
-    });
+      this.pending.set(id, { resolve, reject, msg, onGpu, retried });
+      proc.postMessage(msg);
+    }).finally(() => { if (onGpu) gpuGuard.end(); });
   },
 };
+
+/** Modell dauerhaft auf der CPU rechnen lassen (nach Fehler oder Absturz auf der GPU). */
+function blockGpu(file) {
+  const name = path.basename(file);
+  const blocked = new Set(prefs.get().gpuBlocked || []);
+  if (blocked.has(name)) return;
+  blocked.add(name);
+  prefs.set({ gpuBlocked: [...blocked] });
+  console.warn(`GPU für ${name} abgeschaltet, Modell rechnet künftig auf der CPU.`);
+}
+
+/** Läuft dieses Modell im KI-Prozess auf der GPU? (gleiche Regel wie in model-worker.js) */
+function gpuEligible(file) {
+  const p = prefs.get();
+  return !!(p.gpu && GPU_LABEL && !(p.gpuBlocked || []).includes(path.basename(file)));
+}
+
+/*
+ * Reißt ein GPU-Absturz die ganze App mit (z. B. hängender Grafiktreiber), bleibt der
+ * Vermerk „gpuInFlight“ in prefs.json stehen. Beim nächsten Start wird das Modell dann auf
+ * die CPU verlegt, statt erneut abzustürzen. Geschrieben wird nur bei einem Wechsel des
+ * Modells; gelöscht erst, wenn eine Weile nichts mehr auf der GPU lief (Kacheln in Folge).
+ */
+const gpuGuard = {
+  timer: null,
+  start(file) {
+    clearTimeout(this.timer);
+    const name = path.basename(file);
+    if (prefs.get().gpuInFlight !== name) prefs.set({ gpuInFlight: name });
+  },
+  end() {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => prefs.set({ gpuInFlight: null }), 1500);
+  },
+};
+
+/** Beim Start: Ist die App zuletzt während einer GPU-Berechnung abgestürzt? */
+function recoverFromGpuCrash() {
+  const name = prefs.get().gpuInFlight;
+  if (!name) return null;
+  blockGpu(name);
+  prefs.set({ gpuInFlight: null });
+  const id = Object.keys(MODELS).find((k) => MODELS[k].file === name);
+  return id ? MODELS[id].label : name;
+}
+
+let runChain = Promise.resolve();
+/** Führt fn aus, sobald alle vorher angefragten Berechnungen fertig sind. */
+function exclusive(fn) {
+  const p = runChain.then(fn, fn);
+  runChain = p.catch(() => {});
+  return p;
+}
 
 /**
  * feeds: { name: { data: TypedArray, dims: number[], type?: 'float32' } }
@@ -338,11 +433,71 @@ const worker = {
  */
 async function run(id, feeds, outputs, onProgress) {
   const epoch = worker.epoch;
+  // schon einmal gerechnet (auch in einer früheren Sitzung)? Dann aus dem Festplatten-Cache
+  const useCache = prefs.get().diskCache;
+  const key = useCache ? resultCache.keyFor(id, getModel(id).file, feeds, outputs) : null;
+  if (key) {
+    const hit = await resultCache.get(key);
+    if (hit) {
+      stats.cacheHits++;
+      hit.__fromCache = true; // für die Zeitschätzung im Fenster (Treffer nicht als Rechendauer lernen)
+      return hit;
+    }
+  }
   const file = await ensure(id, onProgress);
-  await checkMemory(id, file, feeds);
-  // inzwischen abgebrochen (z. B. während der Speicherprüfung)? Dann nicht mehr rechnen.
-  if (epoch !== worker.epoch) throw new Error('cancelled');
-  return worker.run(file, feeds, outputs, ARENA_MODELS.has(id));
+  // Speicherprüfung erst, wenn die vorige Berechnung fertig ist – sonst zählt deren Bedarf mit
+  // (Kacheln werden vom Fenster schon vorab angefragt). Der KI-Prozess rechnet ohnehin nacheinander.
+  const { result, device } = await exclusive(async () => {
+    await checkMemory(id, file, feeds);
+    // inzwischen abgebrochen (z. B. während der Speicherprüfung)? Dann nicht mehr rechnen.
+    if (epoch !== worker.epoch) throw new Error('cancelled');
+    return worker.run(file, feeds, outputs, ARENA_MODELS.has(id));
+  });
+  stats.devices[id] = device;
+  if (key && epoch === worker.epoch) resultCache.put(key, result);
+  return result;
+}
+
+/* ------------------------------------------------------------------ */
+/* Leistung: GPU & Cache                                              */
+/* ------------------------------------------------------------------ */
+
+// Grafikbeschleunigung, die die mitgelieferte KI-Laufzeit auf diesem System anbietet
+const GPU_LABEL = process.platform === 'win32' ? 'DirectML'
+  : process.platform === 'darwin' && process.arch === 'arm64' ? 'CoreML (Apple GPU/Neural Engine)'
+    : process.platform === 'linux' ? 'WebGPU über Vulkan (experimentell)'
+      : null;
+
+const stats = { devices: {}, cacheHits: 0 }; // zuletzt genutztes Gerät je Modell
+
+async function perfStatus() {
+  const p = prefs.get();
+  const blockedFiles = new Set(p.gpuBlocked || []);
+  return {
+    gpuAvailable: GPU_LABEL,
+    gpu: !!p.gpu,
+    diskCache: !!p.diskCache,
+    devices: stats.devices,
+    cpuOnly: Object.entries(MODELS).filter(([, m]) => blockedFiles.has(m.file)).map(([id]) => id),
+    cacheHits: stats.cacheHits,
+    cache: await resultCache.stats(),
+  };
+}
+
+async function perfSet(patch) {
+  const before = prefs.get();
+  const next = {};
+  if (typeof patch.gpu === 'boolean') {
+    next.gpu = patch.gpu;
+    if (patch.gpu) next.gpuBlocked = []; // beim Einschalten alle Modelle erneut auf der GPU versuchen
+  }
+  if (typeof patch.diskCache === 'boolean') next.diskCache = patch.diskCache;
+  prefs.set(next);
+  if ('gpu' in next && next.gpu !== before.gpu) {
+    stats.devices = {};
+    worker.restart();
+  }
+  return perfStatus();
 }
 
 /**
@@ -389,6 +544,12 @@ function register(ipcMain) {
   });
   ipcMain.handle('model-run', (e, id, feeds, outputs) => run(id, feeds, outputs, progressTo(e.sender)));
   ipcMain.handle('system-profile', () => resources.profile());
+  ipcMain.handle('perf-status', () => perfStatus());
+  ipcMain.handle('perf-set', (_e, patch) => perfSet(patch || {}));
+  ipcMain.handle('perf-cache-clear', async () => {
+    await resultCache.clear();
+    return perfStatus();
+  });
 }
 
 /** Alles abbrechen: KI-Berechnungen und Modell-Downloads. */
@@ -397,4 +558,4 @@ function cancelAll() {
   for (const ctrl of activeDownloads) ctrl.abort();
 }
 
-module.exports = { register, cancelAll, warmUp: () => worker.warmUp(), MODELS };
+module.exports = { register, cancelAll, warmUp: () => worker.warmUp(), recoverFromGpuCrash, MODELS };

@@ -139,6 +139,7 @@ input:disabled { opacity: .5; }
 
 .row { display: flex; gap: 8px; align-items: center; }
 .row.two > * { flex: 1; }
+.row .grow { flex: 1; margin: 0; }
 .formats { display: grid; grid-template-columns: 1fr 1fr; }
 
 .segmented {
@@ -429,7 +430,11 @@ body.panning, body.panning * { cursor: grabbing !important; user-select: none; }
 #img-result { cursor: grab; -webkit-user-drag: element; }
 #img-result:active { cursor: grabbing; }
 
-/* Kleine Info im Ergebnisfeld (Herausziehen, Formate, Größe) */
+/* Optimiertes Original: mit gedrückter Strg-Taste herausziehen */
+body.ctrl-drag #img-original { cursor: grab !important; -webkit-user-drag: element; }
+body.ctrl-drag #img-original:active { cursor: grabbing !important; }
+
+/* Kleine Info im Ergebnis- und Originalfeld (Herausziehen, Formate, Größe) */
 .pane-info {
   position: absolute; left: 8px; bottom: 8px; z-index: 2;
   max-width: calc(100% - 16px);

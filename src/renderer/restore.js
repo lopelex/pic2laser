@@ -48,7 +48,7 @@ const Restore = (() => {
     const out = new ImageData(w, h);
     const step = DN_TILE - 2 * DN_OVERLAP;
     const total = denoiseTiles(w, h);
-    let done = 0;
+    const tiles = [];
     for (let ty = 0; ty < h; ty += step) {
       for (let tx = 0; tx < w; tx += step) {
         const x0 = tx, y0 = ty, x1 = Math.min(w, tx + step), y1 = Math.min(h, ty + step);
@@ -56,33 +56,39 @@ const Restore = (() => {
         const px1 = Math.min(w, x1 + DN_OVERLAP), py1 = Math.min(h, y1 + DN_OVERLAP);
         // SCUNet braucht Seitenlängen als Vielfache von 64 → Kachel spiegelnd auffüllen
         const pw = px1 - px0, ph = py1 - py0;
-        const iw = Math.ceil(pw / 64) * 64, ih = Math.ceil(ph / 64) * 64;
-        const n = iw * ih;
-        const input = new Float32Array(3 * n);
-        for (let y = 0; y < ih; y++) {
-          const sy = py0 + (y < ph ? y : 2 * ph - y - 2 >= 0 ? 2 * ph - y - 2 : ph - 1);
-          for (let x = 0; x < iw; x++) {
-            const sx = px0 + (x < pw ? x : 2 * pw - x - 2 >= 0 ? 2 * pw - x - 2 : pw - 1);
-            const i = (sy * w + sx) * 4, p = y * iw + x;
-            input[p] = src.data[i] / 255;
-            input[n + p] = src.data[i + 1] / 255;
-            input[2 * n + p] = src.data[i + 2] / 255;
-          }
-        }
-        const res = await AI.run('scunet', { image: { data: input, dims: [1, 3, ih, iw] } });
-        const d = res.data;
-        for (let y = y0; y < y1; y++) {
-          for (let x = x0; x < x1; x++) {
-            const p = (y - py0) * iw + (x - px0), o = (y * w + x) * 4;
-            out.data[o] = clamp255(d[p] * 255);
-            out.data[o + 1] = clamp255(d[n + p] * 255);
-            out.data[o + 2] = clamp255(d[2 * n + p] * 255);
-            out.data[o + 3] = 255;
-          }
-        }
-        onProgress?.(++done, total);
+        tiles.push({ x0, y0, x1, y1, px0, py0, pw, ph, iw: Math.ceil(pw / 64) * 64, ih: Math.ceil(ph / 64) * 64 });
       }
     }
+    let done = 0;
+    // Kacheln lesen nur aus `src` und schreiben nur nach `out` → überlappend abarbeitbar
+    await AI.pipelined(tiles, ({ px0, py0, pw, ph, iw, ih }) => {
+      const n = iw * ih;
+      const input = new Float32Array(3 * n);
+      for (let y = 0; y < ih; y++) {
+        const sy = py0 + (y < ph ? y : 2 * ph - y - 2 >= 0 ? 2 * ph - y - 2 : ph - 1);
+        for (let x = 0; x < iw; x++) {
+          const sx = px0 + (x < pw ? x : 2 * pw - x - 2 >= 0 ? 2 * pw - x - 2 : pw - 1);
+          const i = (sy * w + sx) * 4, p = y * iw + x;
+          input[p] = src.data[i] / 255;
+          input[n + p] = src.data[i + 1] / 255;
+          input[2 * n + p] = src.data[i + 2] / 255;
+        }
+      }
+      return AI.run('scunet', { image: { data: input, dims: [1, 3, ih, iw] } });
+    }, (res, { x0, y0, x1, y1, px0, py0, iw, ih }) => {
+      const n = iw * ih;
+      const d = res.data;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const p = (y - py0) * iw + (x - px0), o = (y * w + x) * 4;
+          out.data[o] = clamp255(d[p] * 255);
+          out.data[o + 1] = clamp255(d[n + p] * 255);
+          out.data[o + 2] = clamp255(d[2 * n + p] * 255);
+          out.data[o + 3] = 255;
+        }
+      }
+      onProgress?.(++done, total);
+    });
     ctx.putImageData(out, 0, 0);
     return canvas;
   }

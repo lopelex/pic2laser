@@ -376,6 +376,18 @@
         <p class="hint">Arbeitsgrößen, Kachelgrößen und gleichzeitig geladene Modelle werden automatisch an den Arbeitsspeicher angepasst. Reicht der freie Speicher für ein Modell nicht, werden zuerst andere Modelle freigegeben.</p>
       </section>
 
+      <section class="group">
+        <h3>Leistung</h3>
+        <label class="check"><input type="checkbox" id="perf-gpu" /> Grafikkarte (GPU) für KI nutzen</label>
+        <label class="check"><input type="checkbox" id="perf-cache" /> KI-Ergebnisse auf der Festplatte zwischenspeichern</label>
+        <div class="row">
+          <span class="hint grow" id="perf-cache-info"></span>
+          <button class="btn btn-small" id="btn-perf-cache-clear" title="Gespeicherte KI-Ergebnisse löschen">Cache leeren</button>
+        </div>
+        <p class="hint" id="perf-info"></p>
+        <p class="hint">Mit GPU laufen die KI-Modelle auf der Grafikkarte (Windows: DirectML, Mac mit Apple-Chip: CoreML, Linux: WebGPU über Vulkan – experimentell und standardmäßig aus, nicht immer schneller als der Prozessor). Klappt ein Modell dort nicht, rechnet es automatisch auf dem Prozessor weiter. Der Cache speichert KI-Ergebnisse (max. 2&nbsp;GB), damit ein erneut geöffnetes Bild oder ein Historie-Eintrag nicht neu berechnet werden muss.</p>
+      </section>
+
       <button class="btn btn-ghost full" id="btn-reset">Einstellungen zurücksetzen</button>
       </div>
     </aside>
@@ -400,6 +412,7 @@
       <div class="panes" id="panes">
         <div class="pane" id="pane-original">
           <div class="pane-label">Original</div>
+          <div class="pane-info" id="original-info" hidden></div>
           <div class="pane-scroll"><img id="img-original" alt="" /><div class="marker-layer" id="marker-layer"></div></div>
         </div>
         <div class="pane checker" id="pane-result">

@@ -57,9 +57,38 @@ const AI = (() => {
 
   const roundTo = (v, m) => Math.max(m, Math.round(v / m) * m);
 
+  // Anzahl der Ergebnisse aus dem Festplatten-Cache (für die Zeitschätzung)
+  let cacheHits = 0;
+
   async function run(id, feeds, outputs) {
     const res = await window.api.models.run(id, feeds, outputs);
+    if (res.__fromCache) {
+      cacheHits++;
+      delete res.__fromCache;
+    }
     return outputs ? res : Object.values(res)[0];
+  }
+
+  /**
+   * Kacheln überlappend abarbeiten: Die nächste Kachel ist schon beim KI-Prozess angefragt,
+   * während die vorige ausgewertet wird – der KI-Prozess wartet so nicht auf das Fenster.
+   * request(item) → Promise, consume(result, item).
+   */
+  async function pipelined(items, request, consume, depth = 2) {
+    const inflight = [];
+    for (const item of items) {
+      const p = request(item);
+      p.catch(() => {}); // Fehler wird beim Abholen gemeldet
+      inflight.push({ item, p });
+      if (inflight.length >= depth) {
+        const job = inflight.shift();
+        consume(await job.p, job.item);
+      }
+    }
+    while (inflight.length) {
+      const job = inflight.shift();
+      consume(await job.p, job.item);
+    }
   }
 
   /** Graustufen (0..1) als Canvas in Zielgröße. */
@@ -504,8 +533,7 @@ const AI = (() => {
     const out = new ImageData(W, H);
 
     const tilesX = Math.ceil(w / TILE), tilesY = Math.ceil(h / TILE);
-    const total = tilesX * tilesY;
-    let done = 0;
+    const tiles = [];
     for (let ty = 0; ty < tilesY; ty++) {
       for (let tx = 0; tx < tilesX; tx++) {
         const x0 = tx * TILE, y0 = ty * TILE;
@@ -513,34 +541,38 @@ const AI = (() => {
         // Kachel mit Überlappung, damit an den Rändern keine Nähte entstehen
         const px0 = Math.max(0, x0 - OVERLAP), py0 = Math.max(0, y0 - OVERLAP);
         const px1 = Math.min(w, x1 + OVERLAP), py1 = Math.min(h, y1 + OVERLAP);
-        const pw = px1 - px0, ph = py1 - py0;
-        const n = pw * ph;
-        const input = new Float32Array(3 * n);
-        for (let y = 0; y < ph; y++) {
-          for (let x = 0; x < pw; x++) {
-            const i = ((py0 + y) * w + px0 + x) * 4;
-            const p = y * pw + x;
-            input[p] = src[i] / 255;
-            input[n + p] = src[i + 1] / 255;
-            input[2 * n + p] = src[i + 2] / 255;
-          }
-        }
-        const res = await run('esrgan', { input: { data: input, dims: [1, 3, ph, pw] } });
-        const ow = pw * 4, on = ow * ph * 4;
-        const d = res.data;
-        for (let y = (y0 - py0) * 4; y < (y1 - py0) * 4; y++) {
-          for (let x = (x0 - px0) * 4; x < (x1 - px0) * 4; x++) {
-            const p = y * ow + x;
-            const o = ((py0 * 4 + y) * W + px0 * 4 + x) * 4;
-            out.data[o] = Math.max(0, Math.min(255, Math.round(d[p] * 255)));
-            out.data[o + 1] = Math.max(0, Math.min(255, Math.round(d[on + p] * 255)));
-            out.data[o + 2] = Math.max(0, Math.min(255, Math.round(d[2 * on + p] * 255)));
-            out.data[o + 3] = 255;
-          }
-        }
-        onProgress?.(++done, total);
+        tiles.push({ x0, y0, x1, y1, px0, py0, pw: px1 - px0, ph: py1 - py0 });
       }
     }
+    let done = 0;
+    await pipelined(tiles, ({ px0, py0, pw, ph }) => {
+      const n = pw * ph;
+      const input = new Float32Array(3 * n);
+      for (let y = 0; y < ph; y++) {
+        for (let x = 0; x < pw; x++) {
+          const i = ((py0 + y) * w + px0 + x) * 4;
+          const p = y * pw + x;
+          input[p] = src[i] / 255;
+          input[n + p] = src[i + 1] / 255;
+          input[2 * n + p] = src[i + 2] / 255;
+        }
+      }
+      return run('esrgan', { input: { data: input, dims: [1, 3, ph, pw] } });
+    }, (res, { x0, y0, x1, y1, px0, py0, pw, ph }) => {
+      const ow = pw * 4, on = ow * ph * 4;
+      const d = res.data;
+      for (let y = (y0 - py0) * 4; y < (y1 - py0) * 4; y++) {
+        for (let x = (x0 - px0) * 4; x < (x1 - px0) * 4; x++) {
+          const p = y * ow + x;
+          const o = ((py0 * 4 + y) * W + px0 * 4 + x) * 4;
+          out.data[o] = Math.max(0, Math.min(255, Math.round(d[p] * 255)));
+          out.data[o + 1] = Math.max(0, Math.min(255, Math.round(d[on + p] * 255)));
+          out.data[o + 2] = Math.max(0, Math.min(255, Math.round(d[2 * on + p] * 255)));
+          out.data[o + 3] = 255;
+        }
+      }
+      onProgress?.(++done, tiles.length);
+    });
     const canvas = new OffscreenCanvas(W, H);
     canvas.getContext('2d').putImageData(out, 0, 0);
     return canvas;
@@ -550,5 +582,5 @@ const AI = (() => {
     if (upscaleMaxInput) UPSCALE_MAX_INPUT = upscaleMaxInput;
   }
 
-  return { configure, run, pixels, toNCHW, detectText, segment, samEmbedding, samMask, lineArt, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
+  return { configure, run, pipelined, get cacheHits() { return cacheHits; }, pixels, toNCHW, detectText, segment, samEmbedding, samMask, lineArt, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
 })();

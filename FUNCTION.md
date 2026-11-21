@@ -60,7 +60,10 @@ Alle KI-Funktionen laufen lokal und offline.
 
 ## Altes Foto restaurieren
 
-Läuft vor allen anderen Schritten (Arbeitsgröße je nach Rechner 1024–1600 px):
+Eigene Checkbox; die Optionen klappen erst auf, wenn sie aktiv ist. Läuft vor allen anderen
+Schritten (Arbeitsgröße je nach Rechner 1024–1600 px) oder mit **Reihenfolge „Nach dem
+Freistellen“** erst danach: Dann wird aus dem unbearbeiteten Original freigestellt und nur
+Gesichter und Kratzer im Motiv werden bearbeitet.
 
 - **Rauschen & Körnung entfernen** (SCUNet).
 - **Kratzer & Staub entfernen:** klassische Erkennung dünner Linien und Flecken, Auffüllen per
@@ -78,6 +81,7 @@ Läuft vor allen anderen Schritten (Arbeitsgröße je nach Rechner 1024–1600 p
 - **Gesichtszüge hervorheben:** Gesichtserkennung (UltraFace), dann lokaler Kontrast für Augen,
   Brauen und Gesamtgesicht. Im Modus Linien wird jedes Gesicht zusätzlich in hoher Auflösung
   nachgezeichnet.
+- **Reihenfolge:** vor dem Freistellen (ganzes Bild) oder danach (nur Gesichter im Motiv).
 - Eigene Regler für **Mund, Nase, Kinn und Wangen** (0 = aus). Auf glatter Haut werden Poren
   und Sommersprossen nicht mitverstärkt.
 
@@ -89,6 +93,7 @@ Läuft vor allen anderen Schritten (Arbeitsgröße je nach Rechner 1024–1600 p
 - **Logos einbeziehen:** Grafikelemente, die an die Schrift grenzen (z. B. ein Logo-Symbol),
   werden schrittweise mit übernommen.
 - **Schriftstärke** (fetter/feiner). Erkannte Bereiche werden im Original blau markiert.
+- **Erkennung** vor dem Freistellen (ganzes Bild) oder danach (Schrift im Hintergrund wird ignoriert).
 
 ## Konturen
 
@@ -113,6 +118,10 @@ Läuft vor allen anderen Schritten (Arbeitsgröße je nach Rechner 1024–1600 p
   bzw. 8-Bit-Graustufen beim Relief) – alle Dateien mit gleichem Namen in einem Ordner.
 - **Drag & Drop:** Ergebnisbild mit der Maus herausziehen – direkt in LightBurn, Finder oder
   Explorer. Mitgezogen werden die gewählten Exportformate.
+- **Optimiertes Original herausziehen:** Mit gedrückter Strg-Taste (Mac: Cmd) das Bild im
+  Originalfeld herausziehen – als PNG so, wie es in die Umwandlung geht: restauriert,
+  KI-vergrößert und freigestellt (Hintergrund transparent), ohne Schraffur und Markierungen.
+  Eine kleine Info unten im Originalfeld zeigt Größe und Bearbeitungsschritte.
 - Für LightBurn: kein weißes Hintergrund-Rechteck im SVG, Größe wird beim Import übernommen.
 
 ## Historie
@@ -120,7 +129,7 @@ Läuft vor allen anderen Schritten (Arbeitsgröße je nach Rechner 1024–1600 p
 - Jede exportierte oder herausgezogene Umwandlung wird mit Original, Einstellungen, SVG, PNG
   und Vorschaubild gespeichert.
 - Ein Klick öffnet sie mit allen Einstellungen wieder. Suche, SVG erneut speichern,
-  Speicherordner öffnen, einzelne Einträge oder alles löschen.
+  Speicherordner öffnen, Eintrag duplizieren, einzelne Einträge oder alles löschen.
 
 ## Bedienkomfort & Leistung
 
@@ -132,6 +141,22 @@ Läuft vor allen anderen Schritten (Arbeitsgröße je nach Rechner 1024–1600 p
 - **Abbrechen** (Knopf im Fortschrittsfeld oder Esc): stoppt Berechnungen, KI, Vektorisierung
   und Downloads; das letzte Ergebnis bleibt erhalten.
 - **Zwischenspeicher:** KI-Ergebnisse werden pro Bild gemerkt – Umschalten geht sofort.
+- **Festplatten-Cache** (Bereich „Leistung“, abschaltbar): jedes KI-Ergebnis wird mit einem
+  Fingerabdruck der Eingabe gespeichert (max. 2 GB, älteste Einträge fliegen zuerst raus).
+  Ein erneut geöffnetes Bild oder ein Historie-Eintrag muss nicht neu berechnet werden, auch
+  nach einem Neustart. „Cache leeren“ löscht ihn.
+- **GPU-Beschleunigung** (Bereich „Leistung“, Standard an außer unter Linux): Windows → DirectML, Mac mit
+  Apple-Chip → CoreML. Scheitert ein Modell auf der GPU, rechnet es automatisch auf der CPU
+  weiter und wird dafür dauerhaft vorgemerkt (Einschalten der GPU setzt das zurück).
+  **Absturzschutz:** Stürzt der KI-Prozess während einer GPU-Berechnung ab, wird sie sofort auf
+  der CPU wiederholt. Reißt ein Absturz die ganze App mit, steht das Modell noch als
+  `gpuInFlight` in `prefs.json`; beim nächsten Start wird es auf die CPU verlegt und ein
+  Hinweis angezeigt. Die
+  Anzeige nennt, welche Modelle auf der GPU liefen. Linux: WebGPU über Vulkan, experimentell
+  und standardmäßig aus (auf schwachen integrierten Grafikkarten nicht schneller als die CPU).
+  Intel-Macs: nur CPU.
+- **Kacheln überlappend:** Bei KI-Vergrößerung und Entrauschen wird die nächste Kachel schon
+  angefragt, während die vorige ausgewertet wird.
 - **Schnelle Vektorisierung:** Das Binärbild geht direkt an Potrace (kein PNG-Umweg), die
   Pfadsuche ist beschleunigt, Füllung und Umrisslinie laufen parallel in eigenen Prozessen.
   Vektorisierungs- und KI-Prozess werden beim Start vorgestartet.
@@ -174,6 +199,7 @@ Modell-Lizenzen stehen in der [README](README.md), offene und behobene Fehler in
 npm install
 npm start                      # App starten (Electron)
 PIC2LASER_SIMULATE_RAM_MB=8192 npm start   # kleineren Rechner simulieren
+PIC2LASER_GPU_EP=webgpu npm start          # anderen GPU-Beschleuniger erzwingen (Test, z. B. unter Linux)
 npm run dist:win | dist:mac | dist         # Installer bauen → dist/
 ```
 
@@ -187,8 +213,11 @@ vorübergehend `mainWindow.webContents.openDevTools()` einfügen.
 ```
 Main-Prozess (src/main/main.js)
  ├─ Utility-Prozess trace-worker.js   Potrace-Vektorisierung
- ├─ Utility-Prozess model-worker.js   KI-Inferenz (onnxruntime-node, sonst onnxruntime-web/WASM)
+ ├─ Utility-Prozess model-worker.js   KI-Inferenz (onnxruntime-node mit DirectML/CoreML oder CPU,
+ │                                    sonst onnxruntime-web/WASM)
  ├─ models.js                         Modell-Registry, Downloads, Steuerung des KI-Prozesses
+ ├─ result-cache.js                   Festplatten-Cache der KI-Ergebnisse (SHA-256 der Eingabe)
+ ├─ prefs.js                          App-Vorlieben: GPU, Cache, auf der GPU gescheiterte Modelle
  ├─ resources.js                      RAM/CPU → Leistungsstufe und Grenzen
  └─ preload.js                        window.api (contextIsolation + sandbox)
 Renderer (src/renderer/index.html, klassische <script>-Tags, globale Module)
@@ -247,6 +276,8 @@ laufende KI-Jobs (nur wenn der Prozess rechnet) und Downloads ab.
 | `presets.json` | eigene Presets |
 | `history/<uuid>/` | `meta.json`, `original.<ext>`, `result.svg`, `result.png`, `thumb.png` |
 | `models/` | heruntergeladene Modelle (`.part` während des Downloads) |
+| `ai-cache/` | Festplatten-Cache der KI-Ergebnisse (`<sha256>.bin`) |
+| `prefs.json` | GPU an/aus, Cache an/aus, Modelle, die nur auf der CPU laufen |
 | `<temp>/pic2laser-drag/` | vorbereitete Dateien für Drag & Drop |
 
 ## Typische Erweiterungen
