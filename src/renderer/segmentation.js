@@ -126,6 +126,18 @@ const Segmentation = (() => {
       ctx.globalCompositeOperation = 'source-over';
     } else if (mask) {
       // Entfernten Hintergrund rot schraffieren – zwischen den Streifen bleibt das Bild sichtbar
+      // Hintergrund abschwächen (halb transparent), Motiv bleibt voll deckend
+      const subject = new OffscreenCanvas(w, h);
+      const subCtx = subject.getContext('2d');
+      subCtx.drawImage(bitmap, 0, 0, w, h);
+      subCtx.globalCompositeOperation = 'destination-in';
+      subCtx.drawImage(mask, 0, 0, w, h);
+      ctx.clearRect(0, 0, w, h);
+      ctx.globalAlpha = 0.35;
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      ctx.globalAlpha = 1;
+      ctx.drawImage(subject, 0, 0);
+
       const { bin, edge } = maskOutline(mask, w, h);
       const sw = Math.max(2, Math.round(Math.max(w, h) / 260)); // Streifenbreite (schmal, Hintergrund bleibt gut sichtbar)
       const hatch = new OffscreenCanvas(w, h);

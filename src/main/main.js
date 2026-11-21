@@ -134,6 +134,8 @@ const makeTracer = (name) => ({
 
 const tracers = { fill: makeTracer('Füllung'), outline: makeTracer('Umriss') };
 
+ipcMain.handle('app-version', () => app.getVersion());
+
 ipcMain.handle('trace', (_e, image, params, lane) => (tracers[lane] || tracers.fill).trace(image, params || {}));
 
 // „Abbrechen“: Vektorisierung, KI-Berechnungen und Modell-Downloads stoppen
@@ -351,6 +353,18 @@ ipcMain.handle('history-load', async (_e, id) => {
   const meta = await readMeta(id);
   const data = await fs.readFile(path.join(entryDir(id), meta.originalFile));
   return { meta, original: data };
+});
+
+// Eintrag mit allen Dateien kopieren (neue ID, Name mit „(Kopie)“)
+ipcMain.handle('history-duplicate', async (_e, id) => {
+  const meta = await readMeta(id);
+  const newId = crypto.randomUUID();
+  const dir = entryDir(newId);
+  await fs.cp(entryDir(id), dir, { recursive: true });
+  const now = Date.now();
+  const copy = { ...meta, id: newId, name: `${meta.name || 'Bild'} (Kopie)`, created: now, updated: now };
+  await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(copy, null, 2));
+  return copy;
 });
 
 ipcMain.handle('history-delete', async (_e, id) => {

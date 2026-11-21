@@ -23,12 +23,38 @@ function totalMB() {
  * os.freemem() zählt auf macOS und Linux freigebbaren Cache nicht mit und meldet
  * dort viel zu wenig – deshalb plattformspezifisch:
  *  - Linux:   MemAvailable aus /proc/meminfo
- *  - macOS:   vm_stat (freie + inaktive + spekulative + löschbare Seiten)
+ *  - macOS:   vm_stat, gerechnet wie die Aktivitätsanzeige (siehe macAvailableMB)
  *  - Windows: os.freemem() (entspricht dort dem verfügbaren Speicher)
  */
 async function availableMB() {
   const real = await availableMBReal();
   return SIMULATED ? Math.min(real, Math.round(SIMULATED * 0.45)) : real;
+}
+
+/**
+ * Verfügbarer Speicher auf macOS aus der Ausgabe von vm_stat.
+ * macOS hält absichtlich wenig Seiten „frei“ und füllt den Rest mit Datei-Cache, der aber
+ * auch in den „aktiven“ Seiten steckt. Frei + inaktiv unterschätzt den verfügbaren Speicher
+ * deshalb stark (auf einem 24-GB-Mac oft nur 2–4 GB) und löste unnötige Speicherwarnungen aus.
+ * Stattdessen wie die Aktivitätsanzeige: belegt = Programmspeicher (anonym − löschbar)
+ * + fest belegt (wired) + Komprimiert; verfügbar = gesamt − belegt. Datei-Cache und
+ * löschbare Seiten gibt macOS bei Bedarf sofort frei.
+ */
+function macAvailableMB(out, totalBytes) {
+  const page = Number((out.match(/page size of (\d+) bytes/) || [])[1]) || 16384;
+  const pages = (k) => {
+    const m = out.match(new RegExp(`${k}:\\s+(\\d+)`));
+    return m ? Number(m[1]) : null;
+  };
+  const anon = pages('Anonymous pages');
+  const wired = pages('Pages wired down');
+  const compressed = pages('Pages occupied by compressor');
+  const purgeable = pages('Pages purgeable') || 0;
+  // klassische Rechnung als Untergrenze bzw. Ersatz für sehr alte macOS-Versionen
+  const classic = ((pages('Pages free') || 0) + (pages('Pages inactive') || 0) + (pages('Pages speculative') || 0)) * page;
+  if (anon == null || wired == null || compressed == null) return Math.round(classic / MB);
+  const used = (Math.max(0, anon - purgeable) + wired + compressed) * page;
+  return Math.round(Math.max(classic, totalBytes - used) / MB);
 }
 
 function availableMBReal() {
@@ -42,10 +68,7 @@ function availableMBReal() {
       if (process.platform === 'darwin') {
         return execFile('vm_stat', { timeout: 2000 }, (err, out) => {
           if (err) return fallback();
-          const page = Number((out.match(/page size of (\d+) bytes/) || [])[1]) || 16384;
-          const pages = (k) => Number((out.match(new RegExp(`${k}:\\s+(\\d+)`)) || [])[1] || 0);
-          const free = pages('Pages free') + pages('Pages inactive') + pages('Pages speculative') + pages('Pages purgeable');
-          resolve(Math.round((free * page) / MB));
+          resolve(macAvailableMB(out, os.totalmem()));
         });
       }
     } catch { /* unten Fallback */ }
@@ -148,4 +171,4 @@ async function profile() {
   };
 }
 
-module.exports = { profile, availableMB, availableMBCached, totalMB, tierFor, LIMITS, peakMB };
+module.exports = { macAvailableMB, profile, availableMB, availableMBCached, totalMB, tierFor, LIMITS, peakMB };

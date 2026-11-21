@@ -12,7 +12,7 @@
     <div class="brand">
       <span class="brand-dot"></span>
       <span class="brand-name">Pic2Laser</span>
-      <span class="brand-sub">Bild → Schwarz-Weiß-SVG für LightBurn</span>
+      <span class="brand-sub" id="appVersion"></span>
     </div>
     <!-- Fortschritt & Restzeit im freien Bereich der Kopfzeile -->
     <div class="progress" id="progress" hidden><div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div><span id="progress-label"></span><button class="btn btn-small" id="btn-cancel" title="Alle laufenden Berechnungen und Downloads abbrechen (Esc)">Abbrechen</button></div>
@@ -92,23 +92,33 @@
 
       <section class="group">
         <h3>Altes Foto restaurieren</h3>
-        <label class="check"><input type="checkbox" data-key="restoreDenoise" /> Rauschen &amp; Körnung entfernen</label>
-        <label class="check"><input type="checkbox" data-key="restoreScratches" /> Kratzer &amp; Staub entfernen</label>
-        <div data-show="restoreScratches">
-          <label class="slider">
-            <span>Empfindlichkeit <output data-for="scratchSensitivity"></output></span>
-            <input type="range" data-key="scratchSensitivity" min="1" max="100" step="1" />
+        <label class="check"><input type="checkbox" data-key="restoreOn" /> Altes Foto restaurieren</label>
+        <div data-show="restoreOn">
+          <label class="check"><input type="checkbox" data-key="restoreDenoise" /> Rauschen &amp; Körnung entfernen</label>
+          <label class="check"><input type="checkbox" data-key="restoreScratches" /> Kratzer &amp; Staub entfernen</label>
+          <div data-show="restoreScratches">
+            <label class="slider">
+              <span>Empfindlichkeit <output data-for="scratchSensitivity"></output></span>
+              <input type="range" data-key="scratchSensitivity" min="1" max="100" step="1" />
+            </label>
+          </div>
+          <label class="check"><input type="checkbox" data-key="restoreFaces" /> Gesichter restaurieren</label>
+          <div data-show="restoreFaces">
+            <label class="slider">
+              <span>Stärke <output data-for="faceRestoreStrength"></output></span>
+              <input type="range" data-key="faceRestoreStrength" min="0.1" max="1" step="0.05" />
+            </label>
+            <p class="hint">Bei sehr unscharfen Gesichtern muss die KI Details neu erzeugen (z.&nbsp;B. Blickrichtung) – dann Ergebnis prüfen. Unter 100&nbsp;% können Doppelkonturen entstehen.</p>
+          </div>
+          <label class="field">
+            <span>Reihenfolge</span>
+            <select data-key="restoreOrder">
+              <option value="before">Vor dem Freistellen (ganzes Bild)</option>
+              <option value="after">Nach dem Freistellen (nur Motiv)</option>
+            </select>
           </label>
+          <p class="hint">Für alte, verrauschte oder beschädigte Fotos. Läuft auf max. 1280 px – vor allen anderen Schritten oder, mit „Nach dem Freistellen“, erst nach dem Freistellen nur für Gesichter und Kratzer im Motiv. Die Modelle (zusammen ca. 430 MB) werden beim ersten Gebrauch geladen. <span id="restore-info"></span></p>
         </div>
-        <label class="check"><input type="checkbox" data-key="restoreFaces" /> Gesichter restaurieren</label>
-        <div data-show="restoreFaces">
-          <label class="slider">
-            <span>Stärke <output data-for="faceRestoreStrength"></output></span>
-            <input type="range" data-key="faceRestoreStrength" min="0.1" max="1" step="0.05" />
-          </label>
-          <p class="hint">Bei sehr unscharfen Gesichtern muss die KI Details neu erzeugen (z.&nbsp;B. Blickrichtung) – dann Ergebnis prüfen. Unter 100&nbsp;% können Doppelkonturen entstehen.</p>
-        </div>
-        <p class="hint">Für alte, verrauschte oder beschädigte Fotos. Läuft vor allen anderen Schritten auf max. 1280 px. Die Modelle (zusammen ca. 430 MB) werden beim ersten Gebrauch geladen. <span id="restore-info"></span></p>
       </section>
 
       <section class="group">
@@ -250,6 +260,13 @@
         <h3>Schrift &amp; Logos</h3>
         <label class="check"><input type="checkbox" data-key="textClean" /> Schrift erkennen und sauber darstellen</label>
         <div data-show="textClean">
+          <label class="field">
+            <span>Erkennung</span>
+            <select data-key="textOrder">
+              <option value="before">Vor dem Freistellen (ganzes Bild)</option>
+              <option value="after">Nach dem Freistellen (nur Motiv)</option>
+            </select>
+          </label>
           <label class="slider">
             <span>Logos einbeziehen <output data-for="textPad"></output></span>
             <input type="range" data-key="textPad" min="0" max="4" step="0.5" />
@@ -258,7 +275,7 @@
             <span>Schriftstärke <output data-for="textBold"></output></span>
             <input type="range" data-key="textBold" min="-40" max="40" step="1" />
           </label>
-          <p class="hint">Erkennt Schriftzüge per KI und stellt sie scharf und gefüllt dar statt gerastert oder nachgezeichnet. „Logos einbeziehen“ übernimmt Grafikelemente, die direkt an die Schrift grenzen (z.&nbsp;B. ein Logo-Symbol). <span id="text-info"></span></p>
+          <p class="hint">Erkennt Schriftzüge per KI und stellt sie scharf und gefüllt dar statt gerastert oder nachgezeichnet. „Logos einbeziehen“ übernimmt Grafikelemente, die direkt an die Schrift grenzen (z.&nbsp;B. ein Logo-Symbol). „Nach dem Freistellen“ sucht Schrift nur im freigestellten Motiv und ignoriert Schrift im Hintergrund. <span id="text-info"></span></p>
         </div>
       </section>
 
@@ -266,6 +283,13 @@
         <h3>Gesichter</h3>
         <label class="check"><input type="checkbox" data-key="faceBoost" /> Gesichtszüge hervorheben</label>
         <div data-show="faceBoost">
+          <label class="field">
+            <span>Reihenfolge</span>
+            <select data-key="faceOrder">
+              <option value="before">Vor dem Freistellen (ganzes Bild)</option>
+              <option value="after">Nach dem Freistellen (nur Motiv)</option>
+            </select>
+          </label>
           <label class="slider">
             <span>Stärke <output data-for="faceStrength"></output></span>
             <input type="range" data-key="faceStrength" min="0.2" max="2" step="0.1" />

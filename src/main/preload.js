@@ -3,6 +3,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  version: () => ipcRenderer.invoke('app-version'),
   // image: { bits: Uint8Array (1 = schwarz), w, h }; lane: eigener Prozess je Spur (Füllung/Umriss laufen parallel)
   trace: (image, params, lane) => ipcRenderer.invoke('trace', image, params, lane),
   system: {
@@ -35,6 +36,7 @@ contextBridge.exposeInMainWorld('api', {
     list: () => ipcRenderer.invoke('history-list'),
     save: (entry) => ipcRenderer.invoke('history-save', entry),
     load: (id) => ipcRenderer.invoke('history-load', id),
+    duplicate: (id) => ipcRenderer.invoke('history-duplicate', id),
     remove: (id) => ipcRenderer.invoke('history-delete', id),
     clear: () => ipcRenderer.invoke('history-clear'),
     exportSvg: (id) => ipcRenderer.invoke('history-export-svg', id),
