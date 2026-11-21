@@ -1,8 +1,8 @@
 # Bekannte Fehler
 
-> **Status (Version 1.1.3, Commit 37bcfcb):** Die Punkte 1–9 sind behoben; eine zweite Prüfung
-> hat die Fixes im Code bestätigt. Bei Punkt 1 und 5 bleibt je eine Lücke, die als neuer Punkt
-> geführt wird (Nr. 10 und 11). **Offen sind die Punkte 10–14** am Ende der Datei.
+> **Status (nach Version 1.4.0):** Alle Punkte 1–14 sind behoben. Die Prüfung von Version 1.4.0
+> (vier Bereiche: Main/IPC, KI-Pipeline, Oberfläche, Bildverarbeitung) und ihre Fixes stehen
+> unten unter „Prüfung Version 1.4.0“.
 
 Ergebnis einer Code-Prüfung vom 20.11.2026 (Stand: Version 1.1.2 plus noch nicht committete
 Abbrechen-Funktion und Ergebnis-Info). Zeilennummern beziehen sich auf diesen Stand.
@@ -101,11 +101,11 @@ etwa durch eine geänderte Einstellung, werden seine Busy-Anzeige und sein Forts
 Seine `trace`- oder `model-run`-Aufrufe können außerdem noch vom Abbruch im Main-Prozess erfasst
 werden. Der Durchlauf liefert dann kein Ergebnis.
 
-## Offen (zweite Prüfung nach Version 1.1.3)
+## Zweite Prüfung nach Version 1.1.3 (behoben nach 1.4.0)
 
 Zeilennummern beziehen sich auf Commit 37bcfcb.
 
-### 10. Abbrechen zwischen zwei Kacheln wirkt nicht – ❗ wichtig
+### 10. Abbrechen zwischen zwei Kacheln wirkt nicht – ❗ wichtig – ✅ behoben
 **Ort:** `src/main/models.js:304–305`, Kachel-Schleifen in `src/renderer/ai.js:528` (Vergrößern),
 `src/renderer/restore.js:72` (Entrauschen), ebenso Kratzer auffüllen und Gesichter restaurieren
 
@@ -120,7 +120,7 @@ dahinter. Der Kommentar am Epoch-Zähler („rechnet danach nicht weiter“) ver
 **Lösung:** In den Kachel-Schleifen im Renderer vor jeder Kachel die Generation bzw. ein
 Abbruch-Signal prüfen und mit `cancelled` aussteigen.
 
-### 11. Fortschrittsleiste kann nach dem Abbrechen wieder auftauchen – Kleinigkeit
+### 11. Fortschrittsleiste kann nach dem Abbrechen wieder auftauchen – Kleinigkeit – ✅ behoben
 **Ort:** `src/renderer/app.js:1713–1724` (`cancelAll`), `src/renderer/app.js:1517–1534` (Download-Fortschritt)
 
 Rückschritt durch 37bcfcb: `cancelAll` räumt die Oberfläche jetzt *vor* dem Await auf. Eine
@@ -135,7 +135,7 @@ Der Knopf „laden“ in der Modellliste ist nicht betroffen.
 **Lösung:** Nach dem Await in `cancelAll` erneut aufräumen, oder Fortschrittsmeldungen nach
 einem Abbruch bis zum nächsten Start ignorieren.
 
-### 12. Neuer Durchlauf erwischt kurz nach dem Abbruch den abgebrochenen Download – Kleinigkeit
+### 12. Neuer Durchlauf erwischt kurz nach dem Abbruch den abgebrochenen Download – Kleinigkeit – ✅ behoben
 **Ort:** `src/main/models.js:188–189`, `206–208`
 
 Der Eintrag in `downloads` wird erst nach `fs.rm(tmp)` und `p.finally` entfernt, also nach der
@@ -145,7 +145,7 @@ still mit `cancelled`, ohne Ergebnis und ohne Meldung. Das Zeitfenster ist sehr 
 
 **Lösung:** Den Eintrag in `cancelAll()` sofort aus `downloads` entfernen.
 
-### 13. Umrisslinie ohne Pfad: Rasterbilder ohne Rand, SVG mit Rand – Kleinigkeit
+### 13. Umrisslinie ohne Pfad: Rasterbilder ohne Rand, SVG mit Rand – Kleinigkeit – ✅ behoben
 **Ort:** `src/renderer/app.js:1595` (`rasterCanvas`) gegenüber `app.js:1170–1172` und
 `src/renderer/encoders.js:150–152`
 
@@ -157,7 +157,7 @@ PNG/JPG/BMP sind dann um 2·pad Pixel kleiner als das SVG; in LightBurn liegen B
 
 **Lösung:** Bei leerem Pfad `outline = null` setzen oder in `rasterCanvas` den Rand trotzdem anlegen.
 
-### 14. Ergebnis-Info zeigt kurz Formate eines veralteten Ergebnisses – Kleinigkeit
+### 14. Ergebnis-Info zeigt kurz Formate eines veralteten Ergebnisses – Kleinigkeit – ✅ behoben
 **Ort:** `src/renderer/app.js:1678`
 
 `renderResultInfo(files…)` läuft auch, wenn sich `state.result` während `await dragPrepare`
@@ -165,6 +165,42 @@ geändert hat; die Zeile davor prüft das nur für `dragReady`. Werden die Forma
 während eine ältere Vorbereitung läuft, stehen kurz die alten Formate beim neuen Ergebnis.
 
 **Lösung:** `renderResultInfo` nur aufrufen, wenn `r === state.result`.
+
+## Prüfung Version 1.4.0 – ✅ behoben
+
+**Main-Prozess / IPC**
+- Nur eine Instanz (`requestSingleInstanceLock`); eine zweite holt das Fenster nach vorn.
+- Beim Beenden: GPU-Vermerk `gpuInFlight` löschen (kein falscher „GPU-Absturz“ beim nächsten Start),
+  Drag-Ordner aufräumen. GPU-Warnung nur einmal.
+- `prefs.json`, `meta.json` und Originale atomar schreiben (eindeutige Hilfsdatei + rename).
+- Export fragt nach, bevor vorhandene Begleitdateien (z. B. `foo.png`) ersetzt werden.
+- `drag-prepare` je Art nacheinander; Endungen nur aus einer Positivliste; `lane` per `hasOwn`.
+- KI-Cache: Index-Laden ohne Wettlauf, `.tmp`-Reste aufräumen, `clear()` in der Schreibkette.
+- Potrace: Zugriff bei `x === w` las das erste Pixel der nächsten Zeile → Formen außerhalb der viewBox.
+
+**KI-Pipeline**
+- Prozess-Ende während GPU-Lauf sperrt die GPU nur noch, wenn der CPU-Neuversuch klappt.
+- `gpu-failed` aktualisiert laufende Jobs (Dateiname statt Pfad verglichen).
+- Abbrechen verwirft geladene Modelle nicht wegen eines offenen `trim`.
+- Speichermangel beim Laden fällt nicht mehr still auf WebAssembly zurück.
+- Downloads: Abbruch auch zwischen den Teilen, 60-s-Zeitüberwachung, eindeutige `.part`-Dateien,
+  „entfernen“ bricht einen laufenden Download ab.
+- Abbrechen wirkt zwischen Kacheln (Vergrößern, Entrauschen, Kratzer, Gesichter, Gesichts-Linien).
+
+**Oberfläche**
+- „Hintergrund ausblenden“ hat einen eigenen Worker und bricht die Berechnung nicht mehr ab.
+- Veraltete Durchläufe schreiben weder Maske noch Cache des neuen Bildes (Durchlauf-Kontext).
+- Cache-Schlüssel über die tatsächlich verwendete Maske; Gesichts-Linien mit „vor/nach Freistellen“.
+- Export nur, wenn das Ergebnis zu den Einstellungen passt; Historie speichert die Einstellungen
+  des Ergebnisses; Herausziehen erst nach Neuberechnung.
+- Zwischenspeicher je Schrittart begrenzt (LRU, 6 Einträge).
+- Restaurierungs-Info gehört zum Ergebnis; Vorschau-Schlüssel erst nach Erfolg gesetzt.
+
+**Bildverarbeitung**
+- DPI immer aus der tatsächlichen Pixelbreite (Pixelgrenze), mit Hinweis.
+- Distanztransformation: keine Endlosschleife bei `maxDist = Infinity`; Breite min. 0,1 mm.
+- Transparenter Hintergrund bleibt mit „Invertieren“ weiß (auch in Schriftbereichen).
+- Weichzeichnen und Farbmaske ohne helleren Rand.
 
 ## Geprüft, kein Problem
 

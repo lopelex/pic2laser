@@ -36,11 +36,33 @@ const Processing = (() => {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     if (s.blur > 0) {
-      // Weichzeichner relativ zur Bildbreite, damit er unabhängig von der Auflösung wirkt
-      ctx.filter = `blur(${(s.blur * w) / 1000}px)`;
+      // Weichzeichner relativ zur Bildbreite, damit er unabhängig von der Auflösung wirkt.
+      // Erst auf weißen Grund skalieren, dann mit über den Rand gezogenen Randpixeln weichzeichnen –
+      // sonst mischt der Filter am Bildrand Transparenz ein und der Rand wird heller.
+      const radius = (s.blur * w) / 1000;
+      const m = Math.ceil(radius * 3) + 1;
+      const pad = new OffscreenCanvas(w + 2 * m, h + 2 * m);
+      const pctx = pad.getContext('2d');
+      pctx.imageSmoothingEnabled = false; // Randstreifen exakt verlängern, ohne Nachbarzeilen einzumischen
+      const base = new OffscreenCanvas(w, h);
+      const bctx = base.getContext('2d');
+      bctx.fillStyle = '#fff';
+      bctx.fillRect(0, 0, w, h);
+      bctx.imageSmoothingEnabled = true;
+      bctx.imageSmoothingQuality = 'high';
+      bctx.drawImage(bitmap, 0, 0, w, h);
+      pctx.drawImage(base, 0, 0, w, h, m, m, w, h);
+      // Ränder spiegeln nicht nötig – Randpixel strecken reicht für den Weichzeichner
+      pctx.drawImage(base, 0, 0, w, 1, m, 0, w, m);
+      pctx.drawImage(base, 0, h - 1, w, 1, m, m + h, w, m);
+      pctx.drawImage(pad, m, 0, 1, h + 2 * m, 0, 0, m, h + 2 * m);
+      pctx.drawImage(pad, m + w - 1, 0, 1, h + 2 * m, m + w, 0, m, h + 2 * m);
+      ctx.filter = `blur(${radius}px)`;
+      ctx.drawImage(pad, -m, -m);
+      ctx.filter = 'none';
+    } else {
+      ctx.drawImage(bitmap, 0, 0, w, h);
     }
-    ctx.drawImage(bitmap, 0, 0, w, h);
-    ctx.filter = 'none';
 
     const data = ctx.getImageData(0, 0, w, h).data;
     const gray = new Float32Array(w * h);
@@ -215,6 +237,12 @@ const Processing = (() => {
     return out;
   }
 
+  /** Transparente Pixel der Quelle auf Weiß ziehen (nach adjust, also auch nach dem Invertieren). */
+  function whitenTransparent(gray, bitmap, w, h) {
+    const a = maskAlpha(bitmap, w, h);
+    for (let i = 0; i < gray.length; i++) if (a[i] < 1) gray[i] = gray[i] * a[i] + 255 * (1 - a[i]);
+  }
+
   /** Liest den Alphakanal einer Maske in Zielgröße (0..1). */
   function maskAlpha(maskCanvas, w, h) {
     const c = new OffscreenCanvas(w, h);
@@ -263,7 +291,7 @@ const Processing = (() => {
       let k = -1;
       for (let q = 0; q < w; q++) {
         const gq = g[row + q];
-        if (gq > maxDist) continue; // auch Infinity
+        if (!(gq <= maxDist) || gq === INF) continue; // Infinity (unerreichbar) und NaN auslassen – sonst Endlosschleife
         const fq = gq * gq;
         f[q] = fq;
         if (k < 0) {
@@ -409,6 +437,9 @@ const Processing = (() => {
     let gray = toGray(bitmap, w, h, s);
     gray = sharpen(gray, w, h, s.sharpen);
     gray = adjust(gray, s);
+    // Transparente Bereiche der Quelle (z. B. PNG-Logo) bleiben weiß – auch mit „Invertieren“,
+    // das sonst den weiß hinterlegten Hintergrund schwarz (= graviert) machen würde
+    if (s.invert) whitenTransparent(gray, bitmap, w, h);
 
     // Gesichtszüge hervorheben: lokaler Kontrast im Gesichtsbereich
     if (s.faceBoost && s.faces && s.faces.length && s.mode !== 'relief' && !(s.mode === 'edges' && s.edgeMethod === 'ai')) {
@@ -449,6 +480,10 @@ const Processing = (() => {
       let tg = toGray(textSource || bitmap, w, h, { ...s, blur: 0 });
       tg = sharpen(tg, w, h, s.sharpen);
       tg = adjust(tg, s);
+      // wie beim Hauptbild: Transparenz und freigestellter Hintergrund bleiben weiß
+      // (sonst entstünden mit „Invertieren“ schwarze Kästen um die Schrift)
+      if (s.invert) whitenTransparent(tg, textSource || bitmap, w, h);
+      if (alpha) for (let i = 0; i < tg.length; i++) tg[i] = tg[i] * alpha[i] + 255 * (1 - alpha[i]);
       cleanText(bits, tg, w, h, s.textBlocks, s.textPad ?? 1, s.textBold ?? 0);
     }
 

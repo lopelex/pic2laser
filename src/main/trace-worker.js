@@ -21,16 +21,16 @@ function clamp(v, min, max) {
 
 /**
  * Zerlegt das Binärbild in Randpfade (wie Potrace._bmToPathlist mit Schwelle 128,
- * schwarz auf weiß). Wie im Original liest ein Zugriff bei x === w das erste Pixel
- * der nächsten Zeile – das bleibt so, damit das Ergebnis identisch ist.
+ * schwarz auf weiß). Anders als im Original (potrace-js) gilt alles außerhalb des Bildes
+ * als weiß – dort las ein Zugriff bei x === w das erste Pixel der nächsten Zeile, was am
+ * rechten Rand Formen außerhalb der viewBox und verzerrte Konturen erzeugte.
  */
 function bitsToPathlist(bits, w, h, turdSize, turnPolicy) {
   const size = w * h;
-  // Puffer um eine Zeile + 1 verlängert: Zugriffe bei y === h bzw. x === w (Zeile h) liefern 0
-  const data = new Uint8Array(size + w + 1);
+  const data = new Uint8Array(size);
   for (let i = 0; i < size; i++) data[i] = bits[i] ? 1 : 0;
 
-  const get = (x, y) => (x >= 0 && x <= w && y >= 0 && y <= h ? data[w * y + x] : 0);
+  const get = (x, y) => (x >= 0 && x < w && y >= 0 && y < h ? data[w * y + x] : 0);
 
   function majority(x, y) {
     for (let i = 2; i < 5; i++) {

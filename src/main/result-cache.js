@@ -20,21 +20,29 @@ const TYPES = {
   Int32Array, Uint32Array, BigInt64Array, BigUint64Array,
 };
 
-let index = null; // Map name -> { size, t }
+let indexPromise = null; // Promise<Map name -> { size, t }>
 let writing = Promise.resolve();
 
-async function loadIndex() {
-  if (index) return index;
-  index = new Map();
-  await fs.mkdir(DIR(), { recursive: true });
-  for (const name of await fs.readdir(DIR())) {
-    if (!NAME.test(name)) continue;
-    try {
-      const st = await fs.stat(path.join(DIR(), name));
-      index.set(name, { size: st.size, t: st.mtimeMs });
-    } catch { /* inzwischen gelöscht */ }
+/** Index einmal laden; gleichzeitige Aufrufer warten auf denselben, vollständigen Index. */
+function loadIndex() {
+  if (!indexPromise) {
+    indexPromise = (async () => {
+      const idx = new Map();
+      await fs.mkdir(DIR(), { recursive: true });
+      for (const name of await fs.readdir(DIR())) {
+        // Reste abgebrochener Schreibvorgänge (Absturz) wegräumen
+        if (name.endsWith('.tmp')) { await fs.rm(path.join(DIR(), name), { force: true }); continue; }
+        if (!NAME.test(name)) continue;
+        try {
+          const st = await fs.stat(path.join(DIR(), name));
+          idx.set(name, { size: st.size, t: st.mtimeMs });
+        } catch { /* inzwischen gelöscht */ }
+      }
+      return idx;
+    })();
+    indexPromise.catch(() => { indexPromise = null; });
   }
-  return index;
+  return indexPromise;
 }
 
 const bytesOf = (a) => Buffer.from(a.buffer, a.byteOffset, a.byteLength);
@@ -126,11 +134,15 @@ async function stats() {
   return { count: idx.size, bytes: [...idx.values()].reduce((s, e) => s + e.size, 0), limit: LIMIT_BYTES };
 }
 
-async function clear() {
-  await writing;
-  await fs.rm(DIR(), { recursive: true, force: true });
-  index = null;
-  await loadIndex();
+function clear() {
+  // in die Schreibkette einreihen: ein gleichzeitig angefragtes put läuft danach, nicht parallel zum Löschen
+  const done = writing.then(async () => {
+    await fs.rm(DIR(), { recursive: true, force: true });
+    indexPromise = null;
+    await loadIndex();
+  });
+  writing = done.catch(() => {});
+  return done;
 }
 
 module.exports = { keyFor, get, put, stats, clear };

@@ -74,20 +74,48 @@ const AI = (() => {
    * während die vorige ausgewertet wird – der KI-Prozess wartet so nicht auf das Fenster.
    * request(item) → Promise, consume(result, item).
    */
+  // Abbruch zwischen Kacheln: „Abbrechen“ erhöht den Zähler, laufende Kachel-Schleifen steigen aus
+  let abortEpoch = 0;
+  let runEpoch = 0; // Stand beim Start des aktuellen Durchlaufs
+  function abort() { abortEpoch++; }
+  /** Neuer Durchlauf beginnt: frühere Abbrüche gelten für ihn nicht mehr. */
+  function beginRun() { runEpoch = abortEpoch; }
+  /**
+   * Prüffunktion für eine Kachel-Schleife: wirft „cancelled“, sobald seit dem Start des Durchlaufs
+   * abgebrochen wurde – auch wenn die Schleife erst nach dem Abbruch beginnt (z. B. nach einem
+   * nicht abbrechbaren Zwischenschritt).
+   */
+  function guard() {
+    const start = Math.min(runEpoch, abortEpoch);
+    return () => {
+      if (start !== abortEpoch) {
+        const err = new Error('cancelled');
+        err.cancelled = true;
+        throw err;
+      }
+    };
+  }
+
   async function pipelined(items, request, consume, depth = 2) {
+    const check = guard();
     const inflight = [];
     for (const item of items) {
+      check();
       const p = request(item);
       p.catch(() => {}); // Fehler wird beim Abholen gemeldet
       inflight.push({ item, p });
       if (inflight.length >= depth) {
         const job = inflight.shift();
-        consume(await job.p, job.item);
+        const res = await job.p;
+        check();
+        consume(res, job.item);
       }
     }
     while (inflight.length) {
       const job = inflight.shift();
-      consume(await job.p, job.item);
+      const res = await job.p;
+      check();
+      consume(res, job.item);
     }
   }
 
@@ -447,7 +475,9 @@ const AI = (() => {
     const out = new OffscreenCanvas(base.width, base.height);
     const octx = out.getContext('2d');
     octx.drawImage(base, 0, 0);
+    const check = guard();
     for (const f of faces) {
+      check();
       const r = faceRegion(f);
       const sx = r.x1 * input.width, sy = r.y1 * input.height;
       const sw = (r.x2 - r.x1) * input.width, sh = (r.y2 - r.y1) * input.height;
@@ -675,5 +705,5 @@ const AI = (() => {
     if (upscaleMaxInput) UPSCALE_MAX_INPUT = upscaleMaxInput;
   }
 
-  return { configure, run, pipelined, get cacheHits() { return cacheHits; }, pixels, toNCHW, detectText, segment, samEmbedding, samMask, lineArt, lineModel, lineFixedSize, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
+  return { configure, run, pipelined, abort, beginRun, guard, get cacheHits() { return cacheHits; }, pixels, toNCHW, detectText, segment, samEmbedding, samMask, lineArt, lineModel, lineFixedSize, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
 })();

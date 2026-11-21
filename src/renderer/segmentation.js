@@ -247,11 +247,22 @@ const Segmentation = (() => {
     for (let p = 0; p < bg.length; p++) img.data[p * 4 + 3] = bg[p] ? 0 : 255;
     ctx.putImageData(img, 0, 0);
 
-    // Kante leicht glätten
+    // Kante leicht glätten. Randpixel nach außen verlängern, sonst mischt der Filter am
+    // Bildrand Transparenz ein und ein Motiv, das den Rand berührt, wird dort halb durchsichtig.
+    const radius = Math.max(0.6, w / 1500);
+    const m = Math.ceil(radius * 3) + 1;
+    const pad = new OffscreenCanvas(w + 2 * m, h + 2 * m);
+    const pctx = pad.getContext('2d');
+    pctx.imageSmoothingEnabled = false;
+    pctx.drawImage(mask, m, m);
+    pctx.drawImage(mask, 0, 0, w, 1, m, 0, w, m);
+    pctx.drawImage(mask, 0, h - 1, w, 1, m, m + h, w, m);
+    pctx.drawImage(pad, m, 0, 1, h + 2 * m, 0, 0, m, h + 2 * m);
+    pctx.drawImage(pad, m + w - 1, 0, 1, h + 2 * m, m + w, 0, m, h + 2 * m);
     const smooth = new OffscreenCanvas(w, h);
     const sctx = smooth.getContext('2d');
-    sctx.filter = `blur(${Math.max(0.6, w / 1500)}px)`;
-    sctx.drawImage(mask, 0, 0);
+    sctx.filter = `blur(${radius}px)`;
+    sctx.drawImage(pad, -m, -m);
     return smooth;
   }
 

@@ -256,7 +256,9 @@ const Restore = (() => {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const tiles = inpaintTiles(mask, w, h);
     let done = 0;
+    const check = AI.guard();
     for (const t of tiles) {
+      check();
       const img = ctx.getImageData(t.x0, t.y0, t.x1 - t.x0, t.y1 - t.y0);
       const tw = img.width, th = img.height;
       const n = LAMA * LAMA;
@@ -385,7 +387,9 @@ const Restore = (() => {
   async function restoreFaces(canvas, faces, strength, onProgress) {
     const ctx = canvas.getContext('2d');
     let done = 0;
+    const check = AI.guard();
     for (const f of faces) {
+      check();
       const eyeDist = Math.hypot(f.kps[1][0] - f.kps[0][0], f.kps[1][1] - f.kps[0][1]);
       if (eyeDist < 8) { onProgress?.(++done, faces.length); continue; }
       const t = similarity(f.kps, TEMPLATE);

@@ -35,10 +35,12 @@ function createWindow() {
     for (const t of Object.values(tracers)) t.ensureProc();
     models.warmUp();
     if (crashedGpuModel) {
+      const model = crashedGpuModel;
+      crashedGpuModel = null; // nur einmal melden (macOS: Fenster kann neu geöffnet werden)
       dialog.showMessageBox(mainWindow, {
         type: 'warning',
         message: 'Pic2Laser wurde bei einer GPU-Berechnung beendet',
-        detail: `Das Modell „${crashedGpuModel}“ läuft ab jetzt auf dem Prozessor. Die übrigen Modelle nutzen weiter die GPU. Unter „Leistung“ lässt sich die GPU ganz ausschalten.`,
+        detail: `Das Modell „${model}“ läuft ab jetzt auf dem Prozessor. Die übrigen Modelle nutzen weiter die GPU. Unter „Leistung“ lässt sich die GPU ganz ausschalten.`,
       });
     }
   });
@@ -52,14 +54,40 @@ function createWindow() {
 // (muss vor dem Start des KI-Prozesses passieren, der die Liste beim Start übernimmt)
 let crashedGpuModel = null;
 
-app.whenReady().then(() => {
-  crashedGpuModel = models.recoverFromGpuCrash();
-  if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
-  createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+// Nur eine Instanz: zwei Instanzen würden sich Einstellungen, Cache-Index und Drag-Dateien
+// gegenseitig überschreiben. Eine zweite Instanz holt nur das vorhandene Fenster nach vorn.
+if (!app.requestSingleInstanceLock()) {
+  // zweite Instanz: sofort beenden, ohne Fenster, Prozesse oder Zugriff auf prefs.json
+  app.exit(0);
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      if (app.isReady()) createWindow(); // macOS: Fenster war geschlossen
+      return;
+    }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
   });
-});
+
+  // Beim regulären Beenden: GPU-Vermerk löschen (sonst gilt ein Beenden während/kurz nach einer
+  // GPU-Berechnung beim nächsten Start als Absturz) und Drag-Dateien aufräumen
+  app.on('before-quit', () => models.setQuitting());
+  app.on('will-quit', () => {
+    models.clearGpuInFlight();
+    try { require('fs').rmSync(path.join(app.getPath('temp'), 'pic2laser-drag'), { recursive: true, force: true }); } catch { /* egal */ }
+  });
+
+  app.whenReady().then(() => {
+    crashedGpuModel = models.recoverFromGpuCrash();
+    models.cleanupPartials();
+    cleanupHistoryTmp();
+    if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
+    createWindow();
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -148,7 +176,7 @@ const tracers = { fill: makeTracer('Füllung'), outline: makeTracer('Umriss') };
 
 ipcMain.handle('app-version', () => app.getVersion());
 
-ipcMain.handle('trace', (_e, image, params, lane) => (tracers[lane] || tracers.fill).trace(image, params || {}));
+ipcMain.handle('trace', (_e, image, params, lane) => (Object.hasOwn(tracers, lane) ? tracers[lane] : tracers.fill).trace(image, params || {}));
 
 // „Abbrechen“: Vektorisierung, KI-Berechnungen und Modell-Downloads stoppen
 ipcMain.handle('cancel-all', () => {
@@ -226,6 +254,7 @@ ipcMain.handle('open-image', async () => {
 ipcMain.handle('export-files', async (_e, { baseName, files }) => {
   if (!files || files.length === 0) return null;
   const first = files[0];
+  exportExt(first.ext);
   const res = await dialog.showSaveDialog(mainWindow, {
     title: 'Exportieren',
     defaultPath: path.join(app.getPath('pictures'), `${sanitize(baseName)}.${first.ext}`),
@@ -234,9 +263,27 @@ ipcMain.handle('export-files', async (_e, { baseName, files }) => {
   if (res.canceled || !res.filePath) return null;
 
   const parsed = path.parse(res.filePath);
+  const targets = files.map((f) => ({ f, target: path.join(parsed.dir, `${parsed.name}.${exportExt(f.ext)}`) }));
+  // Der Dialog fragt nur für die erste Datei nach – vorhandene Begleitdateien (z. B. foo.png) nicht stillschweigend ersetzen
+  const existing = [];
+  // erste Datei hat der Dialog schon bestätigt – außer der Name wurde ohne/mit anderer Endung eingegeben
+  const samePath = (a, b) => (process.platform === 'linux' ? a === b : a.toLowerCase() === b.toLowerCase());
+  for (const { target } of targets.filter((t) => !samePath(t.target, res.filePath))) {
+    if (await fs.access(target).then(() => true, () => false)) existing.push(path.basename(target));
+  }
+  if (existing.length) {
+    const answer = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      buttons: ['Abbrechen', 'Ersetzen'],
+      defaultId: 0,
+      cancelId: 0,
+      message: existing.length === 1 ? `„${existing[0]}“ ist bereits vorhanden.` : 'Einige Dateien sind bereits vorhanden.',
+      detail: `${existing.join('\n')}\n\nSollen sie ersetzt werden?`,
+    });
+    if (answer.response !== 1) return null;
+  }
   const written = [];
-  for (const f of files) {
-    const target = path.join(parsed.dir, `${parsed.name}.${f.ext}`);
+  for (const { f, target } of targets) {
     await fs.writeFile(target, typeof f.data === 'string' ? f.data : Buffer.from(f.data));
     written.push(target);
   }
@@ -258,21 +305,28 @@ const DRAG_KINDS = ['result', 'original'];
 const DRAG_DIR = (kind = 'result') => path.join(app.getPath('temp'), 'pic2laser-drag', kind);
 const dragPrepared = {}; // kind -> { paths, icon }
 
-ipcMain.handle('drag-prepare', async (_e, { baseName, files, icon, kind = 'result' }) => {
+const dragChain = {}; // kind -> Promise (Vorbereitungen je Art nacheinander, nie überlappend)
+
+ipcMain.handle('drag-prepare', (_e, { baseName, files, icon, kind = 'result' }) => {
   if (!DRAG_KINDS.includes(kind)) throw new Error('Unbekannte Drag-Art');
-  const dir = DRAG_DIR(kind);
-  await fs.rm(dir, { recursive: true, force: true });
-  await fs.mkdir(dir, { recursive: true });
-  const paths = [];
-  for (const f of files) {
-    const target = path.join(dir, `${sanitize(baseName)}.${f.ext}`);
-    await fs.writeFile(target, typeof f.data === 'string' ? f.data : Buffer.from(f.data));
-    paths.push(target);
-  }
-  let img = icon ? nativeImage.createFromBuffer(Buffer.from(icon)) : nativeImage.createEmpty();
-  if (img.isEmpty()) img = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=');
-  dragPrepared[kind] = { paths, icon: img };
-  return paths;
+  const job = (dragChain[kind] || Promise.resolve()).catch(() => {}).then(async () => {
+    delete dragPrepared[kind]; // alte Dateien werden gleich gelöscht – bis zum Ende nichts anbieten
+    const dir = DRAG_DIR(kind);
+    await fs.rm(dir, { recursive: true, force: true });
+    await fs.mkdir(dir, { recursive: true });
+    const paths = [];
+    for (const f of files) {
+      const target = path.join(dir, `${sanitize(baseName)}.${exportExt(f.ext)}`);
+      await fs.writeFile(target, typeof f.data === 'string' ? f.data : Buffer.from(f.data));
+      paths.push(target);
+    }
+    let img = icon ? nativeImage.createFromBuffer(Buffer.from(icon)) : nativeImage.createEmpty();
+    if (img.isEmpty()) img = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=');
+    dragPrepared[kind] = { paths, icon: img };
+    return paths;
+  });
+  dragChain[kind] = job;
+  return job;
 });
 
 ipcMain.on('drag-start', (e, kind = 'result') => {
@@ -280,6 +334,38 @@ ipcMain.on('drag-start', (e, kind = 'result') => {
   if (!prepared || !prepared.paths.length) return;
   e.sender.startDrag({ file: prepared.paths[0], files: prepared.paths, icon: prepared.icon });
 });
+
+const EXPORT_EXTS = ['svg', 'png', 'jpg', 'bmp'];
+/** Nur bekannte Ausgabeformate (verhindert Pfadangaben in der Endung). */
+function exportExt(ext) {
+  if (!EXPORT_EXTS.includes(ext)) throw new Error(`Unbekanntes Format: ${ext}`);
+  return ext;
+}
+
+/** Reste abgebrochener atomarer Schreibvorgänge in der Historie entfernen (beim Start). */
+async function cleanupHistoryTmp() {
+  try {
+    for (const id of await fs.readdir(HISTORY_DIR())) {
+      if (!ID_PATTERN.test(id)) continue;
+      for (const name of await fs.readdir(path.join(HISTORY_DIR(), id)).catch(() => [])) {
+        if (name.endsWith('.tmp')) await fs.rm(path.join(HISTORY_DIR(), id, name), { force: true });
+      }
+    }
+  } catch { /* keine Historie */ }
+}
+
+/** Atomar schreiben: erst Hilfsdatei, dann umbenennen (kein halbes JSON nach einem Absturz). */
+async function writeAtomic(file, data) {
+  // eindeutiger Name: gleichzeitige Speichervorgänge auf denselben Eintrag stören sich nicht
+  const tmp = `${file}.${crypto.randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(tmp, data);
+    await fs.rename(tmp, file);
+  } catch (err) {
+    await fs.rm(tmp, { force: true });
+    throw err;
+  }
+}
 
 function sanitize(name) {
   return String(name || 'bild').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 120) || 'bild';
@@ -324,8 +410,12 @@ ipcMain.handle('history-list', async () => {
  */
 ipcMain.handle('history-save', async (_e, entry) => {
   const isNew = !entry.id;
+  // neuer Eintrag ohne Original: gar nicht erst einen (leeren) Ordner anlegen
+  if (isNew && !(entry.original && entry.original.data)) throw new Error('Originalbild fehlt');
   const id = isNew ? crypto.randomUUID() : entry.id;
   const dir = entryDir(id);
+  // bestehender Eintrag ohne neues Original: muss noch existieren (sonst kein leerer Ordner)
+  if (!isNew && !(entry.original && entry.original.data)) await readMeta(id);
   await fs.mkdir(dir, { recursive: true });
 
   let meta = {};
@@ -335,10 +425,11 @@ ipcMain.handle('history-save', async (_e, entry) => {
 
   if (entry.original && entry.original.data) {
     const ext = safeExt(entry.original.ext);
+    // erst das neue Original sicher schreiben, dann das alte entfernen (Absturz dazwischen → altes bleibt gültig)
+    await writeAtomic(path.join(dir, `original.${ext}`), Buffer.from(entry.original.data));
     if (meta.originalFile && meta.originalFile !== `original.${ext}`) {
       await fs.rm(path.join(dir, meta.originalFile), { force: true });
     }
-    await fs.writeFile(path.join(dir, `original.${ext}`), Buffer.from(entry.original.data));
     meta.originalFile = `original.${ext}`;
   }
   if (!meta.originalFile) throw new Error('Originalbild fehlt');
@@ -361,7 +452,7 @@ ipcMain.handle('history-save', async (_e, entry) => {
     created: meta.created || now,
     updated: now,
   };
-  await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
+  await writeAtomic(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
   return meta;
 });
 
@@ -376,10 +467,10 @@ ipcMain.handle('history-duplicate', async (_e, id) => {
   const meta = await readMeta(id);
   const newId = crypto.randomUUID();
   const dir = entryDir(newId);
-  await fs.cp(entryDir(id), dir, { recursive: true });
+  await fs.cp(entryDir(id), dir, { recursive: true, filter: (src) => !src.endsWith('.tmp') });
   const now = Date.now();
   const copy = { ...meta, id: newId, name: `${meta.name || 'Bild'} (Kopie)`, created: now, updated: now };
-  await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(copy, null, 2));
+  await writeAtomic(path.join(dir, 'meta.json'), JSON.stringify(copy, null, 2));
   return copy;
 });
 

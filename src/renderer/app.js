@@ -107,6 +107,7 @@ const state = {
   settings: loadSettings(),
   source: null, // { name, ext, bytes: Uint8Array, bitmap, url, savedId }
   result: null, // { w, h, bits, svg, widthMm, heightMm, dpi, ... }
+  cancelRetries: 0, // Neustarts nach geerbtem Abbruch (siehe runProcess)
   cache: new Map(), // Zwischenergebnisse der KI-Modelle für das aktuelle Bild (Promises)
   inflight: new Map(), // Cache-Schlüssel → Startzeit noch laufender Berechnungen
   mask: null, // { key, canvas }
@@ -249,8 +250,11 @@ function setSetting(key, value) {
   syncControls();
   if (key === 'bgSeeds' || key === 'samPoints' || key === 'bgRemove') renderMarkers();
   updatePresetHint();
-  if (!key.startsWith('fmt')) scheduleProcess();
-  else scheduleDragPrepare(); // andere Formate zum Herausziehen
+  if (!key.startsWith('fmt')) {
+    state.cancelRetries = 0; // neue Eingabe: wieder Neustarts erlauben
+    dragReady = false; // bis zum neuen Ergebnis nicht das veraltete herausziehen
+    scheduleProcess();
+  } else scheduleDragPrepare(); // andere Formate zum Herausziehen
 }
 
 function bindControls() {
@@ -277,7 +281,8 @@ function bindControls() {
     const h = Number(e.target.value);
     if (!state.source || !(h >= 1 && h <= 2000)) return;
     const { width, height } = state.source.bitmap;
-    setSetting('widthMm', round1((h * width) / height));
+    // nie 0 mm (sehr schmale Bilder mit kleiner Höhe) – sonst Division durch 0 in der Verarbeitung
+    setSetting('widthMm', Math.max(0.1, round1((h * width) / height)));
   });
 
   for (const btn of $$('#mode button')) {
@@ -291,9 +296,13 @@ function bindControls() {
   $('#bg-hide').addEventListener('change', async (e) => {
     ui.hideBackground = e.target.checked;
     saveUi();
-    if (state.source && state.mask) {
-      const s = state.settings;
-      await updateOriginalView({ ...s, textBlocks: state.lastTextBlocks || [] }, state.mask.canvas, state.lastViewBase || state.source.bitmap);
+    const v = state.lastView;
+    if (state.source && v && v.mask) {
+      try {
+        await updateOriginalView(v.s, v.mask, v.base);
+      } catch (err) {
+        console.error(err);
+      }
     }
   });
 
@@ -349,6 +358,8 @@ function bindControls() {
     const keep = { fmtSvg: state.settings.fmtSvg, fmtPng: state.settings.fmtPng, fmtJpg: state.settings.fmtJpg, fmtBmp: state.settings.fmtBmp };
     state.settings = { ...DEFAULTS, ...keep, bgSeeds: [], samPoints: [] };
     state.activePreset = null;
+    state.cancelRetries = 0;
+    dragReady = false;
     renderPresets();
     persistSettings();
     syncControls();
@@ -553,6 +564,8 @@ function applyPreset(key) {
     samPoints: cur.samPoints,
   };
   state.activePreset = { key, settings: presetSettingsFromCurrent() };
+  state.cancelRetries = 0;
+  dragReady = false;
   persistSettings();
   syncControls();
   renderPresets();
@@ -672,6 +685,7 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   state.source = { name, ext, bytes, bitmap, url, savedId: historyId };
   state.historyId = historyId;
   state.result = null;
+  state.cancelRetries = 0;
   dragReady = false; // altes Ergebnis lässt sich nicht mehr herausziehen
   renderResultInfo(null);
   resetOriginalDrag();
@@ -686,6 +700,10 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   state.mask = null;
   state.maskRaw = null;
   state.originalViewKey = null;
+  state.originalViewPending = null;
+  state.lastViewBase = null; // altes (restauriertes) Bild nicht im Speicher halten
+  state.lastTextBlocks = null;
+  state.lastView = null;
 
   if (settings) {
     state.settings = withDefaults(settings);
@@ -761,77 +779,105 @@ function bindDragDrop() {
  * damit nur die aktuellen Einstellungen gerechnet werden.
  */
 const Pipeline = (() => {
-  let worker = null;
-  let job = null; // { reject }
-
   function cancelled() {
     const err = new Error('cancelled');
     err.cancelled = true;
     return err;
   }
 
-  function call(type, payload, transfer = []) {
-    if (job) {
-      worker.terminate();
-      worker = null;
-      job.reject(cancelled());
-      job = null;
-    }
-    if (!worker) worker = new Worker('pipeline-worker.js');
-    return new Promise((resolve, reject) => {
-      job = { reject };
-      const w = worker;
-      w.onmessage = (e) => {
+  /**
+   * Eine Spur = ein eigener Worker. Neue Aufträge brechen nur Aufträge derselben Spur ab:
+   * Die Vorschau des Originals (cutout) darf die eigentliche Berechnung nicht abbrechen und umgekehrt.
+   */
+  function makeLane() {
+    let worker = null;
+    let job = null; // { reject }
+    return {
+      call(type, payload, transfer = []) {
+        this.cancel();
+        if (!worker) worker = new Worker('pipeline-worker.js');
+        return new Promise((resolve, reject) => {
+          const w = worker;
+          const mine = { reject };
+          job = mine;
+          w.onmessage = (e) => {
+            if (job === mine) job = null;
+            if (e.data.ok) resolve(e.data.result);
+            else reject(new Error(e.data.error));
+          };
+          w.onerror = (e) => {
+            e.preventDefault();
+            if (job === mine) job = null;
+            w.terminate();
+            if (worker === w) worker = null;
+            reject(new Error(e.message || 'Fehler im Verarbeitungs-Worker'));
+          };
+          w.postMessage({ type, payload }, transfer);
+        });
+      },
+      /** Laufenden Auftrag sofort abbrechen (Worker beenden). */
+      cancel() {
+        if (!job) return;
+        worker.terminate();
+        worker = null;
+        job.reject(cancelled());
         job = null;
-        if (e.data.ok) resolve(e.data.result);
-        else reject(new Error(e.data.error));
-      };
-      w.onerror = (e) => {
-        e.preventDefault();
-        job = null;
-        w.terminate();
-        if (worker === w) worker = null;
-        reject(new Error(e.message || 'Fehler im Verarbeitungs-Worker'));
-      };
-      w.postMessage({ type, payload }, transfer);
-    });
+      },
+    };
   }
 
+  const work = makeLane(); // Umwandlung: render, colorMask, refineMask
+  const view = makeLane(); // Vorschau des Originals: cutout
+
   return {
-    /** Laufenden Auftrag sofort abbrechen (Worker beenden). */
+    /** Alle laufenden Aufträge sofort abbrechen. */
     cancel() {
-      if (!job) return;
-      worker.terminate();
-      worker = null;
-      job.reject(cancelled());
-      job = null;
+      work.cancel();
+      view.cancel();
     },
     async render(source, mask, s, lineMask = null, textSource = null) {
       const src = await createImageBitmap(source);
       const m = mask ? await createImageBitmap(mask) : null;
       const lm = lineMask ? await createImageBitmap(lineMask) : null;
       const ts = textSource ? await createImageBitmap(textSource) : null;
-      return call('render', { source: src, mask: m, lineMask: lm, textSource: ts, s }, [src, m, lm, ts].filter(Boolean));
+      return work.call('render', { source: src, mask: m, lineMask: lm, textSource: ts, s }, [src, m, lm, ts].filter(Boolean));
     },
     async cutout(source, mask, markers, boxes = [], hideBackground = false) {
       const src = await createImageBitmap(source);
       const m = mask ? await createImageBitmap(mask) : null;
-      return call('cutout', { source: src, mask: m, markers, boxes, hideBackground }, m ? [src, m] : [src]);
+      return view.call('cutout', { source: src, mask: m, markers, boxes, hideBackground }, m ? [src, m] : [src]);
     },
     async colorMask(source, tolerance, border, seeds) {
       const src = await createImageBitmap(source);
-      return call('colorMask', { source: src, tolerance, border, seeds }, [src]);
+      return work.call('colorMask', { source: src, tolerance, border, seeds }, [src]);
     },
     async refineMask(mask, opts) {
       const m = await createImageBitmap(mask);
-      return call('refineMask', { mask: m, opts }, [m]);
+      return work.call('refineMask', { mask: m, opts }, [m]);
     },
   };
 })();
 
+/** Gehört dieser Durchlauf-Kontext zu einem überholten Durchlauf? */
+const isStaleRun = (s) => !!s && s.gen != null && (s.gen !== state.generation || s.source !== state.source); // auch: Bild gewechselt
+
+/** Überholter Durchlauf: still aussteigen (wie ein Abbruch), statt die Worker des aktuellen zu belegen. */
+function throwIfStale(s) {
+  if (!isStaleRun(s)) return;
+  const err = new Error('cancelled');
+  err.cancelled = true;
+  throw err;
+}
+
 const isCancelled = (err) => !!err && (err.cancelled || /cancelled$/.test(String(err.message)));
 
 let processTimer = null;
+
+/** Kennung der Einstellungen ohne Exportformate (die ändern das Ergebnis nicht). */
+const resultSig = (s) => JSON.stringify(Object.keys(s).filter((k) => !k.startsWith('fmt')).sort().map((k) => [k, s[k]]));
+
+/** Passt das angezeigte Ergebnis noch zu den aktuellen Einstellungen? */
+const resultIsCurrent = (r) => !!r && !!r.settings && resultSig(r.settings) === resultSig(state.settings);
 
 function scheduleProcess(delay = 120) {
   if (!state.source) return;
@@ -1032,14 +1078,50 @@ function maskRefineOpts(s, maskWidth) {
 }
 
 /** Zwischenspeicher pro Bild: gleiche Anfrage → gleiches Promise. Laufende Berechnungen werden vermerkt. */
-function cached(key, fn) {
-  if (!state.cache.has(key)) {
-    const p = fn();
-    state.cache.set(key, p);
-    state.inflight.set(key, performance.now());
-    p.catch(() => state.cache.delete(key)).finally(() => state.inflight.delete(key));
+/**
+ * Zwischenspeicher eines Durchlaufs. runProcess hält den Cache des Bildes fest (s.cache), mit dem
+ * er gestartet ist: Ein veralteter Durchlauf schreibt nach einem Bildwechsel so nie in den Cache
+ * des neuen Bildes.
+ */
+const cacheOf = (s) => (s && s.cache) || state.cache;
+
+// Höchstens so viele fertige Ergebnisse je Schrittart (z. B. „restore“, „lineart“) im Speicher.
+// Beim Ziehen eines Reglers entsteht je Zwischenwert ein Eintrag – ohne Grenze wüchse der Speicher
+// (Restaurierung und 4×-Vergrößerung belegen je Eintrag Dutzende MB).
+const CACHE_PER_KIND = 6;
+// große Bilder (Restaurierung, 4×-Vergrößerung): nur die letzten zwei behalten
+const CACHE_LIMIT = { restore: 2, upscale: 2 };
+const settledKeys = new WeakMap(); // cache -> Set fertiger Schlüssel
+
+function trimCache(cache, kind) {
+  const done = settledKeys.get(cache);
+  if (!done) return;
+  const keys = [...cache.keys()].filter((k) => k.split(':')[0] === kind && done.has(k));
+  for (const k of keys.slice(0, Math.max(0, keys.length - (CACHE_LIMIT[kind] ?? CACHE_PER_KIND)))) {
+    cache.delete(k);
+    done.delete(k);
   }
-  return state.cache.get(key);
+}
+
+function cached(key, fn, s = null) {
+  const cache = cacheOf(s);
+  if (cache.has(key)) {
+    // zuletzt benutzt → ans Ende (Map hält die Einfügereihenfolge)
+    const p = cache.get(key);
+    cache.delete(key);
+    cache.set(key, p);
+    return p;
+  }
+  const p = fn();
+  cache.set(key, p);
+  const inflight = cache === state.cache ? state.inflight : null;
+  if (inflight) inflight.set(key, performance.now());
+  p.then(() => {
+    if (!settledKeys.has(cache)) settledKeys.set(cache, new Set());
+    settledKeys.get(cache).add(key);
+    trimCache(cache, key.split(':')[0]);
+  }, () => cache.delete(key)).finally(() => { if (inflight) inflight.delete(key); });
+  return p;
 }
 
 function cleanError(err) {
@@ -1153,7 +1235,7 @@ function planSteps(s) {
     add('lineart', MODEL_NAMES[lineModel], lineModel, (src.w * src.h) / 1e6, 6000, lineKey);
     if (s.faceBoost) {
       const n = state.faceCount ?? 1;
-      if (n > 0) add('lineart-faces', 'Gesichtsdetails zeichnen', 'lineart-face', n, 2500, `${lineKey}:faces:${s.faceStrength}:${s.mouthStrength}:${s.noseStrength}:${s.chinStrength}:${s.cheekStrength}`);
+      if (n > 0) add('lineart-faces', 'Gesichtsdetails zeichnen', 'lineart-face', n, 2500, lineFacesKey(lineKey, s, maskKey));
     }
   } else if (s.mode === 'relief') {
     const sc = Number(s.depthRes) / Math.max(work.w, work.h);
@@ -1182,7 +1264,13 @@ function planSteps(s) {
 async function runProcess() {
   if (!state.source) return;
   const gen = ++state.generation;
-  const s = { ...state.settings };
+  AI.beginRun();
+  const settingsSnap = { ...state.settings }; // Einstellungen, zu denen das Ergebnis gehört (Export/Historie)
+  // Durchlauf-Kontext: eigener Cache-Verweis und Generation (siehe cached / isStaleRun)
+  const s = { ...state.settings, gen, maskKey: null };
+  // nicht aufzählbar: wird weder an Worker geschickt (Promises sind nicht kopierbar) noch gespeichert
+  Object.defineProperty(s, 'cache', { value: state.cache, enumerable: false });
+  Object.defineProperty(s, 'source', { value: state.source, enumerable: false }); // Bild dieses Durchlaufs
   setBusy(true);
 
   // UI erst neu zeichnen lassen, bevor gerechnet wird
@@ -1209,7 +1297,7 @@ async function runProcess() {
     const work = await workingBitmap(s, preMask);
     if (stale()) return;
     const viewBase = restoreSig(s) ? await restoredBitmap(s, preMask) : state.source.bitmap;
-    $('#restore-info').textContent = restoreSig(s) ? (state.restoreInfo || '') : '';
+    $('#restore-info').textContent = restoreSig(s) ? (viewBase.restoreInfo || '') : '';
 
     // Schrift & Logos erkennen – je nach Einstellung vor oder nach dem Freistellen
     // (immer vor der Vorschau, damit die Bereiche dort markiert werden)
@@ -1226,9 +1314,12 @@ async function runProcess() {
     }
     state.lastTextBlocks = s.textBlocks;
     state.lastViewBase = viewBase;
+    // genau diese Ansicht merken: „Hintergrund ausblenden“ zeichnet sie neu (nicht state.mask/state.settings,
+    // die zu einem anderen Stand gehören können)
+    state.lastView = { s: { ...s, textBlocks: s.textBlocks }, mask, base: viewBase };
     await updateOriginalView(s, mask, viewBase);
-    scheduleOriginalDrag(s, work, mask);
     if (stale()) return;
+    scheduleOriginalDrag(s, work, mask);
 
     // Gesichter erkennen (für „Gesichtszüge hervorheben“)
     s.faces = facesWanted(s) ? await detectFaces(s, work, s.faceOrder === 'after' ? mask : null) : [];
@@ -1249,10 +1340,17 @@ async function runProcess() {
     const { w, h, bits, gray8, trace, imagePng, imageB64, sil } =
       await Run.track('render', Pipeline.render(source, mask, s, lineMask, s.textBlocks.length && source !== work ? work : null));
     if (stale()) return;
-    const widthMm = s.widthMm;
+    const widthMm = Math.max(0.1, s.widthMm);
     const heightMm = (widthMm * h) / w;
     const mmPerPx = widthMm / w;
-    const dpi = s.mode === 'dither' || s.mode === 'relief' ? s.dpi : w / (widthMm / 25.4);
+    // Immer die tatsächliche Auflösung: wurde das Bild wegen der Pixelgrenze verkleinert, stimmt s.dpi
+    // nicht mehr – Rasterdateien wären in LightBurn sonst kleiner als das SVG
+    const dpi = w / (widthMm / 25.4);
+    const dpiWarn = (s.mode === 'dither' || s.mode === 'relief') && dpi < s.dpi * 0.98 ? `${Math.round(dpi)}/${s.dpi}` : null;
+    if (dpiWarn && state.dpiWarn !== dpiWarn) {
+      toast(`Auflösung auf ${Math.round(dpi)} DPI begrenzt (Arbeitsspeicher). Die Größe in mm bleibt korrekt.`);
+    }
+    state.dpiWarn = dpiWarn;
 
     // 5. Vektorisierung (Potrace im eigenen Prozess) – Füllung und Umrisslinie parallel
     const fillJob = trace
@@ -1272,7 +1370,9 @@ async function runProcess() {
     if (fillRes.status === 'rejected') throw fillRes.reason;
     if (outlineRes.status === 'rejected') throw outlineRes.reason;
     const fillPath = fillRes.value;
-    const outline = sil ? { d: outlineRes.value, pad: sil.pad } : null;
+    // leere Silhouette (alles unter der Mindestgröße): keine Umrisslinie – sonst hätte das SVG einen Rand, die Rasterbilder nicht
+    const outline = sil && String(outlineRes.value || '').trim() ? { d: outlineRes.value, pad: sil.pad } : null;
+    if (sil && !outline && s.outlineOnly) toast('Kein Motiv für die Umrisslinie gefunden – das Ergebnis ist leer.', true);
 
     const doc = { w, h, widthMm, fillPath, imageB64, outline };
     const svg = Encoders.svgDocument(doc);
@@ -1284,7 +1384,9 @@ async function runProcess() {
       w, h, bits, gray8, svg, widthMm, heightMm, dpi, mode: s.mode, transparent: s.transparent,
       mmPerPx, outline, outlineOnly: !!(s.outline && s.outlineOnly), // für Rasterexporte mit Umrisslinie
       totalWmm: totalW, totalHmm: totalH, // inkl. Umrisslinie (SVG-Gesamtgröße)
+      settings: settingsSnap,
     };
+    state.cancelRetries = 0;
     scheduleDragPrepare();
     // Rasterergebnisse ohne Umriss als PNG anzeigen (schärfer), sonst das SVG
     if (imagePng && !outline) showResult(new Blob([imagePng], { type: 'image/png' }), s.mode === 'dither');
@@ -1295,7 +1397,18 @@ async function runProcess() {
     $('#status').textContent =
       `${w} × ${h} px · ${round1(totalW)} × ${round1(totalH)} mm · ${Math.round(dpi)} DPI · SVG ${kb} KB · ${ms} ms`;
   } catch (err) {
-    if (isCancelled(err) || gen !== state.generation) return;
+    if (gen !== state.generation) return;
+    if (isCancelled(err)) {
+      // Aktueller Durchlauf wurde nicht vom Benutzer abgebrochen, hat aber ein abgebrochenes
+      // Zwischenergebnis eines früheren Durchlaufs geerbt (gemeinsamer Cache) → einmal neu starten
+      if (state.cancelRetries < 2) {
+        state.cancelRetries++;
+        scheduleProcess(0);
+      } else {
+        toast('Die Berechnung wurde mehrfach unterbrochen – bitte eine Einstellung ändern oder neu laden.', true);
+      }
+      return;
+    }
     console.error(err);
     toast(`Umwandlung fehlgeschlagen: ${cleanError(err)}`, true);
   } finally {
@@ -1324,16 +1437,16 @@ async function workingBitmap(s, mask = null) {
   const bitmap = await restoredBitmap(s, mask);
   if (!s.upscale) return bitmap;
   if (!upscaleApplies(bitmap)) {
-    if (!state.cache.has('upscale-skip')) {
-      state.cache.set('upscale-skip', Promise.resolve());
+    if (!cacheOf(s).has('upscale-skip')) {
+      cacheOf(s).set('upscale-skip', Promise.resolve());
       toast('Das Bild ist bereits groß genug – KI-Vergrößerung wird übersprungen.');
     }
     return bitmap;
   }
   const key = `upscale:${restoreKey(s)}`;
-  if (!state.cache.has(key)) await ensureModelReady('esrgan');
+  if (!cacheOf(s).has(key)) await ensureModelReady('esrgan');
   return Run.track('upscale', cached(key, () =>
-    AI.upscale(bitmap, (done, total) => Run.progress('upscale', done / total))));
+    AI.upscale(bitmap, (done, total) => Run.progress('upscale', done / total)), s));
 }
 
 /** Altes Foto restaurieren: Rauschen, Kratzer/Staub, Gesichter (zwischengespeichert). */
@@ -1343,14 +1456,14 @@ async function restoredBitmap(s, mask = null) {
   const key = `restore:${restoreKey(s)}`;
   // nur das Motiv restaurieren (Gesichter und Kratzer im Hintergrund bleiben unberührt)
   const subject = restoreAfterCut(s) ? mask : null;
-  if (!state.cache.has(key)) {
+  if (!cacheOf(s).has(key)) {
     // Modelle vorher laden, damit der Download nicht in die Zeitmessung fällt
     if (s.restoreDenoise) await ensureModelReady('scunet');
     if (s.restoreScratches) await ensureModelReady('lama');
     if (s.restoreFaces || s.restoreScratches) await ensureModelReady('yunet');
     if (s.restoreFaces) await ensureModelReady('restoreformer');
   }
-  return cached(key, async () => {
+  const restored = await cached(key, async () => {
     const canvas = Restore.workingCopy(state.source.bitmap);
     const info = [];
     if (s.restoreDenoise) {
@@ -1369,14 +1482,20 @@ async function restoredBitmap(s, mask = null) {
       })());
     }
     if (s.restoreFaces) {
-      state.restoreFaceCount = faces.length;
+      canvas.restoreFaceCount = faces.length;
       await Run.track('restore-faces', Restore.restoreFaces(canvas, faces, s.faceRestoreStrength,
         (d, t) => Run.progress('restore-faces', d / t)));
       info.push(faces.length ? `${faces.length} Gesicht${faces.length === 1 ? '' : 'er'} restauriert` : 'kein Gesicht gefunden');
     }
-    state.restoreInfo = info.join(' · ');
+    // Info gehört zum Ergebnis (bei einem Cache-Treffer passt sie so zur angezeigten Restaurierung)
+    canvas.restoreInfo = info.join(' · ');
     return canvas;
-  });
+  }, s);
+  if (s.cache === state.cache) {
+    state.restoreInfo = restored.restoreInfo || '';
+    if (restored.restoreFaceCount != null) state.restoreFaceCount = restored.restoreFaceCount;
+  }
+  return restored;
 }
 
 /** Deckkraft der Maske (0..255) je Pixel in der Größe w × h. */
@@ -1407,11 +1526,11 @@ const SEG_LABEL = { birefnet: '„beste Qualität“ (BiRefNet)', ben2: '„gut 
  * Rohe KI-Maske. Der Hauptprozess hat bei LOW_MEMORY schon alle anderen Modelle freigegeben und
  * den KI-Prozess neu gestartet – reicht es dann immer noch nicht, das nächstsparsamere Modell nehmen.
  */
-async function segmentWithFallback(method, bitmap, up) {
+async function segmentWithFallback(method, bitmap, up, s) {
   let current = method;
   for (;;) {
     try {
-      const run = cached(KEYS.seg(current, up), () => AI.segment(current, bitmap));
+      const run = cached(KEYS.seg(current, up), () => AI.segment(current, bitmap), s);
       const raw = await (current === method ? Run.track('seg', run) : run);
       if (current !== method) {
         toast(`Auch nach dem Freigeben aller anderen KI-Modelle reicht der Arbeitsspeicher nicht für ${SEG_LABEL[method]} – es wurde ${SEG_LABEL[current]} verwendet. Andere Programme schließen und erneut versuchen.`);
@@ -1431,7 +1550,10 @@ async function ensureMask(s, bitmap) {
   const method = s.bgRemove;
   const key = maskKeyFor(s);
   if (!key) return null;
-  if (state.mask && state.mask.key === key) return state.mask.canvas;
+  if (state.mask && state.mask.key === key) {
+    s.maskKey = key;
+    return state.mask.canvas;
+  }
   const up = maskTag(s);
   const rawKey = rawMaskKeyFor(s);
 
@@ -1440,21 +1562,24 @@ async function ensureMask(s, bitmap) {
     if (state.maskRaw && state.maskRaw.key === rawKey) {
       canvas = state.maskRaw.canvas; // nur die Verfeinerung hat sich geändert
     } else if (method === 'color') {
+      throwIfStale(s);
       canvas = await Run.track('colormask', Pipeline.colorMask(bitmap, s.bgTolerance, s.bgBorder, s.bgSeeds));
     } else {
       await ensureModelReady(SEG_MODEL[method]);
       let raw;
       if (method === 'sam') {
-        const emb = await Run.track('sam-emb', cached(KEYS.samEmb(up), () => AI.samEmbedding(bitmap)));
+        const emb = await Run.track('sam-emb', cached(KEYS.samEmb(up), () => AI.samEmbedding(bitmap), s));
         const { w, h } = Segmentation.analysisSize(bitmap);
-        raw = await Run.track('sam-mask', cached(KEYS.samMask(up, s.samPoints), () => AI.samMask(emb, s.samPoints, w, h)));
+        raw = await Run.track('sam-mask', cached(KEYS.samMask(up, s.samPoints), () => AI.samMask(emb, s.samPoints, w, h), s));
       } else {
-        raw = await segmentWithFallback(method, bitmap, up);
+        raw = await segmentWithFallback(method, bitmap, up, s);
       }
       canvas = Segmentation.aiMask(raw, bitmap, s.maskThreshold);
     }
-    state.maskRaw = { key: rawKey, canvas };
+    // Ein veralteter Durchlauf (z. B. nach Bildwechsel) darf die gemeinsame Maske nicht überschreiben
+    if (!isStaleRun(s)) state.maskRaw = { key: rawKey, canvas };
     if (maskRefineSig(s)) {
+      throwIfStale(s); // ein veralteter Durchlauf darf die Worker-Spur des aktuellen nicht abbrechen
       canvas = await Run.track('maskrefine', Pipeline.refineMask(canvas, maskRefineOpts(s, canvas.width)));
     }
   } catch (err) {
@@ -1463,15 +1588,16 @@ async function ensureMask(s, bitmap) {
     toast(`Freistellen fehlgeschlagen: ${cleanError(err)}`, true);
     return null;
   }
-  state.mask = { key, canvas };
+  if (!isStaleRun(s)) state.mask = { key, canvas };
+  s.maskKey = key; // Schlüssel der Maske, die dieser Durchlauf tatsächlich verwendet
   return canvas;
 }
 
 /** Erkennt Schrift im (ggf. vergrößerten) Bild und zeigt die Anzahl der Bereiche an. */
 async function detectText(s, bitmap, mask = null) {
   try {
-    const maskKey = mask ? state.mask.key : null;
-    const blocks = await Run.track('text', cached(KEYS.text(upTag(s), maskKey), () => AI.detectText(mask ? maskedBitmap(bitmap, mask) : bitmap)));
+    const maskKey = mask ? s.maskKey : null;
+    const blocks = await Run.track('text', cached(KEYS.text(upTag(s), maskKey), () => AI.detectText(mask ? maskedBitmap(bitmap, mask) : bitmap), s));
     $('#text-info').textContent = blocks.length
       ? `${blocks.length} Schriftbereich${blocks.length === 1 ? '' : 'e'} erkannt (im Original blau markiert).`
       : 'Keine Schrift erkannt.';
@@ -1497,8 +1623,8 @@ function maskedBitmap(bitmap, mask) {
 /** Erkennt Gesichter im (ggf. vergrößerten) Bild und zeigt die Anzahl an. */
 async function detectFaces(s, bitmap, mask = null) {
   try {
-    const maskKey = mask ? state.mask.key : null;
-    const faces = await Run.track('faces', cached(KEYS.faces(upTag(s), maskKey), () => AI.detectFaces(mask ? maskedBitmap(bitmap, mask) : bitmap)));
+    const maskKey = mask ? s.maskKey : null;
+    const faces = await Run.track('faces', cached(KEYS.faces(upTag(s), maskKey), () => AI.detectFaces(mask ? maskedBitmap(bitmap, mask) : bitmap), s));
     state.faceCount = faces.length;
     $('#face-info').textContent = faces.length
       ? `${faces.length} Gesicht${faces.length === 1 ? '' : 'er'} erkannt.`
@@ -1517,8 +1643,8 @@ async function contourMask(s, bitmap) {
   const up = upTag(s);
   try {
     await ensureModelReady('u2netp');
-    const raw = await Run.track('contour', cached(KEYS.seg('ai', up), () => AI.segment('ai', bitmap)));
-    return await cached(`contour-mask:${up}`, async () => Segmentation.aiMask(raw, bitmap, 0.5));
+    const raw = await Run.track('contour', cached(KEYS.seg('ai', up), () => AI.segment('ai', bitmap), s));
+    return await cached(`contour-mask:${up}`, async () => Segmentation.aiMask(raw, bitmap, 0.5), s);
   } catch (err) {
     if (isCancelled(err)) throw err;
     console.error(err);
@@ -1527,12 +1653,18 @@ async function contourMask(s, bitmap) {
   }
 }
 
+/** Schlüssel der hochaufgelöst nachgezeichneten Gesichter; enthält auch, wo die Gesichter gesucht wurden (vor/nach dem Freistellen). */
+function lineFacesKey(lineKey, s, maskKey) {
+  const where = s.faceOrder === 'after' && maskKey ? `cut:${maskKey}` : 'all';
+  return `${lineKey}:faces:${where}:${s.faceStrength}:${s.mouthStrength}:${s.noseStrength}:${s.chinStrength}:${s.cheekStrength}`;
+}
+
 /** Bild, das tatsächlich umgewandelt wird: Original, KI-Strichzeichnung oder KI-Tiefenkarte. */
 async function contentSource(s, bitmap, mask) {
   const up = upTag(s);
   if (s.mode === 'edges' && s.edgeMethod === 'ai') {
-    const key = KEYS.lineart(up, s.lineRes, mask ? state.mask.key : 'none', s.lineStyle);
-    if (!state.cache.has(key)) await ensureModelReady(AI.lineModel(s.lineStyle));
+    const key = KEYS.lineart(up, s.lineRes, mask ? s.maskKey : 'none', s.lineStyle);
+    if (!cacheOf(s).has(key)) await ensureModelReady(AI.lineModel(s.lineStyle));
     // Freigestellten Hintergrund vorher entfernen, damit dort keine Linien entstehen
     const lineInput = () => {
       if (!mask) return bitmap;
@@ -1543,16 +1675,17 @@ async function contentSource(s, bitmap, mask) {
       ctx.drawImage(mask, 0, 0, bitmap.width, bitmap.height);
       return c;
     };
-    const base = await Run.track('lineart', cached(key, () => AI.lineArt(lineInput(), Number(s.lineRes), s.lineStyle)));
+    const base = await Run.track('lineart', cached(key, () => AI.lineArt(lineInput(), Number(s.lineRes), s.lineStyle), s));
     if (!s.faceBoost || !s.faces.length) return base;
     // Gesichter zusätzlich in hoher Auflösung nachzeichnen
-    return Run.track('lineart-faces', cached(`${key}:faces:${s.faceStrength}:${s.mouthStrength}:${s.noseStrength}:${s.chinStrength}:${s.cheekStrength}`, () =>
-      AI.enhanceFacesLineArt(lineInput(), base, s.faces, s.faceStrength, Processing.faceFeatureLevels(s), s.lineStyle)));
+    const facesKey = lineFacesKey(key, s, s.maskKey);
+    return Run.track('lineart-faces', cached(facesKey, () =>
+      AI.enhanceFacesLineArt(lineInput(), base, s.faces, s.faceStrength, Processing.faceFeatureLevels(s), s.lineStyle), s));
   }
   if (s.mode === 'relief') {
     const key = KEYS.depth(up, s.depthRes);
-    if (!state.cache.has(key)) await ensureModelReady('depth');
-    return Run.track('depth', cached(key, () => AI.depthMap(bitmap, Number(s.depthRes))));
+    if (!cacheOf(s).has(key)) await ensureModelReady('depth');
+    return Run.track('depth', cached(key, () => AI.depthMap(bitmap, Number(s.depthRes)), s));
   }
   return bitmap;
 }
@@ -1562,21 +1695,37 @@ async function updateOriginalView(s, mask, base = state.source.bitmap) {
   const markers = []; // Klickpunkte zeichnet die Marker-Ebene (renderMarkers) – immer gleich groß
   const boxes = s.textBlocks || [];
   const hideBg = ui.hideBackground;
-  const key = `${mask ? state.mask.key : 'plain'}|${JSON.stringify(markers)}|${JSON.stringify(boxes)}|${restoreKey(s)}|${hideBg}`;
-  if (state.originalViewKey === key) return;
-  state.originalViewKey = key;
-  const img = $('#img-original');
-  if (state.originalUrl) {
-    URL.revokeObjectURL(state.originalUrl);
-    state.originalUrl = null;
+  const key = `${mask ? s.maskKey : 'plain'}|${JSON.stringify(markers)}|${JSON.stringify(boxes)}|${restoreKey(s)}|${hideBg}`;
+  if (state.originalViewKey === key) {
+    state.originalViewPending = null; // eine noch laufende, andere Ansicht ist überholt
+    return;
   }
-  if (!mask && !markers.length && !boxes.length && base === state.source.bitmap) {
-    img.src = state.source.url;
+  const img = $('#img-original');
+  const source = state.source;
+  if (!mask && !markers.length && !boxes.length && base === source.bitmap) {
+    state.originalViewPending = null;
+    state.originalViewKey = key;
+    if (state.originalUrl) URL.revokeObjectURL(state.originalUrl);
+    state.originalUrl = null;
+    img.src = source.url;
     $('#pane-original').classList.remove('checker');
     return;
   }
-  const png = await Pipeline.cutout(base, mask, markers, boxes, hideBg);
+  // Ansicht ist nur eine Vorschau: Fehler hier dürfen die Umwandlung nicht scheitern lassen.
+  // Der Schlüssel wird erst nach Erfolg gesetzt – sonst würde ein abgebrochener Aufbau nie wiederholt.
+  state.originalViewPending = key;
+  let png;
+  try {
+    png = await Pipeline.cutout(base, mask, markers, boxes, hideBg);
+  } catch (err) {
+    if (!isCancelled(err)) console.error('Vorschau des Originals fehlgeschlagen:', err);
+    return;
+  }
+  // inzwischen neues Bild oder neuere Ansicht angefordert → dieses Ergebnis verwerfen
+  if (state.source !== source || state.originalViewPending !== key) return;
+  if (state.originalUrl) URL.revokeObjectURL(state.originalUrl);
   state.originalUrl = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
+  state.originalViewKey = key;
   img.src = state.originalUrl;
   $('#pane-original').classList.toggle('checker', !!mask && hideBg);
 }
@@ -1645,6 +1794,7 @@ function bindPerf() {
 
 /** Stellt sicher, dass ein Modell vorhanden ist (lädt es bei Bedarf mit Fortschrittsanzeige). */
 async function ensureModel(id) {
+  state.cancelledAt = 0; // neu angestoßener Download: Fortschritt wieder anzeigen
   const info = state.models.find((m) => m.id === id);
   if (info && !info.available && info.downloadable) {
     showProgress(`Lade Modell „${MODEL_NAMES[id] || id}“ (${fmtMB(info.size)}) …`, 0);
@@ -1744,6 +1894,8 @@ window.api.models.onProgress((p) => {
     }
     return;
   }
+  // Nachzügler eines abgebrochenen Downloads (Main hat sie vor dem Abbruch abgeschickt) ignorieren
+  if (state.cancelledAt && performance.now() - state.cancelledAt < 1500) return;
   Run.downloading = true;
   if (!downloadStarts.has(p.id)) downloadStarts.set(p.id, { t: performance.now(), bytes: p.received });
   const start = downloadStarts.get(p.id);
@@ -1895,7 +2047,7 @@ function scheduleDragPrepare(delay = 250) {
       if (r !== state.result) return; // inzwischen neu berechnet
       await window.api.dragPrepare({ baseName: baseName(), files, icon });
       dragReady = r === state.result;
-      renderResultInfo(files.map((f) => f.ext));
+      if (r === state.result) renderResultInfo(files.map((f) => f.ext));
     } catch (err) {
       console.error(err);
     }
@@ -1929,7 +2081,7 @@ function resetOriginalDrag() {
 
 /** Bereitet das optimierte Original als PNG zum Herausziehen vor (im Hintergrund, nur bei Änderungen). */
 function scheduleOriginalDrag(s, work, mask) {
-  const key = `${upTag(s)}|${mask ? state.mask.key : 'none'}|${work.width}x${work.height}`;
+  const key = `${upTag(s)}|${mask ? s.maskKey : 'none'}|${work.width}x${work.height}`;
   if (key === origDrag.key) return;
   clearTimeout(origDrag.timer);
   origDrag.key = key;
@@ -1998,8 +2150,10 @@ async function dragIcon(r) {
  */
 async function cancelAll() {
   const gen = ++state.generation; // laufende Durchläufe gelten als veraltet
+  state.cancelledAt = performance.now();
   clearTimeout(processTimer);
   Pipeline.cancel();
+  AI.abort(); // Kachel-Schleifen (Vergrößern, Restaurieren) steigen vor der nächsten Kachel aus
   // Oberfläche sofort zurücksetzen (vor dem Warten auf den Main-Prozess)
   Run.stop();
   downloadStarts.clear();
@@ -2008,6 +2162,12 @@ async function cancelAll() {
   setBusy(false);
   toast('Berechnung abgebrochen.');
   try { await window.api.cancelAll(); } catch { /* ignorieren */ }
+  if (state.generation === gen) {
+    // Fortschritt, der während des Wartens noch ankam, wieder ausblenden
+    downloadStarts.clear();
+    Run.downloading = false;
+    hideProgress();
+  }
   // Hat inzwischen eine neue Berechnung begonnen (z. B. durch eine geänderte Einstellung),
   // kann der Abbruch im Main-Prozess sie mit erwischt haben – dann neu starten.
   if (state.generation !== gen) scheduleProcess(0);
@@ -2053,7 +2213,8 @@ function bindResultDrag() {
   $('#img-result').addEventListener('dragstart', (e) => {
     e.preventDefault(); // eigenes System-Drag mit echten Dateien statt Bild-URL
     if (!state.result) return;
-    if (!dragReady) {
+    if (!dragReady || !resultIsCurrent(state.result)) {
+      if (!resultIsCurrent(state.result) && !$('#busy').classList.contains('on')) scheduleProcess(0);
       toast('Die Dateien werden noch vorbereitet – bitte gleich noch einmal ziehen.');
       return;
     }
@@ -2069,16 +2230,21 @@ async function exportCurrent() {
   if (!s.fmtSvg && !s.fmtPng && !s.fmtJpg && !s.fmtBmp) {
     return toast('Bitte mindestens ein Exportformat auswählen.', true);
   }
-
-  const files = [];
-  if (s.fmtSvg) files.push({ ext: 'svg', data: r.svg });
-  files.push(...(await buildRasterFiles(r, { png: s.fmtPng, jpg: s.fmtJpg, bmp: s.fmtBmp })));
+  // Einstellungen geändert, Ergebnis noch nicht neu berechnet → nicht das alte Ergebnis exportieren
+  if (!resultIsCurrent(r)) {
+    // läuft gerade keine Berechnung (z. B. nach Abbrechen oder Fehler), jetzt eine anstoßen
+    if (!$('#busy').classList.contains('on')) scheduleProcess(0);
+    return toast('Das Ergebnis wird an die geänderten Einstellungen angepasst – bitte danach noch einmal exportieren.');
+  }
 
   let written;
   try {
+    const files = [];
+    if (s.fmtSvg) files.push({ ext: 'svg', data: r.svg });
+    files.push(...(await buildRasterFiles(r, { png: s.fmtPng, jpg: s.fmtJpg, bmp: s.fmtBmp })));
     written = await window.api.exportFiles({ baseName: baseName(), files });
   } catch (err) {
-    return toast(`Export fehlgeschlagen: ${err.message || err}`, true);
+    return toast(`Export fehlgeschlagen: ${cleanError(err)}`, true);
   }
   if (!written) return;
 
@@ -2113,7 +2279,8 @@ async function saveToHistory(silent = false) {
       name: baseName(),
       originalName: src.name,
       original: needsOriginal ? { ext: src.ext, data: src.bytes } : null,
-      settings: { ...state.settings },
+      // Einstellungen, mit denen dieses Ergebnis berechnet wurde (nicht die eventuell schon geänderten)
+      settings: { ...(r.settings || state.settings), fmtSvg: state.settings.fmtSvg, fmtPng: state.settings.fmtPng, fmtJpg: state.settings.fmtJpg, fmtBmp: state.settings.fmtBmp },
       svg: r.svg,
       raster: rasterFiles[0],
       thumb,

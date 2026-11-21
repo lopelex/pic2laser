@@ -89,12 +89,16 @@ async function createSession(file, arena = false) {
   try {
     return { ort, session: await ort.InferenceSession.create(file, options), device: 'cpu' };
   } catch (nativeErr) {
-    return createWasmSession(file, nativeErr);
+    // Speichermangel nicht auf WebAssembly umlenken (viel langsamer, 4-GB-Grenze) – der Aufrufer
+    // gibt Speicher frei bzw. startet den Prozess neu und versucht es erneut
+    if (isOutOfMemory(nativeErr)) throw nativeErr;
+    console.warn(`Modell ${path.basename(file)} lässt sich nativ nicht laden, nutze WebAssembly:`, nativeErr.message);
+    return createWasmSession(file, nativeErr, true);
   }
 }
 
-async function createWasmSession(file, nativeErr) {
-  console.warn('onnxruntime-node nicht verfügbar, nutze WebAssembly:', nativeErr.message);
+async function createWasmSession(file, nativeErr, warned = false) {
+  if (!warned) console.warn('onnxruntime-node nicht verfügbar, nutze WebAssembly:', nativeErr.message);
   const ort = require('onnxruntime-web');
   ort.env.wasm.numThreads = Math.max(1, Math.min(4, os.cpus().length));
   const bytes = await fs.readFile(file);
@@ -214,6 +218,11 @@ process.parentPort.on('message', (e) => {
   if (msg.type === 'warm') {
     // native Laufzeit vorab laden (dauert beim ersten require spürbar)
     queue = queue.then(() => { try { require('onnxruntime-node'); } catch { /* Fallback WebAssembly */ } });
+    return;
+  }
+  if (msg.type === 'gpu-allow') {
+    // Hauptprozess hat eine GPU-Sperre zurückgenommen (Absturz lag nicht an der GPU)
+    gpuBlocked.delete(msg.file);
     return;
   }
   if (msg.type === 'drop') {

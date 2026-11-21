@@ -221,45 +221,70 @@ function download(id, onProgress) {
   const m = getModel(id);
   if (!m.url) return Promise.reject(new Error(`Modell ${id} fehlt in der Installation.`));
 
+  // Abbruch gilt für das ganze Modell, auch zwischen seinen Teilen (z. B. .onnx und .onnx.data)
+  const job = { cancelled: false };
+  activeJobs.add(job);
+  const check = () => { if (job.cancelled) throw new Error('cancelled'); };
   const p = (async () => {
     await fs.mkdir(DOWNLOAD_DIR(), { recursive: true });
     const parts = modelParts(m);
     const total = parts.reduce((sum, x) => sum + (x.size || 0), 0);
     let before = 0;
     for (const part of parts) {
+      check();
       const target = path.join(DOWNLOAD_DIR(), part.file);
       if (fsSync.existsSync(target)) { before += part.size || 0; continue; }
-      await downloadFile(part, target, (received) => onProgress?.({ id, received: before + received, total }));
+      await downloadFile(part, target, (received) => onProgress?.({ id, received: before + received, total }), job);
       before += part.size || 0;
     }
+    check();
     onProgress?.({ id, received: total, total, done: true });
     return path.join(DOWNLOAD_DIR(), m.file);
   })();
 
+  job.id = id;
+  job.promise = p;
   downloads.set(id, p);
-  p.finally(() => downloads.delete(id)).catch(() => {});
+  const forget = () => {
+    activeJobs.delete(job);
+    if (downloads.get(id) === p) downloads.delete(id);
+  };
+  p.then(forget, forget);
   return p;
 }
 
-// laufende Downloads (zum Abbrechen)
-const activeDownloads = new Set();
+// laufende Modell-Downloads (zum Abbrechen); ein Job je Modell
+const activeJobs = new Set();
+// Ohne neue Daten so lange → Download gilt als hängend und wird abgebrochen
+const STALL_MS = 60000;
 
 /** Lädt eine Datei, prüft die SHA-256-Prüfsumme und legt sie erst danach ab (abbrechbar). */
-async function downloadFile(part, target, onBytes) {
-  const tmp = `${target}.part`;
+async function downloadFile(part, target, onBytes, job) {
+  // eindeutige Zwischendatei: ein abgebrochener und ein neu gestarteter Download desselben Modells stören sich nicht
+  const tmp = `${target}.${process.pid}-${crypto.randomUUID().slice(0, 8)}.part`;
   const ctrl = new AbortController();
-  activeDownloads.add(ctrl);
+  job.ctrl = ctrl;
+  // Zeitüberwachung: hängt die Verbindung, wird abgebrochen statt ewig zu warten
+  let stalled = false;
+  let timer = null;
+  const alive = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { stalled = true; ctrl.abort(); }, STALL_MS);
+  };
+  alive();
   try {
-    return await downloadFileInner(part, target, tmp, onBytes, ctrl.signal);
+    return await downloadFileInner(part, target, tmp, (n) => { alive(); onBytes(n); }, ctrl.signal, alive);
   } catch (err) {
     await fs.rm(tmp, { force: true });
+    if (stalled) throw new Error('Download hängt (keine Daten seit 60 s) – bitte Internetverbindung prüfen.');
     throw ctrl.signal.aborted ? new Error('cancelled') : err;
   } finally {
-    activeDownloads.delete(ctrl);
+    clearTimeout(timer);
+    job.ctrl = null;
   }
 }
 
-async function downloadFileInner(part, target, tmp, onBytes, signal) {
+async function downloadFileInner(part, target, tmp, onBytes, signal, alive) {
   const res = await net.fetch(part.url, { signal });
   if (!res.ok) throw new Error(`Download fehlgeschlagen (HTTP ${res.status})`);
   const hash = crypto.createHash('sha256');
@@ -271,6 +296,7 @@ async function downloadFileInner(part, target, tmp, onBytes, signal) {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      alive();
       hash.update(value);
       received += value.length;
       if (!out.write(value)) await new Promise((r) => out.once('drain', r));
@@ -299,6 +325,14 @@ async function ensure(id, onProgress) {
 
 async function remove(id) {
   const m = getModel(id);
+  // laufenden Download dieses Modells abbrechen und abwarten (sonst taucht es danach wieder auf)
+  for (const job of [...activeJobs]) {
+    if (job.id !== id) continue;
+    job.cancelled = true;
+    if (job.ctrl) job.ctrl.abort();
+    if (downloads.get(id) === job.promise) downloads.delete(id); // ein neues ensure lädt frisch
+    await job.promise.catch(() => {});
+  }
   const file = path.join(DOWNLOAD_DIR(), m.file);
   if (worker.proc) worker.proc.postMessage({ type: 'drop', file });
   for (const part of modelParts(m)) await fs.rm(path.join(DOWNLOAD_DIR(), part.file), { force: true });
@@ -333,8 +367,10 @@ const worker = {
     const proc = this.proc;
     proc.on('message', (msg) => {
       if (msg.type === 'gpu-failed') {
-        // Modell läuft künftig direkt auf der CPU (spart den erneuten Fehlversuch)
+        // Modell läuft künftig direkt auf der CPU (spart den erneuten Fehlversuch);
+        // laufende Jobs dieses Modells rechnen jetzt auf der CPU weiter
         blockGpu(msg.file);
+        for (const job of this.pending.values()) if (job.msg && path.basename(job.msg.file) === msg.file) job.onGpu = false;
         return;
       }
       if (msg.type === 'gpu-unblock') {
@@ -350,15 +386,22 @@ const worker = {
     });
     proc.on('exit', () => {
       if (proc !== this.proc) return; // abgebrochener Prozess – dessen Jobs sind schon abgelehnt
+      if (quitting) return; // App wird beendet – kein Absturz, nichts sperren oder neu starten
       this.proc = null;
       const jobs = [...this.pending.values()];
       this.pending.clear();
       for (const job of jobs) {
         if (!job.msg) { job.reject(new Error('KI-Prozess wurde beendet')); continue; }
-        // Absturz während einer GPU-Berechnung (z. B. Grafiktreiber): Modell künftig auf der CPU, einmal neu versuchen
+        // Absturz während einer GPU-Berechnung (z. B. Grafiktreiber): einmal auf der CPU neu versuchen.
+        // Stirbt der Prozess auch dort (z. B. Speichermangel), lag es nicht an der GPU → Sperre zurücknehmen.
         if (job.onGpu && !job.retried) {
-          blockGpu(job.msg.file);
-          this.run(job.msg.file, job.msg.feeds, job.msg.outputs, job.msg.arena, true).then(job.resolve, job.reject);
+          const file = job.msg.file;
+          const wasBlocked = (prefs.get().gpuBlocked || []).includes(path.basename(file));
+          blockGpu(file);
+          this.run(file, job.msg.feeds, job.msg.outputs, job.msg.arena, true).then(job.resolve, (err) => {
+            if (!wasBlocked && /KI-Prozess wurde beendet/.test(err.message)) unblockGpu(file);
+            job.reject(err);
+          });
         } else {
           job.reject(new Error('KI-Prozess wurde beendet'));
         }
@@ -377,7 +420,8 @@ const worker = {
    */
   cancel() {
     this.epoch++;
-    if (!this.proc || this.pending.size === 0) return;
+    // Nur echte Berechnungen zählen – ein offener „trim“-Auftrag ist kein Grund, die geladenen Modelle zu verwerfen
+    if (!this.proc || ![...this.pending.values()].some((j) => j.msg)) return;
     const old = this.proc;
     this.proc = null;
     for (const job of this.pending.values()) job.reject(new Error('cancelled'));
@@ -461,6 +505,13 @@ function blockGpu(file) {
   console.warn(`GPU für ${name} abgeschaltet, Modell rechnet künftig auf der CPU.`);
 }
 
+/** GPU-Sperre eines Modells zurücknehmen (Absturz lag nicht an der GPU). */
+function unblockGpu(file) {
+  const name = path.basename(file);
+  prefs.set({ gpuBlocked: (prefs.get().gpuBlocked || []).filter((f) => f !== name) });
+  if (worker.proc) worker.proc.postMessage({ type: 'gpu-allow', file: name });
+}
+
 /** Läuft dieses Modell im KI-Prozess auf der GPU? (gleiche Regel wie in model-worker.js) */
 function gpuEligible(file) {
   const p = prefs.get();
@@ -483,6 +534,11 @@ const gpuGuard = {
   end() {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => prefs.set({ gpuInFlight: null }), 1500);
+  },
+  /** Beim regulären Beenden: kein Absturz – Vermerk sofort löschen. */
+  clear() {
+    clearTimeout(this.timer);
+    if (prefs.get().gpuInFlight) prefs.set({ gpuInFlight: null });
   },
 };
 
@@ -680,10 +736,35 @@ function register(ipcMain) {
   });
 }
 
+let quitting = false;
+/** App wird beendet: Prozess-Ende gilt nicht als Absturz. */
+function setQuitting() {
+  quitting = true;
+  gpuGuard.clear();
+}
+
+/**
+ * Beim Start (nur eine Instanz läuft): Reste abgebrochener Downloads löschen. Die Zwischendateien
+ * haben eindeutige Namen und würden nach einem harten Beenden sonst liegen bleiben.
+ */
+async function cleanupPartials() {
+  try {
+    for (const name of await fs.readdir(DOWNLOAD_DIR())) {
+      if (name.endsWith('.part')) await fs.rm(path.join(DOWNLOAD_DIR(), name), { force: true });
+    }
+  } catch { /* Ordner gibt es noch nicht */ }
+}
+
 /** Alles abbrechen: KI-Berechnungen und Modell-Downloads. */
 function cancelAll() {
   worker.cancel();
-  for (const ctrl of activeDownloads) ctrl.abort();
+  for (const job of activeJobs) {
+    job.cancelled = true;
+    if (job.ctrl) job.ctrl.abort();
+    // sofort vergessen: ein neuer Durchlauf startet einen frischen Download statt das sterbende Promise zu erben.
+    // In activeJobs bleibt der Job, bis er wirklich beendet ist (remove() wartet darauf).
+    if (downloads.get(job.id) === job.promise) downloads.delete(job.id);
+  }
 }
 
-module.exports = { register, cancelAll, warmUp: () => worker.warmUp(), recoverFromGpuCrash, MODELS };
+module.exports = { register, cancelAll, warmUp: () => worker.warmUp(), recoverFromGpuCrash, clearGpuInFlight: () => gpuGuard.clear(), setQuitting, cleanupPartials, MODELS };

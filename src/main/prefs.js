@@ -28,7 +28,10 @@ function get() {
 function set(patch) {
   prefs = { ...get(), ...patch };
   try {
-    fs.writeFileSync(FILE(), JSON.stringify(prefs, null, 2));
+    // atomar: erst in eine Hilfsdatei, dann umbenennen (kein halbes prefs.json nach einem Absturz)
+    const tmp = `${FILE()}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(prefs, null, 2));
+    fs.renameSync(tmp, FILE());
   } catch (err) {
     console.warn('Einstellungen konnten nicht gespeichert werden:', err.message);
   }
