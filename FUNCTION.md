@@ -144,9 +144,14 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 ## Schrift & Logos
 
 - **Schrift erkennen und sauber darstellen** (PaddleOCR-Textdetektor): Schriftzüge werden scharf
-  und gefüllt dargestellt statt gerastert oder nachgezeichnet; der Hintergrund behält seine
-  Darstellung.
-- **Logos einbeziehen:** Grafikelemente, die an die Schrift grenzen (z. B. ein Logo-Symbol),
+  und gefüllt dargestellt statt gerastert oder nachgezeichnet. Ersetzt werden nur die Buchstaben
+  selbst (Flächen, die ganz im Schriftbereich liegen); der Hintergrund behält seine Darstellung,
+  es entsteht kein Kasten. Farbige Schrift mit ähnlicher Helligkeit wie der Grund (z. B. gelb vor
+  Wolken) wird über ihre Farbe abgegrenzt und schwarz gezeichnet; deutlich hellere Schrift auf
+  dunklem Grund wird hell gezeichnet.
+- Bereiche auf erkannten Gesichtern (häufiger Fehltreffer des Textdetektors) und riesige Schrift
+  (Zeile über ein Viertel der Bildhöhe – bleibt auch ohne Sonderbehandlung sauber) werden ignoriert.
+- **Logos einbeziehen:** Grafikelemente, die an dunkle Schrift grenzen (z. B. ein Logo-Symbol),
   werden schrittweise mit übernommen.
 - **Schriftstärke** (fetter/feiner). Erkannte Bereiche werden im Original blau markiert.
 - **Erkennung** vor dem Freistellen (ganzes Bild) oder danach (Schrift im Hintergrund wird ignoriert).
@@ -189,7 +194,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 - Jede exportierte oder herausgezogene Umwandlung wird mit Original, Einstellungen, SVG, PNG
   und Vorschaubild gespeichert.
-- Ein Klick öffnet sie mit allen Einstellungen wieder. Suche, SVG erneut speichern,
+- Ein Klick öffnet sie mit allen Einstellungen wieder. Das gespeicherte Ergebnis wird sofort
+  angezeigt, während im Hintergrund neu gerechnet wird (KI-Schritte kommen aus dem
+  Festplatten-Cache); Export und Herausziehen stehen bereit, sobald die Berechnung fertig ist. Suche, SVG erneut speichern,
   Speicherordner öffnen, Eintrag duplizieren, einzelne Einträge oder alles löschen.
 - **Vereinigen (⊕):** legt das gespeicherte Ergebnis eines Eintrags über das aktuelle Ergebnis,
   z. B. „Linien“ über „Foto“ desselben Bildes. Oben in der Seitenleiste erscheint dann der Bereich
