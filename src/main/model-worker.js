@@ -103,10 +103,10 @@ async function createWasmSession(file, nativeErr, warned = false) {
   ort.env.wasm.numThreads = Math.max(1, Math.min(4, os.cpus().length));
   const bytes = await fs.readFile(file);
   const options = { executionProviders: ['wasm'] };
-  // externe Gewichte (z. B. SCUNet: *.onnx.data) mitgeben
-  const dataFile = `${file}.data`;
-  if (require('fs').existsSync(dataFile)) {
-    options.externalData = [{ path: path.basename(dataFile), data: await fs.readFile(dataFile) }];
+  // externe Gewichte (z. B. SCUNet: *.onnx.data, SAM 2.1: *.onnx_data) mitgeben
+  for (const dataFile of externalDataFiles(file)) {
+    if (!require('fs').existsSync(dataFile)) continue;
+    (options.externalData ||= []).push({ path: path.basename(dataFile), data: await fs.readFile(dataFile) });
   }
   return { ort, session: await ort.InferenceSession.create(bytes, options), device: 'cpu' };
 }
@@ -120,9 +120,12 @@ const sessions = new Map(); // Dateipfad -> { p: Promise<{ ort, session }>, size
 // Budget kommt aus der Leistungsstufe des Rechners (resources.js), Fallback: 20 % des RAM
 const BUDGET = Number(process.env.PIC2LASER_MODEL_BUDGET_MB) * 1048576 || Math.min(3e9, Math.max(6e8, os.totalmem() * 0.2));
 
+/** Mögliche Dateien mit externen Gewichten neben dem Modell. */
+const externalDataFiles = (file) => [`${file}.data`, `${file}_data`];
+
 async function fileSize(file) {
   let size = 0;
-  for (const f of [file, `${file}.data`]) {
+  for (const f of [file, ...externalDataFiles(file)]) {
     try { size += (await fs.stat(f)).size; } catch { /* keine externe Datei */ }
   }
   return size;

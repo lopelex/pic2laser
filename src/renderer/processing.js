@@ -237,6 +237,13 @@ const Processing = (() => {
     return out;
   }
 
+  /** Graustufen (0 = schwarz) mit dem gewählten Verfahren in ein Binärbild wandeln (1 = schwarz). */
+  function ditherGray(gray, w, h, algo) {
+    if (algo === 'threshold') return threshold(gray, 128);
+    if (algo === 'ordered') return ordered(gray, w, h);
+    return errorDiffusion(gray, w, h, KERNELS[algo] ? algo : 'floyd');
+  }
+
   /** Transparente Pixel der Quelle auf Weiß ziehen (nach adjust, also auch nach dem Invertieren). */
   function whitenTransparent(gray, bitmap, w, h) {
     const a = maskAlpha(bitmap, w, h);
@@ -863,5 +870,5 @@ const Processing = (() => {
     return bits;
   }
 
-  return { faceFeatureRegions, faceFeatureLevels, process, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate, distanceTransformSq, addSubjectLine };
+  return { faceFeatureRegions, faceFeatureLevels, process, ditherGray, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate, distanceTransformSq, addSubjectLine };
 })();

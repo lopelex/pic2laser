@@ -405,7 +405,7 @@ ipcMain.handle('history-list', async () => {
 });
 
 /**
- * entry: { id?, name, originalName, original: {ext, data}?, settings, svg, raster: {ext,data}?, thumb: ArrayBuffer, width, height }
+ * entry: { id?, name, originalName, original: {ext, data}?, settings, merge?, svg, raster: {ext,data}?, thumb: ArrayBuffer, width, height }
  * Mit vorhandener id wird der Eintrag aktualisiert (Original bleibt erhalten).
  */
 ipcMain.handle('history-save', async (_e, entry) => {
@@ -447,6 +447,13 @@ ipcMain.handle('history-save', async (_e, entry) => {
     name: entry.name || meta.name || 'Bild',
     originalName: entry.originalName || meta.originalName || '',
     settings: entry.settings || {},
+    // vereinigt mit einem anderen Eintrag: { id, name, top, opacity } – sonst null
+    merge: entry.merge && typeof entry.merge.id === 'string' && ID_PATTERN.test(entry.merge.id) ? {
+      id: entry.merge.id,
+      name: String(entry.merge.name || ''),
+      top: entry.merge.top === 'current' ? 'current' : 'history',
+      opacity: Math.min(1, Math.max(0, Number(entry.merge.opacity) || 0)),
+    } : null,
     width: entry.width,
     height: entry.height,
     created: meta.created || now,
@@ -463,6 +470,13 @@ ipcMain.handle('history-load', async (_e, id) => {
 });
 
 // Eintrag mit allen Dateien kopieren (neue ID, Name mit „(Kopie)“)
+// Gespeichertes Ergebnis (SVG) eines Eintrags – zum Vereinigen mit dem aktuellen Ergebnis
+ipcMain.handle('history-load-result', async (_e, id) => {
+  const meta = await readMeta(id);
+  const svg = await fs.readFile(path.join(entryDir(id), 'result.svg'), 'utf8');
+  return { meta, svg };
+});
+
 ipcMain.handle('history-duplicate', async (_e, id) => {
   const meta = await readMeta(id);
   const newId = crypto.randomUUID();

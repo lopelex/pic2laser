@@ -42,6 +42,27 @@
 
       <!-- Nur dieser Bereich scrollt; die Presets bleiben fest oben -->
       <div class="settings-scroll" id="settings-scroll">
+      <!-- Nur sichtbar, wenn ein Historie-Eintrag über das Ergebnis gelegt ist (⊕ in der Historie) -->
+      <section class="group merge-group" id="merge-group" hidden>
+        <h3>Vereinigt mit</h3>
+        <div class="row">
+          <span class="merge-name grow" id="merge-name"></span>
+          <button class="btn btn-small" id="btn-merge-off" title="Vereinigung aufheben und nur das eigene Ergebnis zeigen">Aufheben</button>
+        </div>
+        <div class="field">
+          <span>Oben liegt</span>
+          <div class="segmented small" id="merge-order">
+            <button data-value="history" title="Der Historie-Eintrag liegt oben und wird mit dem Regler überblendet">Historie-Eintrag</button>
+            <button data-value="current" title="Das aktuelle Ergebnis liegt oben und wird mit dem Regler überblendet">Aktuelles Ergebnis</button>
+          </div>
+        </div>
+        <label class="slider">
+          <span>Überblenden (Deckkraft oben) <output id="merge-opacity-out"></output></span>
+          <input type="range" id="merge-opacity" min="0" max="100" step="1" />
+        </label>
+        <p class="hint" id="merge-hint"></p>
+      </section>
+
       <section class="group">
         <h3>Modus</h3>
         <div class="segmented" id="mode">
@@ -50,7 +71,7 @@
           <button data-value="dither" title="Dithering für Fotos">Foto</button>
           <button data-value="relief" title="3D-Relief aus KI-Tiefenkarte (Graustufen)">Relief</button>
         </div>
-        <p class="hint" id="mode-hint"></p>
+        <p class="hint info" id="mode-hint"></p>
       </section>
 
       <section class="group">
@@ -65,20 +86,21 @@
             <option value="ben2" title="Bei sauberen Fotos fast so gut wie BiRefNet, braucht aber nur ca. 3 statt 6,7 GB Arbeitsspeicher und rechnet etwa doppelt so schnell. Schwächer bei alten, verrauschten oder kontrastarmen Fotos.">KI – gut &amp; sparsam (BEN2) ⤓</option>
             <option value="modnet">KI – Porträt/Haare (MODNet) ⤓</option>
             <option value="sam">KI – Objekt anklicken (MobileSAM)</option>
+            <option value="sam2" title="Genauere Objektgrenzen als MobileSAM (z. B. bei Haaren, feinen Teilen und ähnlichen Farben von Motiv und Hintergrund). Einmaliger Download ca. 180 MB, braucht ca. 0,9 GB Arbeitsspeicher; das erste Erkennen je Bild dauert einige Sekunden.">KI – Objekt anklicken, genau (SAM 2.1) ⤓</option>
             <option value="color">Nach Farbe</option>
           </select>
         </label>
-        <label class="check" data-bg="ai isnet birefnet ben2 modnet sam color"><input type="checkbox" id="bg-hide" /> Entfernten Hintergrund ausblenden (statt rot schraffieren)</label>
-        <div data-bg="sam">
-          <p class="hint"><b>Linksklick</b> ins Original markiert das Motiv, <b>Rechtsklick</b> (oder Alt+Klick) schließt Bereiche aus. Klick auf einen Punkt entfernt ihn wieder.</p>
+        <label class="check" data-bg="ai isnet birefnet ben2 modnet sam sam2 color"><input type="checkbox" id="bg-hide" /> Entfernten Hintergrund ausblenden (statt rot schraffieren)</label>
+        <div data-bg="sam sam2">
+          <p class="hint info"><b>Linksklick</b> ins Original markiert das Motiv, <b>Rechtsklick</b> (oder Alt+Klick) schließt Bereiche aus. Klick auf einen Punkt entfernt ihn wieder.</p>
           <button class="btn btn-small" id="btn-clear-sam">Punkte zurücksetzen</button>
         </div>
-        <div data-bg="ai isnet birefnet ben2 modnet sam">
+        <div data-bg="ai isnet birefnet ben2 modnet sam sam2">
           <label class="slider">
             <span>Maskenschwelle <output data-for="maskThreshold"></output></span>
             <input type="range" data-key="maskThreshold" min="0.05" max="0.95" step="0.01" />
           </label>
-          <p class="hint">Höher = engere Maske, niedriger = mehr vom Motiv bleibt erhalten. ⤓ = Modell wird beim ersten Gebrauch geladen.</p>
+          <p class="hint info">Höher = engere Maske, niedriger = mehr vom Motiv bleibt erhalten. ⤓ = Modell wird beim ersten Gebrauch geladen.</p>
         </div>
         <div data-bg="color">
           <label class="slider">
@@ -86,10 +108,10 @@
             <input type="range" data-key="bgTolerance" min="1" max="100" step="1" />
           </label>
           <label class="check"><input type="checkbox" data-key="bgBorder" /> Hintergrund vom Bildrand aus entfernen</label>
-          <p class="hint">Klicke ins <b>Original</b>, um weitere Hintergrundbereiche zu entfernen. Klick auf einen Punkt entfernt ihn wieder.</p>
+          <p class="hint info">Klicke ins <b>Original</b>, um weitere Hintergrundbereiche zu entfernen. Klick auf einen Punkt entfernt ihn wieder.</p>
           <button class="btn btn-small" id="btn-clear-seeds">Klickpunkte zurücksetzen</button>
         </div>
-        <div data-bg="ai isnet birefnet ben2 modnet sam color">
+        <div data-bg="ai isnet birefnet ben2 modnet sam sam2 color">
           <h4>Maske verfeinern</h4>
           <label class="slider" title="Verschiebt die Schnittkante: Plus lässt einen Rand um das Motiv stehen, Minus schneidet Reste des Hintergrunds (z. B. Lichtsäume) weg.">
             <span>Kante verschieben <output data-for="maskShiftMm"></output></span>
@@ -108,7 +130,7 @@
             <input type="range" data-key="maskHolePct" min="0" max="5" step="0.1" />
           </label>
           <label class="check" title="Behält nur das größte zusammenhängende Motiv – alles andere wird entfernt."><input type="checkbox" data-key="maskLargest" /> Nur das größte Motiv behalten</label>
-          <p class="hint">Größen in mm beziehen sich auf die Ausgabegröße, Flecken und Löcher auf die Bildfläche.</p>
+          <p class="hint info">Größen in mm beziehen sich auf die Ausgabegröße, Flecken und Löcher auf die Bildfläche.</p>
         </div>
       </section>
 
@@ -130,7 +152,7 @@
               <span>Stärke <output data-for="faceRestoreStrength"></output></span>
               <input type="range" data-key="faceRestoreStrength" min="0.1" max="1" step="0.05" />
             </label>
-            <p class="hint">Bei sehr unscharfen Gesichtern muss die KI Details neu erzeugen (z.&nbsp;B. Blickrichtung) – dann Ergebnis prüfen. Unter 100&nbsp;% können Doppelkonturen entstehen.</p>
+            <p class="hint info">Bei sehr unscharfen Gesichtern muss die KI Details neu erzeugen (z.&nbsp;B. Blickrichtung) – dann Ergebnis prüfen. Unter 100&nbsp;% können Doppelkonturen entstehen.</p>
           </div>
           <label class="field">
             <span>Reihenfolge</span>
@@ -139,14 +161,15 @@
               <option value="after">Nach dem Freistellen (nur Motiv)</option>
             </select>
           </label>
-          <p class="hint">Für alte, verrauschte oder beschädigte Fotos. Läuft auf max. 1280 px – vor allen anderen Schritten oder, mit „Nach dem Freistellen“, erst nach dem Freistellen nur für Gesichter und Kratzer im Motiv. Die Modelle (zusammen ca. 430 MB) werden beim ersten Gebrauch geladen. <span id="restore-info"></span></p>
+          <p class="hint info">Für alte, verrauschte oder beschädigte Fotos. Läuft auf max. 1280 px – vor allen anderen Schritten oder, mit „Nach dem Freistellen“, erst nach dem Freistellen nur für Gesichter und Kratzer im Motiv. Die Modelle (zusammen ca. 430 MB) werden beim ersten Gebrauch geladen.</p>
+          <p class="hint status" id="restore-info"></p>
         </div>
       </section>
 
       <section class="group">
         <h3>KI-Verbesserung</h3>
         <label class="check"><input type="checkbox" data-key="upscale" /> KI-Vergrößerung 4× (Real-ESRGAN)</label>
-        <p class="hint">Für kleine oder unscharfe Bilder: ergibt glattere Kanten und mehr Details. Dauert je nach Bildgröße einige Sekunden.</p>
+        <p class="hint info">Für kleine oder unscharfe Bilder: ergibt glattere Kanten und mehr Details. Dauert je nach Bildgröße einige Sekunden.</p>
       </section>
 
       <section class="group">
@@ -210,7 +233,7 @@
             <span>Linien verstärken <output data-for="lineBoldMm"></output></span>
             <input type="range" data-key="lineBoldMm" min="0" max="1.5" step="0.05" />
           </label>
-          <p class="hint" id="line-model-hint"></p>
+          <p class="hint info" id="line-model-hint"></p>
         </div>
         <div data-edge="canny">
           <label class="slider">
@@ -221,7 +244,7 @@
             <span>Linienstärke <output data-for="lineWidthMm"></output></span>
             <input type="range" data-key="lineWidthMm" min="0.1" max="3" step="0.05" />
           </label>
-          <p class="hint">Tipp: Etwas Weichzeichnen reduziert Rauschen und kurze Störlinien.</p>
+          <p class="hint info">Tipp: Etwas Weichzeichnen reduziert Rauschen und kurze Störlinien.</p>
         </div>
       </section>
 
@@ -239,7 +262,7 @@
           <span>Auflösung (DPI)</span>
           <input type="number" data-key="dpi" min="50" max="1200" step="1" />
         </label>
-        <p class="hint">Hell = nah/erhaben, dunkel = fern/tief. In LightBurn als Bild mit „3D-Slicing“ bzw. Graustufen gravieren. Kontrast/Gamma steuern die Tiefenwirkung, Weichzeichnen glättet die Oberfläche.</p>
+        <p class="hint info">Hell = nah/erhaben, dunkel = fern/tief. In LightBurn als Bild mit „3D-Slicing“ bzw. Graustufen gravieren. Kontrast/Gamma steuern die Tiefenwirkung, Weichzeichnen glättet die Oberfläche.</p>
       </section>
 
       <section class="group" data-mode="vector edges">
@@ -311,7 +334,8 @@
             <span>Schriftstärke <output data-for="textBold"></output></span>
             <input type="range" data-key="textBold" min="-40" max="40" step="1" />
           </label>
-          <p class="hint">Erkennt Schriftzüge per KI und stellt sie scharf und gefüllt dar statt gerastert oder nachgezeichnet. „Logos einbeziehen“ übernimmt Grafikelemente, die direkt an die Schrift grenzen (z.&nbsp;B. ein Logo-Symbol). „Nach dem Freistellen“ sucht Schrift nur im freigestellten Motiv und ignoriert Schrift im Hintergrund. <span id="text-info"></span></p>
+          <p class="hint info">Erkennt Schriftzüge per KI und stellt sie scharf und gefüllt dar statt gerastert oder nachgezeichnet. „Logos einbeziehen“ übernimmt Grafikelemente, die direkt an die Schrift grenzen (z.&nbsp;B. ein Logo-Symbol). „Nach dem Freistellen“ sucht Schrift nur im freigestellten Motiv und ignoriert Schrift im Hintergrund.</p>
+          <p class="hint status" id="text-info"></p>
         </div>
       </section>
 
@@ -346,7 +370,8 @@
             <span>Wangen <output data-for="cheekStrength"></output></span>
             <input type="range" data-key="cheekStrength" min="0" max="2" step="0.1" />
           </label>
-          <p class="hint">Erkennt Gesichter per KI und betont Augen, Brauen, Nase und Mund. „Mund“, „Nase“, „Kinn“ und „Wangen“ verstärken diese Bereiche zusätzlich (0 = aus). Im Modus <b>Linien</b> wird jedes Gesicht zusätzlich in hoher Auflösung nachgezeichnet. <span id="face-info"></span></p>
+          <p class="hint info">Erkennt Gesichter per KI und betont Augen, Brauen, Nase und Mund. „Mund“, „Nase“, „Kinn“ und „Wangen“ verstärken diese Bereiche zusätzlich (0 = aus). Im Modus <b>Linien</b> wird jedes Gesicht zusätzlich in hoher Auflösung nachgezeichnet.</p>
+          <p class="hint status" id="face-info"></p>
         </div>
       </section>
 
@@ -358,7 +383,7 @@
             <span>Linienstärke <output data-for="subjectLineMm"></output></span>
             <input type="range" data-key="subjectLineMm" min="0.1" max="2" step="0.05" />
           </label>
-          <p class="hint">Setzt das Motiv dort ab, wo es mit dem Hintergrund verschwimmt (z.&nbsp;B. helle Haut vor hellem Hintergrund). Nutzt die Freistell-Maske – ist Freistellen aus, wird die Kontur per KI ermittelt und der Hintergrund bleibt erhalten.</p>
+          <p class="hint info">Setzt das Motiv dort ab, wo es mit dem Hintergrund verschwimmt (z.&nbsp;B. helle Haut vor hellem Hintergrund). Nutzt die Freistell-Maske – ist Freistellen aus, wird die Kontur per KI ermittelt und der Hintergrund bleibt erhalten.</p>
         </div>
       </section>
 
@@ -375,7 +400,7 @@
             <input type="range" data-key="outlineCloseMm" min="0" max="15" step="0.1" />
           </label>
           <label class="check"><input type="checkbox" data-key="outlineOnly" /> Nur Umrisslinie (ohne Gravur)</label>
-          <p class="hint">Im SVG rote Linie = eigene Ebene in LightBurn, z.&nbsp;B. zum Ausschneiden. In exportierten Bildern (PNG/JPG/BMP) als schwarze Linie enthalten – gleiche Größe und Lage wie das SVG.</p>
+          <p class="hint info">Im SVG rote Linie = eigene Ebene in LightBurn, z.&nbsp;B. zum Ausschneiden. In exportierten Bildern (PNG/JPG/BMP) als schwarze Linie enthalten – gleiche Größe und Lage wie das SVG.</p>
         </div>
       </section>
 
@@ -406,22 +431,19 @@
 
       <section class="group">
         <h3>KI-Modelle</h3>
-        <ul class="model-list" id="model-list"></ul>
-        <p class="hint">Alle Modelle laufen lokal und offline. Große Modelle werden nur bei Bedarf geladen.</p>
+        <div class="row">
+          <span class="hint grow" id="models-summary"></span>
+          <button class="btn btn-small" id="btn-models" title="KI-Modelle anzeigen, laden und entfernen">Verwalten…</button>
+        </div>
         <p class="hint" id="system-info"></p>
-        <p class="hint">Arbeitsgrößen, Kachelgrößen und gleichzeitig geladene Modelle werden automatisch an den Arbeitsspeicher angepasst. Reicht der freie Speicher für ein Modell nicht, werden zuerst andere Modelle freigegeben.</p>
       </section>
 
       <section class="group">
         <h3>Leistung</h3>
-        <label class="check"><input type="checkbox" id="perf-gpu" /> Grafikkarte (GPU) für KI nutzen</label>
-        <label class="check"><input type="checkbox" id="perf-cache" /> KI-Ergebnisse auf der Festplatte zwischenspeichern</label>
         <div class="row">
-          <span class="hint grow" id="perf-cache-info"></span>
-          <button class="btn btn-small" id="btn-perf-cache-clear" title="Gespeicherte KI-Ergebnisse löschen">Cache leeren</button>
+          <span class="hint grow" id="perf-summary"></span>
+          <button class="btn btn-small" id="btn-perf" title="GPU-Beschleunigung und KI-Cache einstellen">Einstellungen…</button>
         </div>
-        <p class="hint" id="perf-info"></p>
-        <p class="hint">Mit GPU laufen die KI-Modelle auf der Grafikkarte (Windows: DirectML, Mac mit Apple-Chip: CoreML, Linux: WebGPU über Vulkan – experimentell und standardmäßig aus, nicht immer schneller als der Prozessor). Klappt ein Modell dort nicht, rechnet es automatisch auf dem Prozessor weiter. Der Cache speichert KI-Ergebnisse (max. 2&nbsp;GB), damit ein erneut geöffnetes Bild oder ein Historie-Eintrag nicht neu berechnet werden muss.</p>
       </section>
 
       <button class="btn btn-ghost full" id="btn-reset">Einstellungen zurücksetzen</button>
@@ -480,6 +502,61 @@
       <p class="hint" id="history-empty">Noch keine Umwandlungen gespeichert. Exportierte Bilder landen automatisch hier.</p>
     </aside>
   </main>
+
+  <!-- KI-Modelle verwalten -->
+  <dialog class="dialog" id="models-dialog" aria-labelledby="models-title">
+    <div class="dialog-head">
+      <div>
+        <h2 id="models-title">KI-Modelle</h2>
+        <p class="dialog-sub" id="models-dialog-summary"></p>
+      </div>
+      <button class="icon-btn dialog-close" data-close title="Schließen (Esc)" aria-label="Schließen">✕</button>
+    </div>
+    <div class="dialog-body">
+      <div class="model-groups" id="model-list"></div>
+    </div>
+    <div class="dialog-foot">
+      <p class="hint">Alle Modelle laufen lokal und offline; große werden nur bei Bedarf geladen.
+        Arbeitsgrößen und gleichzeitig geladene Modelle passen sich automatisch dem Arbeitsspeicher an.
+        <span id="models-dialog-system"></span></p>
+      <button class="btn" data-close>Schließen</button>
+    </div>
+  </dialog>
+
+  <!-- Leistung: GPU & Cache -->
+  <dialog class="dialog dialog-narrow" id="perf-dialog" aria-labelledby="perf-title">
+    <div class="dialog-head">
+      <div>
+        <h2 id="perf-title">Leistung</h2>
+        <p class="dialog-sub">Wie und wo die KI-Modelle rechnen</p>
+      </div>
+      <button class="icon-btn dialog-close" data-close title="Schließen (Esc)" aria-label="Schließen">✕</button>
+    </div>
+    <div class="dialog-body">
+      <section class="dialog-section">
+        <h3>Grafikkarte</h3>
+        <label class="check"><input type="checkbox" id="perf-gpu" /> Grafikkarte (GPU) für KI nutzen</label>
+        <p class="perf-status" id="perf-info"></p>
+        <p class="hint">Mit GPU laufen die KI-Modelle auf der Grafikkarte (Windows: DirectML, Mac mit Apple-Chip: CoreML,
+          Linux: WebGPU über Vulkan – experimentell und standardmäßig aus, nicht immer schneller als der Prozessor).
+          Klappt ein Modell dort nicht, rechnet es automatisch auf dem Prozessor weiter. Beim Umschalten startet der KI-Prozess neu.</p>
+      </section>
+      <section class="dialog-section">
+        <h3>Zwischenspeicher</h3>
+        <label class="check"><input type="checkbox" id="perf-cache" /> KI-Ergebnisse auf der Festplatte zwischenspeichern</label>
+        <div class="row perf-cache-row">
+          <span class="perf-status grow" id="perf-cache-info"></span>
+          <button class="btn btn-small" id="btn-perf-cache-clear" title="Gespeicherte KI-Ergebnisse löschen">Cache leeren</button>
+        </div>
+        <p class="hint">Der Cache speichert KI-Ergebnisse (max. 2&nbsp;GB), damit ein erneut geöffnetes Bild oder ein
+          Historie-Eintrag nicht neu berechnet werden muss.</p>
+      </section>
+    </div>
+    <div class="dialog-foot">
+      <span></span>
+      <button class="btn" data-close>Schließen</button>
+    </div>
+  </dialog>
 
   <div class="toast" id="toast"></div>
 

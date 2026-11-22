@@ -60,6 +60,7 @@ Alle KI-Funktionen laufen lokal und offline.
 | KI – gut & sparsam | BEN2 Base (int8) | Download; ca. 3 GB RAM, etwa doppelt so schnell wie BiRefNet; bei sauberen Fotos fast gleich gut, bei alten/verrauschten Fotos deutlich schwächer; weicht bei zu wenig Speicher auf IS-Net aus |
 | KI – Porträt/Haare | MODNet | Download |
 | KI – Objekt anklicken | MobileSAM | Linksklick = Motiv (+), Rechtsklick/Alt+Klick = ausschließen (−) |
+| KI – Objekt anklicken, genau | SAM 2.1 Small (Download ca. 180 MB) | wie MobileSAM, genauere Objektgrenzen; erstes Erkennen je Bild einige Sekunden, ca. 0,9 GB RAM |
 | Nach Farbe | – | Hintergrund vom Bildrand aus + zusätzliche Klickpunkte, Farbtoleranz |
 
 - **Maskenschwelle** für die KI-Methoden.
@@ -151,6 +152,20 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   und Vorschaubild gespeichert.
 - Ein Klick öffnet sie mit allen Einstellungen wieder. Suche, SVG erneut speichern,
   Speicherordner öffnen, Eintrag duplizieren, einzelne Einträge oder alles löschen.
+- **Vereinigen (⊕):** legt das gespeicherte Ergebnis eines Eintrags über das aktuelle Ergebnis,
+  z. B. „Linien“ über „Foto“ desselben Bildes. Oben in der Seitenleiste erscheint dann der Bereich
+  „Vereinigt mit“:
+  - **Oben liegt:** Historie-Eintrag oder aktuelles Ergebnis.
+  - **Überblenden:** Deckkraft der oberen Ebene – 0 % = nur die untere Ebene, 100 % = beide voll.
+    Weiß ist durchsichtig, Schwarz addiert sich (Doppelklick = 100 %).
+  - Zwei Vektor-Ergebnisse (Fläche/Linien) bei 0 % oder 100 % ergeben wieder einen Vektor;
+    Zwischenwerte und Foto-Ergebnisse werden als Punktmuster gerastert (Bild im SVG), mit Relief
+    entsteht ein Graustufenbild.
+  - Ändert man Einstellungen, wird das eigene Ergebnis neu berechnet und wieder vereinigt.
+    Gleiches Seitenverhältnis → deckungsgleich, sonst mittig eingepasst. Die Umrisslinie kommt
+    vom aktuellen Ergebnis, die des Eintrags entfällt (außer bei „nur Umrisslinie“).
+  - Beim Speichern merkt sich der Eintrag die Vereinigung (`merge` in `meta.json`); beim Öffnen
+    wird sie wiederhergestellt, solange der andere Eintrag noch existiert. „Aufheben“ löst sie.
 
 ## Bedienkomfort & Leistung
 
@@ -161,12 +176,16 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   Laufzeiten auf dem jeweiligen Rechner. Bei Downloads Restzeit aus der Datenrate.
 - **Abbrechen** (Knopf im Fortschrittsfeld oder Esc): stoppt Berechnungen, KI, Vektorisierung
   und Downloads; das letzte Ergebnis bleibt erhalten.
+- **Übersichtliche Seitenleiste:** Längere Erklärungen sind eingeklappt und lassen sich je Abschnitt
+  über das ⓘ in der Überschrift einblenden (Zustand wird gemerkt). Statusmeldungen bleiben sichtbar.
+- **KI-Modelle verwalten** (Bereich „KI-Modelle“ → „Verwalten…“): Dialog mit allen Modellen nach
+  Gruppen, Größe, Lizenz und RAM-Bedarf; Modelle laden oder entfernen.
 - **Zwischenspeicher:** KI-Ergebnisse werden pro Bild gemerkt – Umschalten geht sofort.
-- **Festplatten-Cache** (Bereich „Leistung“, abschaltbar): jedes KI-Ergebnis wird mit einem
+- **Festplatten-Cache** (Bereich „Leistung“ → „Einstellungen…“, abschaltbar): jedes KI-Ergebnis wird mit einem
   Fingerabdruck der Eingabe gespeichert (max. 2 GB, älteste Einträge fliegen zuerst raus).
   Ein erneut geöffnetes Bild oder ein Historie-Eintrag muss nicht neu berechnet werden, auch
   nach einem Neustart. „Cache leeren“ löscht ihn.
-- **GPU-Beschleunigung** (Bereich „Leistung“, Standard an außer unter Linux): Windows → DirectML, Mac mit
+- **GPU-Beschleunigung** (Bereich „Leistung“ → „Einstellungen…“, Standard an außer unter Linux): Windows → DirectML, Mac mit
   Apple-Chip → CoreML. Scheitert ein Modell auf der GPU, rechnet es automatisch auf der CPU
   weiter und wird dafür dauerhaft vorgemerkt (Einschalten der GPU setzt das zurück).
   **Absturzschutz:** Stürzt der KI-Prozess während einer GPU-Berechnung ab, wird sie sofort auf
@@ -204,7 +223,7 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 | Mitgeliefert | Download bei Bedarf (geprüft per SHA-256) |
 |---|---|
-| U²-Net, Informative Drawings (anime), Real-ESRGAN, MobileSAM, UltraFace, YuNet, PaddleOCR-Detektor | Informative Drawings (contour, opensketch), U²-Net Portrait, TEED, MODNet, IS-Net, BiRefNet lite, BEN2 Base, Depth Anything V2 Small, SCUNet, LaMa, RestoreFormer++ |
+| U²-Net, Informative Drawings (anime), Real-ESRGAN, MobileSAM, UltraFace, YuNet, PaddleOCR-Detektor | Informative Drawings (contour, opensketch), U²-Net Portrait, TEED, MODNet, IS-Net, BiRefNet lite, BEN2 Base, SAM 2.1 Small, Depth Anything V2 Small, SCUNet, LaMa, RestoreFormer++ |
 
 - Alle Modelle sind für kommerzielle Nutzung lizenziert (MIT, Apache-2.0, BSD-3).
 - Im Bereich „KI-Modelle“: Status, Größe, Speicherbedarf; Laden und Entfernen per Klick.
@@ -277,8 +296,12 @@ Jede Einstellungsänderung ruft `setSetting` → `scheduleProcess` (120 ms entpr
 6. `contentSource`: je nach Modus KI-Strichzeichnung, Tiefenkarte oder das Bild selbst.
 7. `Pipeline.render` im Web Worker: Rasterergebnis, PNG für Potrace, Silhouette für die Umrisslinie.
 8. `window.api.trace` (Potrace im Utility-Prozess) für Fläche/Linien und die Umrisslinie.
-9. `Encoders.svgDocument` baut das SVG; `state.result` wird gesetzt, Vorschau und Statuszeile
-   aktualisiert, Drag-Dateien vorbereitet (`scheduleDragPrepare`).
+9. `Encoders.svgDocument` baut das SVG; das Ergebnis landet in `state.baseResult`.
+10. `composeMerged`: ist ein Historie-Eintrag zum Vereinigen gewählt (`state.merge`), legt der
+    Web Worker (`merge` in pipeline-worker.js) beide Ebenen übereinander, ggf. folgt Potrace.
+    Das angezeigte Ergebnis steht in `state.result`; Vorschau und Statuszeile werden
+    aktualisiert, Drag-Dateien vorbereitet (`scheduleDragPrepare`). Reihenfolge und Deckkraft
+    rufen nur `scheduleMerge` → `composeMerged` auf, ohne neue Umwandlung.
 
 KI-Zwischenergebnisse liegen pro Bild in `state.cache` (Promise je Schlüssel, siehe `KEYS` und
 `cached()`); sie werden beim Laden eines neuen Bildes geleert. Abbrüche werden als Fehler mit
@@ -303,7 +326,7 @@ laufende KI-Jobs (nur wenn der Prozess rechnet) und Downloads ab.
 | Pfad | Inhalt |
 |---|---|
 | `presets.json` | eigene Presets |
-| `history/<uuid>/` | `meta.json`, `original.<ext>`, `result.svg`, `result.png`, `thumb.png` |
+| `history/<uuid>/` | `meta.json` (inkl. `merge`), `original.<ext>`, `result.svg`, `result.png`, `thumb.png` |
 | `models/` | heruntergeladene Modelle (`.part` während des Downloads) |
 | `ai-cache/` | Festplatten-Cache der KI-Ergebnisse (`<sha256>.bin`) |
 | `prefs.json` | GPU an/aus, Cache an/aus, Modelle, die nur auf der CPU laufen |

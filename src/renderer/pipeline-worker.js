@@ -57,6 +57,48 @@ const handlers = {
     return { result: out, transfer };
   },
 
+  /**
+   * Aktuelles Ergebnis mit einem Historie-Ergebnis vereinigen.
+   * payload: { w, h, bits|gray8 (aktuelles Ergebnis, Kopie), baseEmpty (nur Umrisslinie),
+   *            layer: { svg, mode, widthMm }, top: 'current'|'history', opacity: 0…1,
+   *            gray (Graustufen ausgeben), vector (Ergebnis vektorisieren), transparent, ditherAlgo }
+   * Rechnung in „Schwärze“ (0 = weiß, 255 = schwarz): Weiß ist durchsichtig, die obere Ebene wird
+   * mit der Deckkraft abgeschwächt und wie Tinte auf die untere gelegt (Multiplizieren).
+   */
+  async merge(p) {
+    const { w, h } = p;
+    const n = w * h;
+    const { dark: layer, aspectOff } = await layerDarkness(p.layer, w, h);
+    const base = new Uint8Array(n);
+    if (!p.baseEmpty) {
+      if (p.gray8) for (let i = 0; i < n; i++) base[i] = 255 - p.gray8[i];
+      else for (let i = 0; i < n; i++) base[i] = p.bits[i] ? 255 : 0;
+    }
+    const top = p.top === 'current' ? base : layer;
+    const bottom = p.top === 'current' ? layer : base;
+    const a = Math.min(1, Math.max(0, p.opacity));
+    const gray = new Uint8ClampedArray(n); // Helligkeit: 0 = schwarz
+    for (let i = 0; i < n; i++) gray[i] = ((255 - bottom[i]) * (255 - a * top[i])) / 255;
+
+    const out = { w, h, bits: null, gray8: null, trace: false, imagePng: null, imageB64: null, aspectOff };
+    if (p.gray) {
+      out.gray8 = gray;
+      out.imagePng = await Encoders.canvasBytes(Processing.grayToCanvas(gray, w, h), 'image/png');
+    } else {
+      // Nur bei voller oder keiner Deckkraft zweier Vektor-Ergebnisse bleibt es reines Schwarz-Weiß;
+      // sonst entstehen Zwischentöne, die wie beim Foto-Modus gerastert werden
+      const hard = a <= 0.001 || a >= 0.999;
+      out.trace = p.vector && hard;
+      out.bits = Processing.ditherGray(gray, w, h, out.trace ? 'threshold' : p.ditherAlgo);
+      if (!out.trace) {
+        out.imagePng = await Encoders.canvasBytes(Processing.bitsToCanvas(out.bits, w, h, p.transparent), 'image/png');
+      }
+    }
+    if (out.imagePng) out.imageB64 = Encoders.toBase64(out.imagePng);
+    const transfer = [out.bits, out.gray8, out.imagePng].filter(Boolean).map((x) => x.buffer);
+    return { result: out, transfer };
+  },
+
   /** Vorschau des freigestellten Originals mit Klickpunkten (PNG-Bytes). */
   async cutout({ source, mask, markers, boxes, hideBackground }) {
     const blob = await Segmentation.cutoutPreview(source, mask, markers, boxes, hideBackground);
@@ -82,6 +124,55 @@ const handlers = {
     return { result: bitmap, transfer: [bitmap] };
   },
 };
+
+/**
+ * Gespeichertes Ergebnis-SVG (siehe Encoders.svgDocument) auf w × h zeichnen und als Schwärze
+ * (0 = weiß/durchsichtig, 255 = schwarz) zurückgeben. Gleiches Seitenverhältnis → deckungsgleich,
+ * sonst mittig eingepasst. Die Umrisslinie des Eintrags wird nur übernommen, wenn sie sein
+ * einziger Inhalt ist („nur Umrisslinie“) – sonst bliebe von ihr nur ein abgeschnittenes Stück.
+ */
+async function layerDarkness(layer, w, h) {
+  const svg = String(layer.svg || '');
+  const vb = /viewBox="([-\d.e]+) ([-\d.e]+) ([\d.e]+) ([\d.e]+)"/.exec(svg);
+  if (!vb) throw new Error('Das Ergebnis des Historie-Eintrags ist nicht lesbar.');
+  const pad = -Number(vb[1]);
+  const w0 = Number(vb[3]) - 2 * pad, h0 = Number(vb[4]) - 2 * pad;
+  if (!(w0 > 0 && h0 > 0)) throw new Error('Das Ergebnis des Historie-Eintrags ist nicht lesbar.');
+  const fill = /<path d="([^"]*)" fill="#000"/.exec(svg);
+  const image = /<image [^>]*xlink:href="data:image\/png;base64,([^"]+)"/.exec(svg);
+  const outline = /<path d="([^"]*)" transform="translate\(([-\d.e]+) ([-\d.e]+)\)" fill="none"/.exec(svg);
+
+  const canvas = new OffscreenCanvas(w, h);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const sc = Math.min(w / w0, h / h0);
+  ctx.setTransform(sc, 0, 0, sc, (w - w0 * sc) / 2, (h - h0 * sc) / 2);
+  if (image) {
+    const b64 = atob(image[1]);
+    const bytes = new Uint8Array(b64.length);
+    for (let i = 0; i < b64.length; i++) bytes[i] = b64.charCodeAt(i);
+    const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    // Punktmuster beim Vergrößern nicht verwischen; Relief und Verkleinern glätten
+    ctx.imageSmoothingEnabled = layer.mode === 'relief' || sc < 1;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bmp, 0, 0, w0, h0);
+    bmp.close();
+  }
+  if (fill) {
+    ctx.fillStyle = '#000';
+    ctx.fill(new Path2D(fill[1]), 'evenodd');
+  }
+  if (!fill && !image && outline) {
+    ctx.translate(Number(outline[2]), Number(outline[3]));
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = Math.max(1, 0.2 / ((layer.widthMm || 100) / w0)); // wie in den Rasterexporten
+    ctx.lineJoin = 'round';
+    ctx.stroke(new Path2D(outline[1]));
+  }
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const dark = new Uint8Array(w * h);
+  for (let p = 0, i = 0; p < dark.length; p++, i += 4) dark[p] = ((255 - d[i]) * d[i + 3] + 127) / 255;
+  return { dark, aspectOff: Math.abs(w0 / h0 - w / h) > 0.02 * (w / h) };
+}
 
 self.onmessage = async (e) => {
   const { type, payload } = e.data;
