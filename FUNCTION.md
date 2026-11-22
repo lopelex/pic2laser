@@ -146,7 +146,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 - **Schrift erkennen und sauber darstellen** (PaddleOCR-Textdetektor): Schriftzüge werden scharf
   und gefüllt dargestellt statt gerastert oder nachgezeichnet. Ersetzt werden nur die Buchstaben
   selbst (Flächen, die ganz im Schriftbereich liegen); der Hintergrund behält seine Darstellung,
-  es entsteht kein Kasten. Helle Schrift auf dunklem Grund wird erkannt und hell gezeichnet.
+  es entsteht kein Kasten. Farbige Schrift mit ähnlicher Helligkeit wie der Grund (z. B. gelb vor
+  Wolken) wird über ihre Farbe abgegrenzt und schwarz gezeichnet; deutlich hellere Schrift auf
+  dunklem Grund wird hell gezeichnet.
 - Bereiche auf erkannten Gesichtern (häufiger Fehltreffer des Textdetektors) und riesige Schrift
   (Zeile über ein Viertel der Bildhöhe – bleibt auch ohne Sonderbehandlung sauber) werden ignoriert.
 - **Logos einbeziehen:** Grafikelemente, die an dunkle Schrift grenzen (z. B. ein Logo-Symbol),

@@ -21,6 +21,10 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 - **Schrift & Logos erzeugte Rechtecke im Ergebnis:** Im Schriftbereich wurde auch der Hintergrund hart
   gefüllt (z. B. Wiese hinter weißer Schrift schwarz). Jetzt werden nur die Buchstaben ersetzt, helle Schrift
   wird hell gezeichnet, und Logo-Elemente werden nur bei dunkler Schrift übernommen.
+- **Farbige Schrift wurde nur teilweise gezeichnet:** Schrift mit ähnlicher Helligkeit wie der Hintergrund
+  (z. B. gelbe Schrift vor Wolken und blauem Himmel) wird jetzt über ihre Farbe abgegrenzt und vollständig,
+  schwarz mit weißem Saum, gezeichnet. Kleine dunkle Bildpunkte (z. B. Laub zwischen den Zeilen) werden
+  nicht mehr als Buchstaben übernommen.
 - **Schrifterkennung auf Gesichtern:** Porträts wurden teils als Schrift erkannt (hart gefülltes Gesicht,
   weiße Quadrate um Staubpunkte). Bereiche auf erkannten Gesichtern und riesige „Zeilen“ werden jetzt ignoriert.
 

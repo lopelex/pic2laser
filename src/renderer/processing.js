@@ -28,6 +28,17 @@ const Processing = (() => {
   }
 
   /** Zeichnet die Quelle skaliert (weißer Hintergrund) und liefert Graustufen 0..255 als Float32Array. */
+  /** Farbpixel (RGBA) des Bildes in w × h, auf Weiß gezeichnet. */
+  function rgbaOf(bitmap, w, h) {
+    const ctx = new OffscreenCanvas(w, h).getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    return ctx.getImageData(0, 0, w, h).data;
+  }
+
   function toGray(bitmap, w, h, s) {
     const canvas = new OffscreenCanvas(w, h);
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -506,7 +517,7 @@ const Processing = (() => {
       if (alpha) for (let i = 0; i < tg.length; i++) tg[i] = tg[i] * alpha[i] + 255 * (1 - alpha[i]);
       // Glatte Konturen auch in den Schriftbereichen (gleiche Glättung wie im übrigen Bild)
       if (s.mode === 'vector' && s.smoothContours && improveAfterText) tg = gaussBlur(tg, w, h, Math.max(0.8, 0.45 * (w / (textSource || bitmap).width)));
-      cleanText(bits, tg, w, h, s.textBlocks, s.textPad ?? 1, s.textBold ?? 0);
+      cleanText(bits, tg, rgbaOf(textSource || bitmap, w, h), w, h, s.textBlocks, s.textPad ?? 1, s.textBold ?? 0);
       // Ruhige Linien nach der Schrifterkennung: auch die Schrift wird entlang ihrer Mitte geglättet
       // (Strichbreite bleibt, da sie aus den Strichen selbst gemessen wird)
       if (s.mode === 'edges' && s.lineClean && improveAfterText) bits = cleanAll(bits);
@@ -742,40 +753,76 @@ const Processing = (() => {
   }
 
   /**
-   * Flächen (8er-Nachbarschaft) im Rechteck x0..x1 × y0..y1, deren Pixel `ink` erfüllen und die den
-   * Rand des Rechtecks nicht berühren. Rückgabe: Maske in Rechteckgröße und Anzahl der Pixel.
+   * Flächen (8er-Nachbarschaft) im Rechteck x0..x1 × y0..y1, deren Pixel `ink(index)` erfüllen, die
+   * den Rand des Rechtecks nicht berühren und mindestens minArea Pixel groß sind (kleinere sind
+   * Bildrauschen, z. B. dunkle Laubpunkte zwischen den Zeilen). Rückgabe: Maske und Anzahl der Pixel.
    */
-  function innerParts(gray, w, x0, y0, x1, y1, ink) {
+  function innerParts(w, x0, y0, x1, y1, ink, minArea = 0) {
     const rw = x1 - x0 + 1, rh = y1 - y0 + 1;
     const label = new Int32Array(rw * rh); // Flächennummer + 1
     const stack = new Int32Array(rw * rh);
-    const touches = [];
+    const keep = [];
     for (let s0 = 0; s0 < rw * rh; s0++) {
-      if (label[s0] || !ink(gray[(y0 + ((s0 / rw) | 0)) * w + x0 + (s0 % rw)])) continue;
-      const id = touches.length + 1;
-      let edge = false, sp = 0;
+      if (label[s0] || !ink((y0 + ((s0 / rw) | 0)) * w + x0 + (s0 % rw))) continue;
+      const id = keep.length + 1;
+      let edge = false, sp = 0, size = 0;
       label[s0] = id; stack[sp++] = s0;
       while (sp) {
         const i = stack[--sp];
         const x = i % rw, y = (i / rw) | 0;
+        size++;
         if (x === 0 || y === 0 || x === rw - 1 || y === rh - 1) edge = true;
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
             const nx = x + dx, ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= rw || ny >= rh) continue;
             const k = ny * rw + nx;
-            if (!label[k] && ink(gray[(y0 + ny) * w + x0 + nx])) { label[k] = id; stack[sp++] = k; }
+            if (!label[k] && ink((y0 + ny) * w + x0 + nx)) { label[k] = id; stack[sp++] = k; }
           }
         }
       }
-      touches.push(edge);
+      keep.push(!edge && size >= minArea);
     }
     const mask = new Uint8Array(rw * rh);
     let count = 0;
     for (let k = 0; k < mask.length; k++) {
-      if (label[k] && !touches[label[k] - 1]) { mask[k] = 1; count++; }
+      if (label[k] && keep[label[k] - 1]) { mask[k] = 1; count++; }
     }
     return { mask, count };
+  }
+
+  /**
+   * Farbgruppen im Rechteck (k-Means, k = 3, RGB): je Gruppe ein Test „gehört Pixel i dazu?“.
+   * bold > 0 rechnet Pixel, die fast so nah an einer anderen Gruppe liegen, mit dazu (fetter).
+   */
+  function colorGroups(rgba, w, x0, y0, x1, y1, bold) {
+    const n = (x1 - x0 + 1) * (y1 - y0 + 1);
+    const step = Math.max(1, Math.floor(Math.sqrt(n / 20000)));
+    const px = [];
+    for (let y = y0; y <= y1; y += step) {
+      for (let x = x0; x <= x1; x += step) { const j = (y * w + x) * 4; px.push([rgba[j], rgba[j + 1], rgba[j + 2]]); }
+    }
+    if (px.length < 9) return [];
+    const lum = (c) => c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114;
+    const sorted = px.slice().sort((a, b) => lum(a) - lum(b));
+    // Start bei 10 %, 50 % und 90 % der Helligkeit (reproduzierbar, kein Zufall)
+    let centers = [0.1, 0.5, 0.9].map((q) => sorted[Math.floor(q * (sorted.length - 1))].slice());
+    const d2 = (r, g, b, c) => (r - c[0]) ** 2 + (g - c[1]) ** 2 + (b - c[2]) ** 2;
+    for (let it = 0; it < 10; it++) {
+      const sum = centers.map(() => [0, 0, 0, 0]);
+      for (const c of px) {
+        let best = 0;
+        for (let k = 1; k < centers.length; k++) if (d2(c[0], c[1], c[2], centers[k]) < d2(c[0], c[1], c[2], centers[best])) best = k;
+        const t = sum[best]; t[0] += c[0]; t[1] += c[1]; t[2] += c[2]; t[3]++;
+      }
+      centers = centers.map((c, k) => (sum[k][3] ? [sum[k][0] / sum[k][3], sum[k][1] / sum[k][3], sum[k][2] / sum[k][3]] : c));
+    }
+    return centers.map((c, k) => (i) => {
+      const j = i * 4, r = rgba[j], g = rgba[j + 1], b = rgba[j + 2];
+      let other = Infinity;
+      for (let o = 0; o < centers.length; o++) if (o !== k) other = Math.min(other, Math.sqrt(d2(r, g, b, centers[o])));
+      return Math.sqrt(d2(r, g, b, c)) - other < bold;
+    });
   }
 
   /**
@@ -783,12 +830,14 @@ const Processing = (() => {
    * optimalen Schwellwert (Otsu) bestimmt und scharf gefüllt – statt Rasterpunkten oder Umrisslinien.
    * Als Buchstaben zählen nur Flächen, die ganz im Schriftbereich liegen. Der Hintergrund läuft über
    * den Rand hinaus und behält seine Darstellung – sonst würde er im Kasten hart gefüllt und der
-   * Schriftbereich als Rechteck sichtbar. Helle Schrift auf dunklem Grund wird erkannt und hell
-   * gezeichnet. Grafikelemente, die direkt an die Schrift grenzen (Logo-Symbole), werden über
+   * Schriftbereich als Rechteck sichtbar. Farbige Schrift mit ähnlicher Helligkeit wie der Grund
+   * (z. B. gelb vor Wolken) wird über ihre Farbe abgegrenzt. Helle Schrift auf dunklem Grund wird hell
+   * gezeichnet. Grafikelemente, die direkt an dunkle Schrift grenzen (Logo-Symbole), werden über
    * zusammenhängende Flächen mit erfasst.
+   * rgba: Farbpixel (w × h) für die Farbgruppen oder null.
    * pad: Suchradius für Logo-Elemente in Zeilenhöhen; bold: Schwellwert-Versatz (+ = fetter).
    */
-  function cleanText(bits, gray, w, h, blocks, pad, bold) {
+  function cleanText(bits, gray, rgba, w, h, blocks, pad, bold) {
     for (const b of blocks) {
       const lineH = Math.max(2, b.lineH * h);
       let bx0 = Math.max(0, Math.floor(b.x1 * w)), by0 = Math.max(0, Math.floor(b.y1 * h));
@@ -800,24 +849,45 @@ const Processing = (() => {
       const tx0 = Math.max(0, bx0 - m), ty0 = Math.max(0, by0 - m);
       const tx1 = Math.min(w - 1, bx1 + m), ty1 = Math.min(h - 1, by1 + m);
       const tw = tx1 - tx0 + 1;
+      const minArea = Math.max(4, Math.round((lineH * 0.08) ** 2)); // kleinere Flächen: kein Buchstabenteil
       const otsu = otsuRect(gray, w, tx0, ty0, tx1, ty1);
 
-      // Schrift dunkel oder hell? Die Seite der Schwelle, deren Flächen im Bereich liegen
-      const darkParts = innerParts(gray, w, tx0, ty0, tx1, ty1, (v) => v < otsu);
-      const lightParts = innerParts(gray, w, tx0, ty0, tx1, ty1, (v) => v >= otsu);
-      const dark = darkParts.count >= lightParts.count;
-      const t = dark ? otsu + bold : otsu - bold; // „fetter“ = mehr Pixel auf der Seite der Schrift
-      const glyphs = !bold ? (dark ? darkParts : lightParts)
-        : innerParts(gray, w, tx0, ty0, tx1, ty1, dark ? (v) => v < t : (v) => v >= t);
+      // Welche Pixel sind die Buchstaben? Kandidaten: dunkle bzw. helle Seite der Schwelle und die
+      // Farbgruppen. Gewählt wird der mit den meisten abgegrenzten Pixeln (Flächen, die ganz im
+      // Bereich liegen); eine Farbgruppe nur, wenn sie mindestens doppelt so viel findet wie die
+      // Helligkeit – sonst gewinnt bei dunkler Schrift vor Laub leicht „Schrift + dunkle Blätter“.
+      // „fetter“ (bold > 0) = mehr Pixel auf der Seite der Schrift.
+      let best = null;
+      for (const [kind, test] of [['dark', (i) => gray[i] < otsu + bold], ['light', (i) => gray[i] >= otsu - bold]]) {
+        const parts = innerParts(w, tx0, ty0, tx1, ty1, test, minArea);
+        if (!best || parts.count > best.parts.count) best = { kind, parts };
+      }
+      if (rgba) {
+        const grayCount = best.parts.count;
+        for (const test of colorGroups(rgba, w, tx0, ty0, tx1, ty1, bold)) {
+          const parts = innerParts(w, tx0, ty0, tx1, ty1, test, minArea);
+          if (parts.count > grayCount * 2 && parts.count > best.parts.count) best = { kind: 'color', parts };
+        }
+      }
+      const glyphs = best.parts;
       if (!glyphs.count) continue; // nichts Abgegrenztes gefunden – Bereich unverändert lassen
-      const ink = dark ? 1 : 0; // Farbe der Schrift im Ergebnis (1 = schwarz)
+
+      // Hell zeichnen nur, wenn die Schrift deutlich heller ist als ihre Umgebung im Bereich – sonst
+      // (dunkle Schrift oder kaum Unterschied, z. B. gelb vor Wolken) schwarz, damit sie lesbar bleibt
+      let gs = 0, gn = 0, bs = 0, bn = 0;
+      for (let y = ty0; y <= ty1; y++) {
+        for (let x = tx0; x <= tx1; x++) {
+          if (glyphs.mask[(y - ty0) * tw + x - tx0]) { gs += gray[y * w + x]; gn++; } else { bs += gray[y * w + x]; bn++; }
+        }
+      }
+      const ink = bn && gs / gn > bs / bn + 40 ? 0 : 1; // Farbe der Schrift im Ergebnis (1 = schwarz)
 
       // übernommene Logo-Elemente (Fenster, Pixel-Labels, angenommene Komponenten)
       let logo = null;
 
-      // Logo-Elemente neben der Schrift einbeziehen – nur bei dunkler Schrift: Bei heller Schrift
-      // auf einem Foto wären das helle Bildteile daneben (Äste, Wiese), keine Logos
-      if (pad > 0 && dark) {
+      // Logo-Elemente neben der Schrift einbeziehen – nur bei dunkler Schrift: Bei heller oder farbiger
+      // Schrift auf einem Foto wären das Bildteile daneben (Äste, Wiese, Wolken), keine Logos
+      if (pad > 0 && best.kind === 'dark') {
         const p = Math.round(lineH * pad);
         const wx0 = Math.max(0, bx0 - p), wy0 = Math.max(0, by0 - p);
         const wx1 = Math.min(w - 1, bx1 + p), wy1 = Math.min(h - 1, by1 + p);
