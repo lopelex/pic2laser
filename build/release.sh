@@ -13,7 +13,6 @@ FILES=(
   "dist/Pic2Laser-Setup-$V.exe"
   "dist/Pic2Laser-Setup-$V.exe.blockmap"
   "dist/Pic2Laser-Portable-$V.exe"
-  "dist/latest.yml"
   "dist/Pic2Laser-$V-mac-arm64.zip"
   "dist/Pic2Laser-$V-mac-x64.zip"
   "dist/Pic2Laser-$V-linux-x64.AppImage"
@@ -23,7 +22,9 @@ missing=0
 for f in "${FILES[@]}"; do
   if [ ! -s "$f" ]; then echo "fehlt: $f" >&2; missing=1; fi
 done
-grep -q "^version: $V$" dist/latest.yml 2>/dev/null || { echo "dist/latest.yml gehört nicht zu $V" >&2; missing=1; }
+# latest.yml (für electron-updater) braucht der eingebaute Updater nicht – nur mitnehmen, wenn sie passt.
+# electron-builder legt sie nur an, wenn es das GitHub-Repo erkennt (nicht in einem git worktree).
+if grep -q "^version: $V$" dist/latest.yml 2>/dev/null; then FILES+=("dist/latest.yml"); fi
 # Mac-ZIPs müssen nach dem Signieren neu gepackt sein (build/sign-mac-adhoc.sh)
 for arch in arm64 x64; do
   dir=dist/mac; [ "$arch" = arm64 ] && dir=dist/mac-arm64
