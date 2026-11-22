@@ -378,6 +378,8 @@ body.has-image .dropzone:not(.dragging) { display: none; }
 .pane.pickable[data-pick=sam] .pane-label::after { content: " · Klick = Motiv, Rechtsklick = ausschließen"; }
 
 /* ---------- Presets ---------- */
+.presets-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.presets-head h3 { margin: 0; }
 #preset-select { flex: 1; min-width: 0; }
 .preset-save { margin-top: 8px; }
 #preset-name {

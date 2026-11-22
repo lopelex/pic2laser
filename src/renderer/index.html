@@ -28,7 +28,10 @@
     <!-- Einstellungen -->
     <aside class="panel settings" id="settings">
       <section class="group presets-group">
-        <h3>Presets</h3>
+        <div class="presets-head">
+          <h3>Presets</h3>
+          <button class="btn btn-small btn-ghost" id="btn-reset" title="Alle Einstellungen auf die Standardwerte zurücksetzen (Exportformate bleiben erhalten)">Einstellungen zurücksetzen</button>
+        </div>
         <div class="row">
           <select id="preset-select" title="Preset anwenden"></select>
           <button class="btn btn-small" id="btn-preset-delete" title="Eigenes Preset löschen" disabled>Löschen</button>
@@ -536,7 +539,6 @@
         </div>
       </section>
 
-      <button class="btn btn-ghost full" id="btn-reset">Einstellungen zurücksetzen</button>
       </div>
     </aside>
 
