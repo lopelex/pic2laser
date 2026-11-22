@@ -116,9 +116,10 @@ const handlers = {
   },
 
   /** Himmel entfernen (Maske). */
-  async skyMask({ source, tolerance, seeds }) {
-    const canvas = Segmentation.skyMask(source, tolerance, seeds);
+  async skyMask({ source, tolerance, seeds, protect }) {
+    const canvas = Segmentation.skyMask(source, tolerance, seeds, protect || null);
     source.close();
+    if (protect) protect.close();
     const bitmap = canvas.transferToImageBitmap();
     return { result: bitmap, transfer: [bitmap] };
   },

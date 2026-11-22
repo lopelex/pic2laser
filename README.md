@@ -2,7 +2,7 @@
 
 Electron-App, die Bilder in Schwarz-Weiß-SVGs (und optional PNG/JPG/BMP) für die Lasergravur mit LightBurn umwandelt.
 
-Aktuelle Version: **1.8.1**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
+Aktuelle Version: **1.8.2**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
 bekannte und behobene Fehler: [BUGS.md](BUGS.md).
 
 ## Starten
@@ -41,8 +41,9 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
   - *Foto*: Dithering mit Floyd-Steinberg, Atkinson, Jarvis, Stucki, Bayer, Schwellwert
   - *Relief*: KI-Tiefenkarte (Depth Anything V2 Small, wahlweise Base/Large) als Graustufenbild für 3D-Reliefgravur, optional mit transparentem
     weißem/freigestelltem Hintergrund (PNG/SVG)
-- **Freistellen**: KI schnell / präzise / beste Qualität / Porträt, Objekt per Klick auswählen (MobileSAM oder
-  genauer mit SAM 2.1), nach Farbe (Hintergrund vom Rand + Klickpunkte) oder nur den Himmel entfernen. Beim Objekt-Anklicken schließen Rechtsklick oder Alt+Klick
+- **Freistellen**: Motiv automatisch per KI (schnell / präzise / gut & sparsam / beste Qualität / Porträt & Haare),
+  Objekt anklicken (schnell mit MobileSAM, genau mit SAM 2.1), Himmel entfernen (schnell ohne KI oder mit
+  KI-geschütztem Motiv per BEN2) oder nach Farbe (Hintergrund vom Rand + Klickpunkte). Beim Objekt-Anklicken schließen Rechtsklick oder Alt+Klick
   Bereiche aus; ein Klick auf einen vorhandenen Punkt entfernt ihn. Entfernter Hintergrund wird in der
   Vorschau rot schraffiert oder wahlweise ausgeblendet.
 - **Altes Foto restaurieren**: Rauschen/Körnung entfernen, Kratzer & Staub finden und per KI auffüllen
@@ -110,24 +111,24 @@ Alle Modelle laufen lokal und offline über onnxruntime (nativ, mit WebAssembly-
 
 | Modell | Zweck | Lizenz | Herkunft |
 |---|---|---|---|
-| U²-Net (u2netp) | Freistellen – schnell | Apache-2.0 | mitgeliefert |
+| U²-Net (u2netp) | Freistellen: Motiv – schnell | Apache-2.0 | mitgeliefert |
 | Informative Drawings (anime) | KI-Strichzeichnung „Feine Linien“ | MIT | mitgeliefert |
 | Informative Drawings (contour, opensketch; fp16, ipsilondev) | KI-Strichzeichnung „Kräftige Konturen“, „Zarte Skizze“ | MIT | Download bei Bedarf (je 9 MB); offizielle Gewichte, gegen PyTorch geprüft |
 | U²-Net Portrait (ONNX von mlboydaisuke) | KI-Strichzeichnung „Tusche-Porträt“ | Apache-2.0 | Download bei Bedarf (176 MB) |
 | TEED (ONNX von Shaboomi) | KI-Strichzeichnung „Feine Kanten“ | MIT | Download bei Bedarf (0,3 MB) |
 | Real-ESRGAN general x4v3 | KI-Vergrößerung | BSD-3-Clause | mitgeliefert (aus den offiziellen Gewichten nach ONNX konvertiert) |
-| MobileSAM | Objekt anklicken | Apache-2.0 | mitgeliefert |
-| SAM 2.1 Hiera Small (ONNX von onnx-community) | Objekt anklicken (genau) | Apache-2.0 | Download bei Bedarf (180 MB) |
+| MobileSAM | Objekt anklicken – schnell | Apache-2.0 | mitgeliefert |
+| SAM 2.1 Hiera Small (ONNX von onnx-community) | Objekt anklicken – genau | Apache-2.0 | Download bei Bedarf (180 MB) |
 | YuNet (OpenCV Zoo) | Gesichtspunkte für die Gesichtsrestaurierung | MIT | mitgeliefert |
 | SCUNet (color real PSNR, ONNX von Heliosoph) | Rauschen & Körnung entfernen | Apache-2.0 | Download bei Bedarf (77 MB); identisch mit eigener Konvertierung der offiziellen Gewichte |
 | LaMa (ONNX von Carve) | Kratzer & Staub auffüllen | Apache-2.0 | Download bei Bedarf (208 MB) |
 | RestoreFormer++ (FP16-Gewichte, Saimon8420) | Gesichter restaurieren | Apache-2.0 | Download bei Bedarf (148 MB); ≙ eigener Konvertierung der offiziellen Gewichte |
 | PaddleOCR PP-OCRv4 (Detektor, via RapidOCR) | Texterkennung („Schrift & Logos“) | Apache-2.0 | mitgeliefert |
 | UltraFace RFB-320 | Gesichtserkennung („Gesichtszüge hervorheben“) | MIT | mitgeliefert (ungenutzte Graph-Eingänge entfernt) |
-| MODNet | Freistellen – Porträt | Apache-2.0 | Download bei Bedarf (26 MB) |
-| IS-Net | Freistellen – präzise | Apache-2.0 | Download bei Bedarf (179 MB) |
-| BiRefNet lite | Freistellen – beste Qualität | MIT | Download bei Bedarf (224 MB) |
-| BEN2 Base (int8-Gewichte von moonbox-dev) | Freistellen – gut & sparsam | MIT | Download bei Bedarf (131 MB) |
+| MODNet | Freistellen: Motiv – Porträt & Haare | Apache-2.0 | Download bei Bedarf (26 MB) |
+| IS-Net | Freistellen: Motiv – präzise | Apache-2.0 | Download bei Bedarf (179 MB) |
+| BiRefNet lite | Freistellen: Motiv – beste Qualität | MIT | Download bei Bedarf (224 MB) |
+| BEN2 Base (int8-Gewichte von moonbox-dev) | Freistellen: Motiv – gut & sparsam, Himmel entfernen – Motiv geschützt | MIT | Download bei Bedarf (131 MB) |
 | Depth Anything V2 Small | Tiefenkarte (Relief) | Apache-2.0 | Download bei Bedarf (99 MB) |
 | Depth Anything V2 Base (ONNX von onnx-community) | Tiefenkarte „fein“ (Relief) | **CC BY-NC 4.0** (nicht kommerziell) | Download bei Bedarf (389 MB) |
 | Depth Anything V2 Large (ONNX von onnx-community) | Tiefenkarte „sehr fein“ (Relief) | **CC BY-NC 4.0** (nicht kommerziell) | Download bei Bedarf (1,3 GB); fp32, da fp16 auf der CPU langsamer ist und mehr Speicher braucht |

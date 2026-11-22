@@ -80,18 +80,27 @@
           <span>Methode</span>
           <select data-key="bgRemove">
             <option value="none">Aus</option>
-            <option value="ai">KI – schnell (U²-Net)</option>
-            <option value="isnet">KI – präzise (IS-Net) ⤓</option>
-            <option value="birefnet">KI – beste Qualität (BiRefNet) ⤓</option>
-            <option value="ben2" title="Bei sauberen Fotos fast so gut wie BiRefNet, braucht aber nur ca. 3 statt 6,7 GB Arbeitsspeicher und rechnet etwa doppelt so schnell. Schwächer bei alten, verrauschten oder kontrastarmen Fotos.">KI – gut &amp; sparsam (BEN2) ⤓</option>
-            <option value="modnet">KI – Porträt/Haare (MODNet) ⤓</option>
-            <option value="sam">KI – Objekt anklicken (MobileSAM)</option>
-            <option value="sam2" title="Genauere Objektgrenzen als MobileSAM (z. B. bei Haaren, feinen Teilen und ähnlichen Farben von Motiv und Hintergrund). Einmaliger Download ca. 180 MB, braucht ca. 0,9 GB Arbeitsspeicher; das erste Erkennen je Bild dauert einige Sekunden.">KI – Objekt anklicken, genau (SAM 2.1) ⤓</option>
-            <option value="color">Nach Farbe</option>
-            <option value="sky" title="Entfernt den Himmel (blau, Wolken, Dunst) vom oberen Bildrand aus – Landschaft, Fahrzeuge und Gebäude bleiben vollständig erhalten. Ohne KI, sofort.">Himmel entfernen</option>
+            <optgroup label="Motiv automatisch freistellen (KI)">
+              <option value="ai" title="Mitgeliefert, rechnet in etwa einer Sekunde. Für einfache Motive vor ruhigem Hintergrund.">Motiv – schnell (U²-Net)</option>
+              <option value="isnet">Motiv – präzise (IS-Net) ⤓</option>
+              <option value="ben2" title="Bei sauberen Fotos fast so gut wie BiRefNet, braucht aber nur ca. 3 statt 6,7 GB Arbeitsspeicher und rechnet etwa doppelt so schnell. Schwächer bei alten, verrauschten oder kontrastarmen Fotos.">Motiv – gut &amp; sparsam (BEN2) ⤓</option>
+              <option value="birefnet">Motiv – beste Qualität (BiRefNet) ⤓</option>
+              <option value="modnet">Motiv – Porträt &amp; Haare (MODNet) ⤓</option>
+            </optgroup>
+            <optgroup label="Objekt anklicken (KI)">
+              <option value="sam">Objekt anklicken – schnell (MobileSAM)</option>
+              <option value="sam2" title="Genauere Objektgrenzen als MobileSAM (z. B. bei Haaren, feinen Teilen und ähnlichen Farben von Motiv und Hintergrund). Einmaliger Download ca. 180 MB, braucht ca. 0,9 GB Arbeitsspeicher; das erste Erkennen je Bild dauert einige Sekunden.">Objekt anklicken – genau (SAM 2.1) ⤓</option>
+            </optgroup>
+            <optgroup label="Himmel entfernen">
+              <option value="sky" title="Entfernt den Himmel (blau, Wolken, Dunst) vom oberen Bildrand aus – Landschaft, Fahrzeuge und Gebäude bleiben vollständig erhalten. Ohne KI, sofort.">Himmel entfernen – schnell (ohne KI)</option>
+              <option value="skyai" title="Wie „Himmel entfernen – schnell“, zusätzlich schützt KI (BEN2) das Hauptmotiv: Helle, weiße oder bläuliche Teile von Fahrzeugen, Gebäuden oder Personen werden nie als Himmel entfernt. Einmaliger Download ca. 131 MB, braucht ca. 3 GB Arbeitsspeicher.">Himmel entfernen – Motiv geschützt (BEN2) ⤓</option>
+            </optgroup>
+            <optgroup label="Weitere">
+              <option value="color">Nach Farbe (ohne KI)</option>
+            </optgroup>
           </select>
         </label>
-        <label class="check" data-bg="ai isnet birefnet ben2 modnet sam sam2 color sky"><input type="checkbox" id="bg-hide" /> Entfernten Hintergrund ausblenden (statt rot schraffieren)</label>
+        <label class="check" data-bg="ai isnet birefnet ben2 modnet sam sam2 color sky skyai"><input type="checkbox" id="bg-hide" /> Entfernten Hintergrund ausblenden (statt rot schraffieren)</label>
         <div data-bg="sam sam2">
           <p class="hint info"><b>Linksklick</b> ins Original markiert das Motiv, <b>Rechtsklick</b> (oder Alt+Klick) schließt Bereiche aus. Klick auf einen Punkt entfernt ihn wieder.</p>
           <button class="btn btn-small" id="btn-clear-sam">Punkte zurücksetzen</button>
@@ -103,17 +112,17 @@
           </label>
           <p class="hint info">Höher = engere Maske, niedriger = mehr vom Motiv bleibt erhalten. ⤓ = Modell wird beim ersten Gebrauch geladen.</p>
         </div>
-        <div data-bg="color sky">
+        <div data-bg="color sky skyai">
           <label class="slider">
             <span>Farbtoleranz <output data-for="bgTolerance"></output></span>
             <input type="range" data-key="bgTolerance" min="1" max="100" step="1" />
           </label>
           <label class="check" data-bg="color"><input type="checkbox" data-key="bgBorder" /> Hintergrund vom Bildrand aus entfernen</label>
           <p class="hint info" data-bg="color">Klicke ins <b>Original</b>, um weitere Hintergrundbereiche zu entfernen. Klick auf einen Punkt entfernt ihn wieder.</p>
-          <p class="hint info" data-bg="sky">Der Himmel wird vom oberen Bildrand aus entfernt und folgt dem Farbverlauf bis zum Horizont. Bleibt Himmel stehen (z. B. zwischen Ästen oder hinter Scheiben), dort ins <b>Original</b> klicken oder die Toleranz erhöhen; verschwindet zu viel, die Toleranz senken.</p>
+          <p class="hint info" data-bg="sky skyai">Der Himmel wird vom oberen Bildrand aus entfernt und folgt dem Farbverlauf bis zum Horizont. Bleibt Himmel stehen (z. B. zwischen Ästen oder hinter Scheiben), dort ins <b>Original</b> klicken oder die Toleranz erhöhen; verschwindet zu viel, die Toleranz senken.</p>
           <button class="btn btn-small" id="btn-clear-seeds">Klickpunkte zurücksetzen</button>
         </div>
-        <div data-bg="ai isnet birefnet ben2 modnet sam sam2 color sky">
+        <div data-bg="ai isnet birefnet ben2 modnet sam sam2 color sky skyai">
           <h4>Maske verfeinern</h4>
           <label class="slider" title="Verschiebt die Schnittkante: Plus lässt einen Rand um das Motiv stehen, Minus schneidet Reste des Hintergrunds (z. B. Lichtsäume) weg.">
             <span>Kante verschieben <output data-for="maskShiftMm"></output></span>

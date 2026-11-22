@@ -584,13 +584,13 @@ const BUILTIN_PRESETS = [
   },
   {
     group: 'Fotos & Landschaft', name: 'Himmel entfernen – Fotogravur',
-    desc: 'Für Fahrzeuge, Gebäude und Landschaften: Der Himmel wird nicht graviert, alles darunter bleibt vollständig erhalten.',
-    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, contrast: 15, sharpen: 0.6, bgRemove: 'sky', bgTolerance: 20, maskSpeckPct: 0.2, subjectLine: true, subjectLineMm: 0.25 },
+    desc: 'Für Fahrzeuge, Gebäude und Landschaften: Der Himmel wird nicht graviert, alles darunter bleibt vollständig erhalten. Das Motiv wird per KI (BEN2) geschützt.',
+    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, contrast: 15, sharpen: 0.6, bgRemove: 'skyai', bgTolerance: 20, maskSpeckPct: 0.2, subjectLine: true, subjectLineMm: 0.25 },
   },
   {
     group: 'Fotos & Landschaft', name: 'Himmel entfernen – Strichzeichnung',
     desc: 'Für Fahrzeuge, Gebäude und Landschaften als Strichzeichnung ohne Himmel; Schriftzüge bleiben gefüllt.',
-    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 1024, threshold: 150, bgRemove: 'sky', bgTolerance: 20, maskSpeckPct: 0.2, subjectLine: true, subjectLineMm: 0.3, textClean: true, textPad: 1.5 },
+    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 1024, threshold: 150, bgRemove: 'skyai', bgTolerance: 20, maskSpeckPct: 0.2, subjectLine: true, subjectLineMm: 0.3, textClean: true, textPad: 1.5 },
   },
   {
     group: 'Fotos & Landschaft', name: 'Gebäude – gerade Linien',
@@ -992,9 +992,10 @@ const Pipeline = (() => {
       const m = mask ? await createImageBitmap(mask) : null;
       return view.call('cutout', { source: src, mask: m, markers, boxes, hideBackground }, m ? [src, m] : [src]);
     },
-    async skyMask(source, tolerance, seeds) {
+    async skyMask(source, tolerance, seeds, protect = null) {
       const src = await createImageBitmap(source);
-      return work.call('skyMask', { source: src, tolerance, seeds }, [src]);
+      const p = protect ? await createImageBitmap(protect) : null;
+      return work.call('skyMask', { source: src, tolerance, seeds, protect: p }, p ? [src, p] : [src]);
     },
     async colorMask(source, tolerance, border, seeds) {
       const src = await createImageBitmap(source);
@@ -1146,7 +1147,9 @@ const SEG_MODEL = { ai: 'u2netp', isnet: 'isnet', birefnet: 'birefnet', ben2: 'b
 /** Freistellen per Klickpunkten (MobileSAM oder SAM 2.1)? */
 const isSam = (method) => method === 'sam' || method === 'sam2';
 /** Methoden mit Hintergrund-Klickpunkten (bgSeeds). */
-const usesSeeds = (method) => method === 'color' || method === 'sky';
+const usesSeeds = (method) => method === 'color' || isSky(method);
+/** Himmel entfernen – ohne bzw. mit KI-Schutz des Motivs (BEN2). */
+const isSky = (method) => method === 'sky' || method === 'skyai';
 /** Embedding und Maske je Klick-Modell. */
 const SAM_IMPL = {
   sam: { decoder: 'sam_decoder', embed: (b) => AI.samEmbedding(b), mask: (e, p, w, h) => AI.samMask(e, p, w, h), embMs: 2500, maskMs: 500 },
@@ -1154,9 +1157,9 @@ const SAM_IMPL = {
 };
 const SEG_SEED_MS = { ai: 1500, isnet: 4000, birefnet: 26000, ben2: 14000, modnet: 2200 };
 const MODEL_NAMES = {
-  u2netp: 'Freistellen (schnell)', isnet: 'Freistellen (präzise)', birefnet: 'Freistellen (beste Qualität)', ben2: 'Freistellen (gut & sparsam)',
-  modnet: 'Porträt-Freistellen', sam_encoder: 'Objekt anklicken', sam_decoder: 'Objekt anklicken',
-  sam2_encoder: 'Objekt anklicken (genau)', sam2_decoder: 'Objekt anklicken (genau)',
+  u2netp: 'Motiv – schnell (U²-Net)', isnet: 'Motiv – präzise (IS-Net)', birefnet: 'Motiv – beste Qualität (BiRefNet)', ben2: 'Motiv – gut & sparsam (BEN2)',
+  modnet: 'Motiv – Porträt & Haare (MODNet)', sam_encoder: 'Objekt anklicken – schnell (MobileSAM)', sam_decoder: 'Objekt anklicken – schnell (MobileSAM)',
+  sam2_encoder: 'Objekt anklicken – genau (SAM 2.1)', sam2_decoder: 'Objekt anklicken – genau (SAM 2.1)',
   lineart: 'KI-Strichzeichnung', lineart_contour: 'KI-Strichzeichnung (Konturen)', lineart_sketch: 'KI-Strichzeichnung (Skizze)',
   lineart_portrait: 'KI-Strichzeichnung (Tusche-Porträt)', lineart_teed: 'KI-Strichzeichnung (Kanten)', esrgan: 'KI-Vergrößerung', depth: 'Tiefenkarte', faces: 'Gesichtserkennung',
   depth_base: 'Tiefenkarte (fein)', depth_large: 'Tiefenkarte (sehr fein)', codeformer: 'Gesichter restaurieren (CodeFormer)',
@@ -1218,7 +1221,7 @@ function rawMaskKeyFor(s) {
   if (method === 'none' || (isSam(method) && !s.samPoints.length)) return null;
   const up = maskTag(s);
   if (method === 'color') return `color:${up}:${s.bgTolerance}:${s.bgBorder}:${JSON.stringify(s.bgSeeds)}`;
-  if (method === 'sky') return `sky:${up}:${s.bgTolerance}:${JSON.stringify(s.bgSeeds)}`;
+  if (isSky(method)) return `${method}:${up}:${s.bgTolerance}:${JSON.stringify(s.bgSeeds)}`;
   if (isSam(method)) return `${method}:${up}:${s.maskThreshold}:${JSON.stringify(s.samPoints)}`;
   return `${method}:${up}:${s.maskThreshold}`;
 }
@@ -1380,9 +1383,10 @@ function planSteps(s) {
   if (maskKey && !(state.mask && state.mask.key === maskKey)) {
     if (state.maskRaw && state.maskRaw.key === rawMaskKeyFor(s)) {
       // Rohmaske liegt schon vor – nur neu verfeinern
-    } else if (method === 'color' || method === 'sky') {
+    } else if (method === 'color' || isSky(method)) {
       const a = Segmentation.analysisSize({ width: work.w, height: work.h });
-      add('colormask', method === 'sky' ? 'Himmel entfernen' : 'Freistellen nach Farbe', 'colormask', (a.w * a.h) / 1e6, 250);
+      if (method === 'skyai') add('seg', MODEL_NAMES[SEG_MODEL.ben2], 'seg:ben2', 1, SEG_SEED_MS.ben2, KEYS.seg('ben2', maskTag(s)));
+      add('colormask', isSky(method) ? 'Himmel entfernen' : 'Freistellen nach Farbe', 'colormask', (a.w * a.h) / 1e6, 250);
     } else if (isSam(method)) {
       const impl = SAM_IMPL[method];
       add('sam-emb', 'Objekt erkennen', method === 'sam' ? 'sam-emb' : `sam-emb:${method}`, 1, impl.embMs, KEYS.samEmb(maskTag(s), method));
@@ -1764,7 +1768,7 @@ async function ensureModelReady(id) {
  * (ca. 3 GB, bei sauberen Fotos fast gleich gut) → IS-Net (ca. 0,75 GB).
  */
 const SEG_FALLBACK = { birefnet: 'ben2', ben2: 'isnet' };
-const SEG_LABEL = { birefnet: '„beste Qualität“ (BiRefNet)', ben2: '„gut & sparsam“ (BEN2)', isnet: '„präzise“ (IS-Net)' };
+const SEG_LABEL = { birefnet: '„Motiv – beste Qualität“ (BiRefNet)', ben2: '„Motiv – gut & sparsam“ (BEN2)', isnet: '„Motiv – präzise“ (IS-Net)' };
 
 /**
  * Rohe KI-Maske. Der Hauptprozess hat bei LOW_MEMORY schon alle anderen Modelle freigegeben und
@@ -1789,6 +1793,23 @@ async function segmentWithFallback(method, bitmap, up, s) {
   }
 }
 
+/**
+ * Motivmaske für „Himmel entfernen (KI-geschützt)“: BEN2 (bei Speichermangel IS-Net). Steht keine KI
+ * zur Verfügung, wird der Himmel ohne Schutz entfernt statt abzubrechen.
+ */
+async function skyProtectMask(s, bitmap, up) {
+  try {
+    await ensureModelReady(SEG_MODEL.ben2);
+    const raw = await segmentWithFallback('ben2', bitmap, up, s);
+    return Segmentation.aiMask(raw, bitmap, 0.5);
+  } catch (err) {
+    if (isCancelled(err)) throw err;
+    console.error(err);
+    toast(`KI-Schutz des Motivs nicht möglich (${cleanError(err)}) – Himmel wurde ohne Schutz entfernt.`, true);
+    return null;
+  }
+}
+
 /** Liefert die Freistellmaske (zwischengespeichert) oder null. */
 async function ensureMask(s, bitmap) {
   const method = s.bgRemove;
@@ -1808,9 +1829,11 @@ async function ensureMask(s, bitmap) {
     } else if (method === 'color') {
       throwIfStale(s);
       canvas = await Run.track('colormask', Pipeline.colorMask(bitmap, s.bgTolerance, s.bgBorder, s.bgSeeds));
-    } else if (method === 'sky') {
+    } else if (isSky(method)) {
       throwIfStale(s);
-      canvas = await Run.track('colormask', Pipeline.skyMask(bitmap, s.bgTolerance, s.bgSeeds));
+      const protect = method === 'skyai' ? await skyProtectMask(s, bitmap, up) : null;
+      throwIfStale(s);
+      canvas = await Run.track('colormask', Pipeline.skyMask(bitmap, s.bgTolerance, s.bgSeeds, protect));
     } else {
       await ensureModelReady(SEG_MODEL[method]);
       let raw;
