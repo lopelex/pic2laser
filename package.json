@@ -7,7 +7,10 @@
     "start": "electron .",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac --arm64 && electron-builder --mac --x64 --config build/mac-x64.config.js"
+    "dist:mac": "electron-builder --mac --arm64 && electron-builder --mac --x64 --config build/mac-x64.config.js",
+    "dist:linux": "electron-builder --linux",
+    "dist:all": "npm run dist:win && npm run dist:mac && build/sign-mac-adhoc.sh && npm run dist:linux",
+    "release": "build/release.sh"
   },
   "license": "GPL-2.0-or-later",
   "build": {
@@ -58,7 +61,21 @@
       ]
     },
     "linux": {
-      "target": "AppImage"
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Graphics",
+      "artifactName": "${productName}-${version}-linux-x64.${ext}",
+      "files": [
+        "!node_modules/onnxruntime-node/bin/napi-v*/win32/**",
+        "!node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
+        "!node_modules/onnxruntime-node/bin/napi-v*/linux/arm64/**"
+      ]
     },
     "asarUnpack": [
       "models/**/*",

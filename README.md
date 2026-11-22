@@ -15,12 +15,15 @@ npm start
 Falls npm das Installationsskript von Electron blockiert (`install-scripts`-Warnung):
 `npm install-scripts approve electron` und danach erneut `npm install` ausführen.
 
-Installer bauen (Windows/macOS/Linux): `npm run dist`
+**Alle Plattformen bauen:** `npm run dist:all` → `dist/` (Windows-Installer + portabel, macOS Apple Silicon + Intel
+ad-hoc signiert, Linux-AppImage).
 
-**Release veröffentlichen:** Die App sucht ihre Updates in der neuesten GitHub-Release (Tag `vX.Y.Z`, nicht als
-Vorabversion markiert). Die Dateinamen von electron-builder unverändert hochladen (`Pic2Laser-Setup-…exe`,
-`Pic2Laser-Portable-…exe`, `Pic2Laser-…-mac-arm64.zip`/`-mac-x64.zip`, `….AppImage`) – fehlt die Datei für ein
-System, öffnet das Update dort nur die Download-Seite.
+**Release veröffentlichen:** `npm run release` – lädt die GitHub-Release `vX.Y.Z` (Version aus `package.json`,
+Notizen aus dem Abschnitt in `RELEASENOTES.md`) mit **allen** Plattformen hoch und bricht ab, wenn eine Datei
+fehlt oder die Mac-ZIPs nicht signiert neu gepackt sind. Gibt es die Release schon, werden nur die Dateien
+(nach)geladen. Die App sucht ihre Updates in der neuesten Release (nicht als Vorabversion markiert) und erkennt
+die Dateien an ihren Namen (`Pic2Laser-Setup-…exe`, `Pic2Laser-Portable-…exe`, `Pic2Laser-…-mac-arm64.zip`/`-mac-x64.zip`,
+`Pic2Laser-…-linux-x64.AppImage`) – fehlt die Datei für ein System, öffnet das Update dort nur die Download-Seite.
 
 Windows-EXE (Installer + portable Version) bauen: `npm run dist:win` → `dist/`.
 Unter Linux wird dafür Wine benötigt (`sudo apt install wine wine64`).
@@ -30,6 +33,8 @@ Unter Linux danach ad-hoc signieren: `build/sign-mac-adhoc.sh` (benötigt `rcode
 sonst meldet macOS „App ist beschädigt“. Ein DMG lässt sich nur auf einem Mac bauen.
 Auf Intel-Macs (und überall, wo onnxruntime-node fehlt) läuft das KI-Freistellen über
 onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkeiten.
+
+Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.AppImage`.
 
 ## Funktionen
 
@@ -181,7 +186,7 @@ Pic2Laser selbst ist Open Source (GPL-2.0-or-later, siehe [Lizenz](#lizenz)). F�
 - `src/renderer/app.js` – Oberfläche, Presets, Vorschau, Zoom, Export, Historie
 - `src/renderer/index.html`, `styles.css` – Oberfläche
 - `models/` – mitgelieferte ONNX-Modelle
-- `build/` – Icon, macOS-Intel-Konfiguration, Ad-hoc-Signierskript
+- `build/` – Icon, macOS-Intel-Konfiguration, Ad-hoc-Signierskript, Release-Skript (`release.sh`)
 
 ## Lizenz
 
