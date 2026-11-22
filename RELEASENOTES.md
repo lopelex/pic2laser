@@ -5,6 +5,17 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.9.0 – 22.11.2026
+
+### Neu
+- **Updates mit einem Klick:** Beim Start und alle 24 Stunden fragt Pic2Laser nach einer neuen Version und
+  zeigt einen Hinweis. „Aktualisieren“ lädt sie (Prüfsumme geprüft) und installiert sie selbst – sofort per
+  „Jetzt neu starten“ oder beim nächsten Beenden (Windows-Installer und portabel, macOS, Linux-AppImage).
+  Klick auf die Versionsnummer sucht sofort nach Updates.
+
+### Geändert
+- **Lizenz:** Pic2Laser steht jetzt unter der GPL-2.0-or-later (wegen Potrace), siehe README.
+
 ## 1.8.3 – 22.11.2026
 
 ### Verbessert

@@ -2,7 +2,7 @@
 
 Electron-App, die Bilder in Schwarz-Weiß-SVGs (und optional PNG/JPG/BMP) für die Lasergravur mit LightBurn umwandelt.
 
-Aktuelle Version: **1.8.3**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
+Aktuelle Version: **1.9.0**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
 bekannte und behobene Fehler: [BUGS.md](BUGS.md).
 
 ## Starten
@@ -16,6 +16,11 @@ Falls npm das Installationsskript von Electron blockiert (`install-scripts`-Warn
 `npm install-scripts approve electron` und danach erneut `npm install` ausführen.
 
 Installer bauen (Windows/macOS/Linux): `npm run dist`
+
+**Release veröffentlichen:** Die App sucht ihre Updates in der neuesten GitHub-Release (Tag `vX.Y.Z`, nicht als
+Vorabversion markiert). Die Dateinamen von electron-builder unverändert hochladen (`Pic2Laser-Setup-…exe`,
+`Pic2Laser-Portable-…exe`, `Pic2Laser-…-mac-arm64.zip`/`-mac-x64.zip`, `….AppImage`) – fehlt die Datei für ein
+System, öffnet das Update dort nur die Download-Seite.
 
 Windows-EXE (Installer + portable Version) bauen: `npm run dist:win` → `dist/`.
 Unter Linux wird dafür Wine benötigt (`sudo apt install wine wine64`).
@@ -77,6 +82,12 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
 - **Historie**: Jede exportierte Umwandlung wird mit Original, Einstellungen, SVG und PNG gespeichert
   (`<userData>/history`); zusätzlich über „In Historie speichern“ ohne Export. Ein Klick öffnet sie wieder
   mit allen Einstellungen, die Liste ist durchsuchbar.
+- **Updates**: Beim Start und danach alle 24 Stunden fragt Pic2Laser bei den GitHub-Releases nach einer
+  neuen Version. Gibt es eine, erscheinen ein Hinweis und „Update x.y.z“ in der Kopfzeile; der Dialog zeigt die
+  Neuerungen. Nach einem Klick auf „Aktualisieren“ lädt Pic2Laser die neue Version selbst (Prüfsumme geprüft)
+  und installiert sie – sofort per „Jetzt neu starten“ oder beim nächsten Beenden. Das klappt für den
+  Windows-Installer (still, ggf. mit Administrator-Abfrage), die portable EXE, macOS und Linux-AppImage.
+  Ein Klick auf die Versionsnummer sucht sofort nach Updates.
 - **Vereinigen**: ⊕ an einem Historie-Eintrag legt dessen Ergebnis über das aktuelle (z. B. Linien über
   ein Foto). Reihenfolge wählbar, Regler „Überblenden“ für die Deckkraft der oberen Ebene.
 
@@ -159,6 +170,7 @@ Pic2Laser selbst ist Open Source (GPL-2.0-or-later, siehe [Lizenz](#lizenz)). F�
 - `src/main/models.js` – KI-Modelle: Registry, Download mit Prüfsumme (abbrechbar), Steuerung des KI-Prozesses
 - `src/main/model-worker.js` – KI-Inferenz als Utility-Prozess (onnxruntime-node, Fallback onnxruntime-web)
 - `src/main/resources.js` – Arbeitsspeicher/CPU ermitteln, Leistungsstufen und Grenzen
+- `src/main/updater.js` – Update-Prüfung über GitHub-Releases (Start + alle 24 h), Download mit Prüfsumme, Installation je System
 - `src/main/preload.js` – sichere IPC-Brücke (`window.api`)
 - `src/renderer/pipeline-worker.js` – Web Worker für die rechenintensive Bildverarbeitung
 - `src/renderer/processing.js` – Bildverarbeitung (Anpassungen, Schwellwert, Dithering, Kanten, Umriss)

@@ -241,6 +241,18 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   Anzeige nennt, welche Modelle auf der GPU liefen. Linux: WebGPU über Vulkan, experimentell
   und standardmäßig aus (auf schwachen integrierten Grafikkarten nicht schneller als die CPU).
   Intel-Macs: nur CPU.
+- **Updates:** Beim Start (nach 5 s) und danach alle 24 Stunden fragt Pic2Laser die neueste
+  GitHub-Release ab. Ist sie neuer, erscheinen ein Hinweis und „Update x.y.z“ in der Kopfzeile; der
+  Dialog zeigt die Release-Notizen. Geladen wird erst nach „Aktualisieren“ – dann aber ohne weiteres
+  Zutun: Die passende Datei (Windows-Installer bzw. portable EXE, Mac-ZIP für Apple Silicon/Intel,
+  Linux-AppImage; SHA-256 aus der GitHub-API geprüft, abbrechbar) landet in `<userData>/updates` und wird
+  per „Jetzt neu starten“ sofort oder beim nächsten Beenden installiert:
+  Windows-Installer still (`/S --updated`, bei Installation für alle Benutzer mit UAC-Abfrage),
+  portable EXE wird ersetzt (alte als `.old`, beim nächsten Start gelöscht), macOS tauscht das
+  `.app`-Paket nach dem Beenden aus, AppImage wird ersetzt. Geht das nicht (Entwicklung, App direkt aus
+  „Downloads“ gestartet, kein Schreibrecht), lädt der Dialog die Datei in den Download-Ordner und
+  zeigt sie bzw. startet den Windows-Installer. Fehlt eine passende Datei, öffnet sich die
+  Download-Seite. Klick auf die Versionsnummer = sofort prüfen.
 - **Kacheln überlappend:** Bei KI-Vergrößerung und Entrauschen wird die nächste Kachel schon
   angefragt, während die vorige ausgewertet wird.
 - **Schnelle Vektorisierung:** Das Binärbild geht direkt an Potrace (kein PNG-Umweg), die
@@ -317,6 +329,7 @@ Main-Prozess (src/main/main.js)
  ├─ result-cache.js                   Festplatten-Cache der KI-Ergebnisse (SHA-256 der Eingabe)
  ├─ prefs.js                          App-Vorlieben: GPU, Cache, auf der GPU gescheiterte Modelle
  ├─ resources.js                      RAM/CPU → Leistungsstufe und Grenzen
+ ├─ updater.js                        Update-Prüfung (GitHub-Releases), Download, Installation je System
  └─ preload.js                        window.api (contextIsolation + sandbox)
 Renderer (src/renderer/index.html, klassische <script>-Tags, globale Module)
  ├─ app.js            Oberfläche, Zustand, Ablauf eines Durchlaufs, Export, Historie
@@ -379,7 +392,8 @@ laufende KI-Jobs (nur wenn der Prozess rechnet) und Downloads ab.
 | `history/<uuid>/` | `meta.json` (inkl. `merge`), `original.<ext>`, `result.svg`, `result.png`, `thumb.png` |
 | `models/` | heruntergeladene Modelle (`.part` während des Downloads) |
 | `ai-cache/` | Festplatten-Cache der KI-Ergebnisse (`<sha256>.bin`) |
-| `prefs.json` | GPU an/aus, Cache an/aus, Modelle, die nur auf der CPU laufen |
+| `updates/` | geladenes Update bis zur Installation (beim nächsten Start gelöscht) |
+| `prefs.json` | GPU an/aus, Cache an/aus, Modelle, die nur auf der CPU laufen, Zeit der letzten Update-Prüfung |
 | `<temp>/pic2laser-drag/` | vorbereitete Dateien für Drag & Drop |
 
 ## Typische Erweiterungen

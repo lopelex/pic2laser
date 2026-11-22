@@ -12,7 +12,8 @@
     <div class="brand">
       <span class="brand-dot"></span>
       <span class="brand-name">Pic2Laser</span>
-      <span class="brand-sub" id="appVersion"></span>
+      <button class="brand-sub version-btn" id="appVersion" title="Nach Updates suchen"></button>
+      <button class="btn btn-small btn-update" id="btn-update" hidden title="Neue Version verfügbar"></button>
     </div>
     <!-- Fortschritt & Restzeit im freien Bereich der Kopfzeile -->
     <div class="progress" id="progress" hidden><div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div><span id="progress-label"></span><button class="btn btn-small" id="btn-cancel" title="Alle laufenden Berechnungen und Downloads abbrechen (Esc)">Abbrechen</button></div>
@@ -647,6 +648,33 @@
     <div class="dialog-foot">
       <span></span>
       <button class="btn" data-close>Schließen</button>
+    </div>
+  </dialog>
+
+  <!-- Update: neue Version laden und installieren -->
+  <dialog class="dialog dialog-narrow" id="update-dialog" aria-labelledby="update-title">
+    <div class="dialog-head">
+      <div>
+        <h2 id="update-title">Neue Version verfügbar</h2>
+        <p class="dialog-sub" id="update-sub"></p>
+      </div>
+      <button class="icon-btn dialog-close" data-close title="Schließen (Esc)" aria-label="Schließen">✕</button>
+    </div>
+    <div class="dialog-body">
+      <div class="update-notes" id="update-notes"></div>
+      <div class="update-progress" id="update-progress" hidden>
+        <div class="progress-bar"><div class="progress-fill" id="update-progress-fill"></div></div>
+        <span id="update-progress-label"></span>
+      </div>
+      <p class="perf-status" id="update-msg"></p>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-ghost" id="update-page">Download-Seite öffnen</button>
+      <div class="update-actions">
+        <button class="btn" id="update-later" data-close>Später</button>
+        <button class="btn" id="update-cancel" hidden>Abbrechen</button>
+        <button class="btn btn-primary" id="update-action"></button>
+      </div>
     </div>
   </dialog>
 
