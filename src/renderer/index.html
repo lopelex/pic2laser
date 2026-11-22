@@ -42,6 +42,27 @@
 
       <!-- Nur dieser Bereich scrollt; die Presets bleiben fest oben -->
       <div class="settings-scroll" id="settings-scroll">
+      <!-- Nur sichtbar, wenn ein Historie-Eintrag über das Ergebnis gelegt ist (⊕ in der Historie) -->
+      <section class="group merge-group" id="merge-group" hidden>
+        <h3>Vereinigt mit</h3>
+        <div class="row">
+          <span class="merge-name grow" id="merge-name"></span>
+          <button class="btn btn-small" id="btn-merge-off" title="Vereinigung aufheben und nur das eigene Ergebnis zeigen">Aufheben</button>
+        </div>
+        <div class="field">
+          <span>Oben liegt</span>
+          <div class="segmented small" id="merge-order">
+            <button data-value="history" title="Der Historie-Eintrag liegt oben und wird mit dem Regler überblendet">Historie-Eintrag</button>
+            <button data-value="current" title="Das aktuelle Ergebnis liegt oben und wird mit dem Regler überblendet">Aktuelles Ergebnis</button>
+          </div>
+        </div>
+        <label class="slider">
+          <span>Überblenden (Deckkraft oben) <output id="merge-opacity-out"></output></span>
+          <input type="range" id="merge-opacity" min="0" max="100" step="1" />
+        </label>
+        <p class="hint" id="merge-hint"></p>
+      </section>
+
       <section class="group">
         <h3>Modus</h3>
         <div class="segmented" id="mode">

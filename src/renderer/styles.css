@@ -306,7 +306,16 @@ body.has-image .dropzone:not(.dragging) { display: none; }
 .history-item .info { flex: 1; min-width: 0; }
 .history-item .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-item .meta { color: var(--muted); font-size: 11px; }
-.history-item .actions { display: flex; flex-direction: column; opacity: 0; transition: opacity .15s; }
+.history-item .actions { display: grid; grid-template-columns: repeat(2, 26px); opacity: 0; transition: opacity .15s; }
+.history-item.merged { border-color: var(--accent-2); border-style: dashed; }
+.icon-btn:disabled { opacity: .35; cursor: default; background: transparent; }
+
+/* ---------- Vereinigen ---------- */
+.merge-group { border-left: 3px solid var(--accent); padding-left: 10px; }
+.merge-group .row { margin-bottom: 10px; }
+.merge-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+#merge-order { display: flex; margin-top: 4px; }
+#merge-order button { flex: 1; }
 .history-item:hover .actions, .history-item.active .actions { opacity: 1; }
 #history-empty[hidden] { display: none; }
 

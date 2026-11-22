@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('api', {
     list: () => ipcRenderer.invoke('history-list'),
     save: (entry) => ipcRenderer.invoke('history-save', entry),
     load: (id) => ipcRenderer.invoke('history-load', id),
+    loadResult: (id) => ipcRenderer.invoke('history-load-result', id),
     duplicate: (id) => ipcRenderer.invoke('history-duplicate', id),
     remove: (id) => ipcRenderer.invoke('history-delete', id),
     clear: () => ipcRenderer.invoke('history-clear'),

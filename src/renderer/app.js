@@ -106,7 +106,11 @@ const MODE_HINTS = {
 const state = {
   settings: loadSettings(),
   source: null, // { name, ext, bytes: Uint8Array, bitmap, url, savedId }
-  result: null, // { w, h, bits, svg, widthMm, heightMm, dpi, ... }
+  result: null, // { w, h, bits, svg, widthMm, heightMm, dpi, ... } – angezeigtes Ergebnis (ggf. vereinigt)
+  baseResult: null, // Ergebnis der Umwandlung selbst, vor dem Vereinigen
+  merge: null, // { id, name, svg, mode, widthMm, ditherAlgo, top: 'current'|'history', opacity } – vereinigter Historie-Eintrag
+  mergePending: false, // Vereinigen-Einstellung geändert, neues Ergebnis noch nicht fertig
+  processing: false, // eine Umwandlung (runProcess) läuft
   cancelRetries: 0, // Neustarts nach geerbtem Abbruch (siehe runProcess)
   cache: new Map(), // Zwischenergebnisse der KI-Modelle für das aktuelle Bild (Promises)
   inflight: new Map(), // Cache-Schlüssel → Startzeit noch laufender Berechnungen
@@ -733,6 +737,10 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   state.source = { name, ext, bytes, bitmap, url, savedId: historyId };
   state.historyId = historyId;
   state.result = null;
+  state.baseResult = null;
+  state.merge = null; // gehört zum vorigen Bild (ein Historie-Eintrag stellt seine Vereinigung danach wieder her)
+  state.mergePending = false;
+  renderMergePanel();
   state.cancelRetries = 0;
   dragReady = false; // altes Ergebnis lässt sich nicht mehr herausziehen
   renderResultInfo(null);
@@ -876,12 +884,17 @@ const Pipeline = (() => {
 
   const work = makeLane(); // Umwandlung: render, colorMask, refineMask
   const view = makeLane(); // Vorschau des Originals: cutout
+  const mix = makeLane(); // Vereinigen mit einem Historie-Ergebnis
 
   return {
     /** Alle laufenden Aufträge sofort abbrechen. */
     cancel() {
       work.cancel();
       view.cancel();
+      mix.cancel();
+    },
+    merge(payload) {
+      return mix.call('merge', payload, [payload.bits, payload.gray8].filter(Boolean).map((a) => a.buffer));
     },
     async render(source, mask, s, lineMask = null, textSource = null) {
       const src = await createImageBitmap(source);
@@ -925,7 +938,7 @@ let processTimer = null;
 const resultSig = (s) => JSON.stringify(Object.keys(s).filter((k) => !k.startsWith('fmt')).sort().map((k) => [k, s[k]]));
 
 /** Passt das angezeigte Ergebnis noch zu den aktuellen Einstellungen? */
-const resultIsCurrent = (r) => !!r && !!r.settings && resultSig(r.settings) === resultSig(state.settings);
+const resultIsCurrent = (r) => !!r && !!r.settings && resultSig(r.settings) === resultSig(state.settings) && !state.mergePending;
 
 function scheduleProcess(delay = 120) {
   if (!state.source) return;
@@ -1329,6 +1342,7 @@ async function runProcess() {
   Object.defineProperty(s, 'cache', { value: state.cache, enumerable: false });
   Object.defineProperty(s, 'source', { value: state.source, enumerable: false }); // Bild dieses Durchlaufs
   setBusy(true);
+  state.processing = true;
 
   // UI erst neu zeichnen lassen, bevor gerechnet wird
   await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
@@ -1437,20 +1451,22 @@ async function runProcess() {
 
     const pad = outline ? outline.pad : 0;
     const totalW = (w + 2 * pad) * mmPerPx, totalH = (h + 2 * pad) * mmPerPx;
-    state.result = {
+    state.baseResult = {
       w, h, bits, gray8, svg, widthMm, heightMm, dpi, mode: s.mode, transparent: s.transparent,
       mmPerPx, outline, outlineOnly: !!(s.outline && s.outlineOnly), // für Rasterexporte mit Umrisslinie
       totalWmm: totalW, totalHmm: totalH, // inkl. Umrisslinie (SVG-Gesamtgröße)
       settings: settingsSnap,
+      // Rasterergebnisse ohne Umriss als PNG anzeigen (schärfer), sonst das SVG
+      preview: imagePng && !outline
+        ? { blob: new Blob([imagePng], { type: 'image/png' }), pixelated: s.mode === 'dither' }
+        : { blob: new Blob([previewSvg], { type: 'image/svg+xml' }), pixelated: false },
     };
     state.cancelRetries = 0;
-    scheduleDragPrepare();
-    // Rasterergebnisse ohne Umriss als PNG anzeigen (schärfer), sonst das SVG
-    if (imagePng && !outline) showResult(new Blob([imagePng], { type: 'image/png' }), s.mode === 'dither');
-    else showResult(new Blob([previewSvg], { type: 'image/svg+xml' }), false);
+    await composeMerged(true); // mit Historie-Eintrag vereinigen (falls gewählt) und anzeigen
+    if (stale()) return;
 
     const ms = Math.round(performance.now() - t0);
-    const kb = (svg.length / 1024).toFixed(0);
+    const kb = ((state.result || state.baseResult).svg.length / 1024).toFixed(0);
     $('#status').textContent =
       `${w} × ${h} px · ${round1(totalW)} × ${round1(totalH)} mm · ${Math.round(dpi)} DPI · SVG ${kb} KB · ${ms} ms`;
   } catch (err) {
@@ -1471,6 +1487,7 @@ async function runProcess() {
   } finally {
     if (gen === state.generation) {
       setBusy(false);
+      state.processing = false;
       Run.stop();
       refreshPerf(); // GPU/CPU je Modell und Cache-Größe aktualisieren
     }
@@ -2309,6 +2326,8 @@ async function cancelAll() {
   Run.downloading = false;
   hideProgress();
   setBusy(false);
+  state.processing = false;
+  clearTimeout(mergeTimer); // offene Vereinigung erst beim nächsten Durchlauf/Export
   toast('Berechnung abgebrochen.');
   try { await window.api.cancelAll(); } catch { /* ignorieren */ }
   if (state.generation === gen) {
@@ -2431,6 +2450,7 @@ async function saveToHistory(silent = false) {
       original: needsOriginal ? { ext: src.ext, data: src.bytes } : null,
       // Einstellungen, mit denen dieses Ergebnis berechnet wurde (nicht die eventuell schon geänderten)
       settings: { ...(r.settings || state.settings), fmtSvg: state.settings.fmtSvg, fmtPng: state.settings.fmtPng, fmtJpg: state.settings.fmtJpg, fmtBmp: state.settings.fmtBmp },
+      merge: r.merge || null, // mit welchem Eintrag dieses Ergebnis vereinigt wurde
       svg: r.svg,
       raster: rasterFiles[0],
       thumb,
@@ -2468,7 +2488,7 @@ function renderHistory() {
 
   for (const e of items) {
     const li = document.createElement('li');
-    li.className = 'history-item' + (e.id === state.historyId ? ' active' : '');
+    li.className = 'history-item' + (e.id === state.historyId ? ' active' : '') + (e.id === state.merge?.id ? ' merged' : '');
     li.title = 'Klicken, um diese Umwandlung wieder zu öffnen';
 
     const thumb = document.createElement('div');
@@ -2511,6 +2531,7 @@ function renderHistory() {
           toast(`Duplizieren fehlgeschlagen: ${cleanError(err)}`, true);
         }
       }),
+      mergeButton(e),
       iconButton('📁', 'Speicherordner öffnen', () => window.api.history.openFolder(e.id)),
       iconButton('✕', 'Aus Historie löschen', async () => {
         if (!confirm(`„${e.name}“ aus der Historie löschen?`)) return;
@@ -2545,10 +2566,237 @@ async function openHistoryEntry(id) {
       historyId: id,
       settings: meta.settings,
     });
+    // war das Ergebnis mit einem anderen Eintrag vereinigt: wiederherstellen
+    if (meta.merge && state.historyId === id) {
+      const source = state.source;
+      try {
+        const layer = await loadMergeLayer(meta.merge.id);
+        if (state.source !== source) return; // inzwischen anderes Bild geöffnet
+        setMerge({ ...layer, top: meta.merge.top, opacity: meta.merge.opacity });
+      } catch {
+        if (state.source === source) toast(`Der damit vereinigte Eintrag „${meta.merge.name || '?'}“ ist nicht mehr in der Historie.`, true);
+      }
+    }
   } catch (err) {
     console.error(err);
     toast('Eintrag konnte nicht geladen werden.', true);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Mit einem Historie-Eintrag vereinigen                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Das aktuelle Ergebnis (state.baseResult) und das gespeicherte Ergebnis eines Historie-Eintrags
+ * werden übereinandergelegt: Weiß ist durchsichtig, die obere Ebene wird mit der Deckkraft
+ * („Überblenden“) abgeschwächt. Ändert sich eine Einstellung, rechnet runProcess das aktuelle
+ * Ergebnis neu und vereinigt am Ende wieder (composeMerged); Reihenfolge und Deckkraft ändern nur
+ * die Vereinigung, ohne neue Umwandlung.
+ */
+
+let mergeSeq = 0; // jede Vereinigung bekommt eine Nummer; nur die neueste darf ihr Ergebnis zeigen
+let mergeRev = 0; // Stand der Vereinigen-Einstellungen (Reihenfolge, Deckkraft, Eintrag)
+let mergeTimer = null;
+
+const isRasterMode = (mode) => mode === 'dither' || mode === 'relief';
+
+/** Ergebnis anzeigen und für Export, Herausziehen und Historie bereitstellen. */
+function publishResult(r, rev = mergeRev) {
+  state.result = r;
+  if (rev === mergeRev) state.mergePending = false;
+  scheduleDragPrepare();
+  showResult(r.preview.blob, r.preview.pixelated);
+}
+
+/**
+ * state.baseResult (ggf. mit dem gewählten Historie-Eintrag vereinigt) als Ergebnis zeigen.
+ * inRun: Aufruf aus runProcess (Fortschritt und Abbruch regelt dann der Durchlauf).
+ */
+async function composeMerged(inRun = false) {
+  const base = state.baseResult;
+  const m = state.merge;
+  if (!base) return;
+  const seq = ++mergeSeq;
+  const rev = mergeRev;
+  if (!m) {
+    publishResult(base, rev);
+    if (!inRun && !state.processing) setBusy(false); // evtl. noch laufende Vereinigung ist damit hinfällig
+    return;
+  }
+  const gen = state.generation;
+  // geänderte Reihenfolge/Deckkraft machen diese Vereinigung nicht ungültig: Sie wird gezeigt und
+  // danach mit den neuen Werten wiederholt (mergeRev / scheduleMerge)
+  const stale = () => seq !== mergeSeq || gen !== state.generation || base !== state.baseResult;
+  const { top, opacity } = m; // Werte dieses Durchgangs (Regler können sich währenddessen ändern)
+  if (!inRun) setBusy(true);
+  try {
+    const gray = base.mode === 'relief' || m.mode === 'relief';
+    const vector = !isRasterMode(base.mode) && !isRasterMode(m.mode);
+    const ditherAlgo = base.mode === 'dither' ? base.settings.ditherAlgo : m.mode === 'dither' ? m.ditherAlgo : 'floyd';
+    const res = await Pipeline.merge({
+      w: base.w,
+      h: base.h,
+      bits: !base.gray8 && base.bits ? base.bits.slice() : null, // Kopien: das Basisergebnis bleibt erhalten
+      gray8: base.gray8 ? base.gray8.slice() : null,
+      baseEmpty: base.outlineOnly || (!base.bits && !base.gray8),
+      layer: { svg: m.svg, mode: m.mode, widthMm: m.widthMm },
+      top,
+      opacity,
+      gray,
+      vector,
+      transparent: base.transparent,
+      ditherAlgo,
+    });
+    if (stale()) return;
+    let fillPath = null;
+    if (res.trace) {
+      const st = base.settings;
+      fillPath = await window.api.trace({ bits: res.bits, w: res.w, h: res.h },
+        { turdSize: st.turdSize, alphaMax: st.alphaMax, optTolerance: st.optTolerance }, 'fill');
+      if (stale()) return;
+    }
+    const doc = { w: base.w, h: base.h, widthMm: base.widthMm, fillPath, imageB64: res.imageB64, outline: base.outline };
+    const preview = res.imagePng && !base.outline
+      ? { blob: new Blob([res.imagePng], { type: 'image/png' }), pixelated: !gray }
+      : { blob: new Blob([Encoders.svgDocument({ ...doc, preview: true })], { type: 'image/svg+xml' }), pixelated: false };
+    if (res.aspectOff && !m.aspectWarned) {
+      m.aspectWarned = true;
+      toast('Der Historie-Eintrag hat ein anderes Seitenverhältnis – er wird mittig eingepasst.');
+    }
+    publishResult({
+      ...base,
+      bits: res.bits,
+      gray8: res.gray8,
+      svg: Encoders.svgDocument(doc),
+      preview,
+      mode: gray ? 'relief' : res.trace ? 'vector' : 'dither',
+      outlineOnly: false, // die vereinigte Ebene ist Inhalt, nicht nur die Umrisslinie
+      merge: { id: m.id, name: m.name, top, opacity },
+    }, rev);
+    renderMergePanel();
+  } catch (err) {
+    if (isCancelled(err)) {
+      if (inRun) throw err;
+      return;
+    }
+    if (stale()) return;
+    console.error(err);
+    // nicht immer wieder scheitern: Vereinigung aufheben und das eigene Ergebnis zeigen
+    toast(`Vereinigen fehlgeschlagen: ${cleanError(err)}`, true);
+    state.merge = null;
+    mergeRev++;
+    publishResult(base);
+    renderMergePanel();
+    renderHistory();
+  } finally {
+    if (!inRun && seq === mergeSeq && !state.processing) setBusy(false);
+  }
+}
+
+/** Vereinigen-Einstellung geändert: neu vereinigen (nach einer laufenden Umwandlung). */
+function scheduleMerge(delay = 60) {
+  mergeRev++;
+  state.mergePending = true;
+  dragReady = false; // bis zum neuen Ergebnis nicht das veraltete herausziehen
+  clearTimeout(mergeTimer);
+  const tick = () => {
+    if (!state.mergePending) return; // schon von runProcess erledigt
+    if (state.processing) { mergeTimer = setTimeout(tick, 150); return; }
+    composeMerged();
+  };
+  mergeTimer = setTimeout(tick, delay);
+}
+
+/** Gespeichertes Ergebnis eines Historie-Eintrags als Ebene laden. */
+async function loadMergeLayer(id) {
+  const { meta, svg } = await window.api.history.loadResult(id);
+  const st = meta.settings || {};
+  return { id, name: meta.name || 'Bild', svg, mode: st.mode || 'vector', widthMm: st.widthMm || 100, ditherAlgo: st.ditherAlgo || 'floyd' };
+}
+
+function setMerge(merge) {
+  state.merge = merge;
+  renderMergePanel();
+  renderHistory();
+  scheduleMerge(0);
+}
+
+async function startMerge(e) {
+  if (!state.source || !state.baseResult) {
+    return toast('Erst ein Bild öffnen und umwandeln – dann lässt sich ein Historie-Eintrag darüberlegen.', true);
+  }
+  if (e.id === state.historyId) return toast('Ein Eintrag lässt sich nicht mit sich selbst vereinigen.', true);
+  const source = state.source;
+  try {
+    const layer = await loadMergeLayer(e.id);
+    if (state.source !== source) return;
+    const prev = state.merge;
+    setMerge({ ...layer, top: prev?.top ?? 'history', opacity: prev?.opacity ?? 1 });
+    $('#settings-scroll').scrollTop = 0; // Regler fürs Vereinigen stehen ganz oben
+    toast(`Vereinigt mit „${layer.name}“`);
+  } catch (err) {
+    toast(`Eintrag konnte nicht geladen werden: ${cleanError(err)}`, true);
+  }
+}
+
+function clearMerge() {
+  if (!state.merge) return;
+  state.merge = null;
+  mergeRev++;
+  clearTimeout(mergeTimer);
+  renderMergePanel();
+  renderHistory();
+  composeMerged(); // zeigt wieder das eigene Ergebnis
+}
+
+function mergeButton(e) {
+  const b = iconButton('⊕', 'Mit dem aktuellen Ergebnis vereinigen (übereinanderlegen)', () => startMerge(e));
+  if (e.id === state.historyId) {
+    b.disabled = true;
+    b.title = 'Das ist das geöffnete Bild – zum Vereinigen einen anderen Eintrag wählen';
+  }
+  return b;
+}
+
+function renderMergePanel() {
+  const m = state.merge;
+  $('#merge-group').hidden = !m;
+  $('#pane-result .pane-label').textContent = m ? `Ergebnis + ${m.name}` : 'Ergebnis';
+  if (!m) return;
+  $('#merge-name').textContent = m.name;
+  $('#merge-name').title = m.name;
+  for (const b of $$('#merge-order button')) b.classList.toggle('active', b.dataset.value === m.top);
+  const pct = Math.round(m.opacity * 100);
+  $('#merge-opacity').value = pct;
+  $('#merge-opacity-out').textContent = `${pct} %`;
+  const base = state.baseResult;
+  let kind;
+  if ((base && base.mode === 'relief') || m.mode === 'relief') kind = 'Ergebnis: Graustufenbild (Relief).';
+  else if (base && !isRasterMode(base.mode) && !isRasterMode(m.mode) && (pct === 0 || pct === 100)) kind = 'Ergebnis: Vektor.';
+  else kind = 'Ergebnis: Punktmuster als Bild im SVG – in LightBurn als Bild gravieren.';
+  $('#merge-hint').textContent = `0 % = nur die untere Ebene, 100 % = beide voll. ${kind}`;
+}
+
+function bindMerge() {
+  for (const b of $$('#merge-order button')) {
+    b.addEventListener('click', () => {
+      if (!state.merge || state.merge.top === b.dataset.value) return;
+      state.merge.top = b.dataset.value;
+      renderMergePanel();
+      scheduleMerge(0);
+    });
+  }
+  const slider = $('#merge-opacity');
+  const setOpacity = (pct) => {
+    if (!state.merge) return;
+    state.merge.opacity = Math.min(100, Math.max(0, pct)) / 100;
+    renderMergePanel();
+    scheduleMerge();
+  };
+  slider.addEventListener('input', () => setOpacity(Number(slider.value)));
+  slider.addEventListener('dblclick', () => setOpacity(100));
+  $('#btn-merge-off').addEventListener('click', clearMerge);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2753,6 +3001,7 @@ bindPresets();
 bindResultDrag();
 bindOriginalDrag();
 bindCancel();
+bindMerge();
 bindPerf();
 refreshPerf();
 $('#img-original').addEventListener('load', renderMarkers);

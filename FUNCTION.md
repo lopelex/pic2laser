@@ -152,6 +152,20 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   und Vorschaubild gespeichert.
 - Ein Klick öffnet sie mit allen Einstellungen wieder. Suche, SVG erneut speichern,
   Speicherordner öffnen, Eintrag duplizieren, einzelne Einträge oder alles löschen.
+- **Vereinigen (⊕):** legt das gespeicherte Ergebnis eines Eintrags über das aktuelle Ergebnis,
+  z. B. „Linien“ über „Foto“ desselben Bildes. Oben in der Seitenleiste erscheint dann der Bereich
+  „Vereinigt mit“:
+  - **Oben liegt:** Historie-Eintrag oder aktuelles Ergebnis.
+  - **Überblenden:** Deckkraft der oberen Ebene – 0 % = nur die untere Ebene, 100 % = beide voll.
+    Weiß ist durchsichtig, Schwarz addiert sich (Doppelklick = 100 %).
+  - Zwei Vektor-Ergebnisse (Fläche/Linien) bei 0 % oder 100 % ergeben wieder einen Vektor;
+    Zwischenwerte und Foto-Ergebnisse werden als Punktmuster gerastert (Bild im SVG), mit Relief
+    entsteht ein Graustufenbild.
+  - Ändert man Einstellungen, wird das eigene Ergebnis neu berechnet und wieder vereinigt.
+    Gleiches Seitenverhältnis → deckungsgleich, sonst mittig eingepasst. Die Umrisslinie kommt
+    vom aktuellen Ergebnis, die des Eintrags entfällt (außer bei „nur Umrisslinie“).
+  - Beim Speichern merkt sich der Eintrag die Vereinigung (`merge` in `meta.json`); beim Öffnen
+    wird sie wiederhergestellt, solange der andere Eintrag noch existiert. „Aufheben“ löst sie.
 
 ## Bedienkomfort & Leistung
 
@@ -282,8 +296,12 @@ Jede Einstellungsänderung ruft `setSetting` → `scheduleProcess` (120 ms entpr
 6. `contentSource`: je nach Modus KI-Strichzeichnung, Tiefenkarte oder das Bild selbst.
 7. `Pipeline.render` im Web Worker: Rasterergebnis, PNG für Potrace, Silhouette für die Umrisslinie.
 8. `window.api.trace` (Potrace im Utility-Prozess) für Fläche/Linien und die Umrisslinie.
-9. `Encoders.svgDocument` baut das SVG; `state.result` wird gesetzt, Vorschau und Statuszeile
-   aktualisiert, Drag-Dateien vorbereitet (`scheduleDragPrepare`).
+9. `Encoders.svgDocument` baut das SVG; das Ergebnis landet in `state.baseResult`.
+10. `composeMerged`: ist ein Historie-Eintrag zum Vereinigen gewählt (`state.merge`), legt der
+    Web Worker (`merge` in pipeline-worker.js) beide Ebenen übereinander, ggf. folgt Potrace.
+    Das angezeigte Ergebnis steht in `state.result`; Vorschau und Statuszeile werden
+    aktualisiert, Drag-Dateien vorbereitet (`scheduleDragPrepare`). Reihenfolge und Deckkraft
+    rufen nur `scheduleMerge` → `composeMerged` auf, ohne neue Umwandlung.
 
 KI-Zwischenergebnisse liegen pro Bild in `state.cache` (Promise je Schlüssel, siehe `KEYS` und
 `cached()`); sie werden beim Laden eines neuen Bildes geleert. Abbrüche werden als Fehler mit
@@ -308,7 +326,7 @@ laufende KI-Jobs (nur wenn der Prozess rechnet) und Downloads ab.
 | Pfad | Inhalt |
 |---|---|
 | `presets.json` | eigene Presets |
-| `history/<uuid>/` | `meta.json`, `original.<ext>`, `result.svg`, `result.png`, `thumb.png` |
+| `history/<uuid>/` | `meta.json` (inkl. `merge`), `original.<ext>`, `result.svg`, `result.png`, `thumb.png` |
 | `models/` | heruntergeladene Modelle (`.part` während des Downloads) |
 | `ai-cache/` | Festplatten-Cache der KI-Ergebnisse (`<sha256>.bin`) |
 | `prefs.json` | GPU an/aus, Cache an/aus, Modelle, die nur auf der CPU laufen |

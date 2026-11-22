@@ -69,6 +69,8 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
 - **Historie**: Jede exportierte Umwandlung wird mit Original, Einstellungen, SVG und PNG gespeichert
   (`<userData>/history`); zusätzlich über „In Historie speichern“ ohne Export. Ein Klick öffnet sie wieder
   mit allen Einstellungen, die Liste ist durchsuchbar.
+- **Vereinigen**: ⊕ an einem Historie-Eintrag legt dessen Ergebnis über das aktuelle (z. B. Linien über
+  ein Foto). Reihenfolge wählbar, Regler „Überblenden“ für die Deckkraft der oberen Ebene.
 
 ## Tastenkürzel
 
