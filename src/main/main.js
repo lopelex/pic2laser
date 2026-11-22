@@ -6,6 +6,7 @@ const fs = require('fs/promises');
 const crypto = require('crypto');
 
 const models = require('./models');
+const updater = require('./updater');
 
 const HISTORY_DIR = () => path.join(app.getPath('userData'), 'history');
 const ID_PATTERN = /^[a-f0-9-]{36}$/;
@@ -34,6 +35,10 @@ function createWindow() {
   mainWindow.webContents.once('did-finish-load', () => {
     for (const t of Object.values(tracers)) t.ensureProc();
     models.warmUp();
+    // Update-Prüfung beim Start und alle 24 h (läuft nur einmal an, auch wenn das Fenster neu öffnet)
+    updater.start((s) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-state', s);
+    });
     if (crashedGpuModel) {
       const model = crashedGpuModel;
       crashedGpuModel = null; // nur einmal melden (macOS: Fenster kann neu geöffnet werden)
@@ -175,6 +180,13 @@ const makeTracer = (name) => ({
 const tracers = { fill: makeTracer('Füllung'), outline: makeTracer('Umriss') };
 
 ipcMain.handle('app-version', () => app.getVersion());
+
+ipcMain.handle('update-state', () => updater.getState());
+ipcMain.handle('update-check', () => updater.check({ manual: true }));
+ipcMain.handle('update-download', () => updater.startDownload());
+ipcMain.handle('update-cancel', () => updater.cancelDownload());
+ipcMain.handle('update-install', () => updater.install());
+ipcMain.handle('update-open-page', () => updater.openPage());
 
 ipcMain.handle('trace', (_e, image, params, lane) => (Object.hasOwn(tracers, lane) ? tracers[lane] : tracers.fill).trace(image, params || {}));
 

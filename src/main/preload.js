@@ -4,6 +4,19 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   version: () => ipcRenderer.invoke('app-version'),
+  update: {
+    state: () => ipcRenderer.invoke('update-state'),
+    check: () => ipcRenderer.invoke('update-check'),
+    download: () => ipcRenderer.invoke('update-download'),
+    cancel: () => ipcRenderer.invoke('update-cancel'),
+    install: () => ipcRenderer.invoke('update-install'),
+    openPage: () => ipcRenderer.invoke('update-open-page'),
+    onState: (cb) => {
+      const handler = (_e, s) => cb(s);
+      ipcRenderer.on('update-state', handler);
+      return () => ipcRenderer.removeListener('update-state', handler);
+    },
+  },
   // image: { bits: Uint8Array (1 = schwarz), w, h }; lane: eigener Prozess je Spur (Füllung/Umriss laufen parallel)
   trace: (image, params, lane) => ipcRenderer.invoke('trace', image, params, lane),
   system: {

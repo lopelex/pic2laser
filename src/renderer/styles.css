@@ -571,3 +571,28 @@ body.ctrl-drag #img-original:active { cursor: grabbing !important; }
 /* Hinweis auf nicht-kommerzielle Modell-Lizenz */
 .hint.nc { color: #f59e0b; margin-bottom: 10px; }
 .model-license.nc { color: #f59e0b; }
+
+/* ---------- Update ---------- */
+.version-btn {
+  background: none; border: 0; padding: 2px 4px; margin: 0 -4px;
+  border-radius: 4px; cursor: pointer; font-size: inherit;
+}
+.version-btn:hover { color: var(--text); background: var(--panel-2); }
+.btn-update { background: rgba(255,90,54,.14); border-color: var(--accent); color: var(--accent-2); font-weight: 600; }
+.btn-update:hover:not(:disabled) { background: rgba(255,90,54,.24); border-color: var(--accent-2); }
+.update-notes { user-select: text; font-size: 13px; line-height: 1.5; }
+.update-notes h4 {
+  margin: 14px 0 4px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--muted);
+}
+.update-notes ul { margin: 0; padding-left: 18px; }
+.update-notes li + li { margin-top: 4px; }
+.update-notes p { margin: 8px 0 0; }
+.update-notes code { font-size: 12px; background: var(--panel-2); padding: 0 4px; border-radius: 4px; overflow-wrap: anywhere; }
+.dialog-foot > .btn[hidden] + .update-actions { margin-left: auto; }
+.update-progress { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.update-progress[hidden] { display: none; }
+.update-progress .progress-bar { flex: 1 1 auto; }
+#update-progress-label { font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.update-actions { display: flex; gap: 8px; }
