@@ -115,6 +115,14 @@ const handlers = {
     return { result: bytes, transfer: [bytes.buffer] };
   },
 
+  /** Himmel entfernen (Maske). */
+  async skyMask({ source, tolerance, seeds }) {
+    const canvas = Segmentation.skyMask(source, tolerance, seeds);
+    source.close();
+    const bitmap = canvas.transferToImageBitmap();
+    return { result: bitmap, transfer: [bitmap] };
+  },
+
   /** Farbbasierte Freistellmaske. */
   async colorMask({ source, tolerance, border, seeds }) {
     const canvas = Segmentation.colorMask(source, tolerance, border, seeds);

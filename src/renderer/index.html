@@ -88,9 +88,10 @@
             <option value="sam">KI – Objekt anklicken (MobileSAM)</option>
             <option value="sam2" title="Genauere Objektgrenzen als MobileSAM (z. B. bei Haaren, feinen Teilen und ähnlichen Farben von Motiv und Hintergrund). Einmaliger Download ca. 180 MB, braucht ca. 0,9 GB Arbeitsspeicher; das erste Erkennen je Bild dauert einige Sekunden.">KI – Objekt anklicken, genau (SAM 2.1) ⤓</option>
             <option value="color">Nach Farbe</option>
+            <option value="sky" title="Entfernt den Himmel (blau, Wolken, Dunst) vom oberen Bildrand aus – Landschaft, Fahrzeuge und Gebäude bleiben vollständig erhalten. Ohne KI, sofort.">Himmel entfernen</option>
           </select>
         </label>
-        <label class="check" data-bg="ai isnet birefnet ben2 modnet sam sam2 color"><input type="checkbox" id="bg-hide" /> Entfernten Hintergrund ausblenden (statt rot schraffieren)</label>
+        <label class="check" data-bg="ai isnet birefnet ben2 modnet sam sam2 color sky"><input type="checkbox" id="bg-hide" /> Entfernten Hintergrund ausblenden (statt rot schraffieren)</label>
         <div data-bg="sam sam2">
           <p class="hint info"><b>Linksklick</b> ins Original markiert das Motiv, <b>Rechtsklick</b> (oder Alt+Klick) schließt Bereiche aus. Klick auf einen Punkt entfernt ihn wieder.</p>
           <button class="btn btn-small" id="btn-clear-sam">Punkte zurücksetzen</button>
@@ -102,16 +103,17 @@
           </label>
           <p class="hint info">Höher = engere Maske, niedriger = mehr vom Motiv bleibt erhalten. ⤓ = Modell wird beim ersten Gebrauch geladen.</p>
         </div>
-        <div data-bg="color">
+        <div data-bg="color sky">
           <label class="slider">
             <span>Farbtoleranz <output data-for="bgTolerance"></output></span>
             <input type="range" data-key="bgTolerance" min="1" max="100" step="1" />
           </label>
-          <label class="check"><input type="checkbox" data-key="bgBorder" /> Hintergrund vom Bildrand aus entfernen</label>
-          <p class="hint info">Klicke ins <b>Original</b>, um weitere Hintergrundbereiche zu entfernen. Klick auf einen Punkt entfernt ihn wieder.</p>
+          <label class="check" data-bg="color"><input type="checkbox" data-key="bgBorder" /> Hintergrund vom Bildrand aus entfernen</label>
+          <p class="hint info" data-bg="color">Klicke ins <b>Original</b>, um weitere Hintergrundbereiche zu entfernen. Klick auf einen Punkt entfernt ihn wieder.</p>
+          <p class="hint info" data-bg="sky">Der Himmel wird vom oberen Bildrand aus entfernt und folgt dem Farbverlauf bis zum Horizont. Bleibt Himmel stehen (z. B. zwischen Ästen oder hinter Scheiben), dort ins <b>Original</b> klicken oder die Toleranz erhöhen; verschwindet zu viel, die Toleranz senken.</p>
           <button class="btn btn-small" id="btn-clear-seeds">Klickpunkte zurücksetzen</button>
         </div>
-        <div data-bg="ai isnet birefnet ben2 modnet sam sam2 color">
+        <div data-bg="ai isnet birefnet ben2 modnet sam sam2 color sky">
           <h4>Maske verfeinern</h4>
           <label class="slider" title="Verschiebt die Schnittkante: Plus lässt einen Rand um das Motiv stehen, Minus schneidet Reste des Hintergrunds (z. B. Lichtsäume) weg.">
             <span>Kante verschieben <output data-for="maskShiftMm"></output></span>

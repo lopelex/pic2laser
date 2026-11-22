@@ -84,6 +84,7 @@ Alle KI-Funktionen laufen lokal und offline.
 | KI – Objekt anklicken | MobileSAM | Linksklick = Motiv (+), Rechtsklick/Alt+Klick = ausschließen (−) |
 | KI – Objekt anklicken, genau | SAM 2.1 Small (Download ca. 180 MB) | wie MobileSAM, genauere Objektgrenzen; erstes Erkennen je Bild einige Sekunden, ca. 0,9 GB RAM |
 | Nach Farbe | – | Hintergrund vom Bildrand aus + zusätzliche Klickpunkte, Farbtoleranz |
+| Himmel entfernen | – | Himmel (blau, Wolken, Dunst) vom oberen Bildrand aus, folgt dem Farbverlauf bis zum Horizont und stoppt an harten Kanten; Landschaft, Fahrzeuge und Gebäude bleiben. Toleranz = erlaubter Farbsprung je Pixel, Klickpunkte für Himmel zwischen Ästen oder hinter Scheiben |
 
 - **Maskenschwelle** für die KI-Methoden.
 - **Maske verfeinern** (für alle Methoden, auch „Nach Farbe“ und „Objekt anklicken“):
@@ -160,13 +161,14 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 ## Presets
 
-- **40 Vorlagen**, gegliedert nach Eingangsbild: Logos, Schrift & Grafik · Porträts & Personen ·
+- **42 Vorlagen**, gegliedert nach Eingangsbild: Logos, Schrift & Grafik · Porträts & Personen ·
   Tiere · Fotos & Landschaft · Material (Holz, Schiefer/Glas/Alu, Leder, Acryl) ·
   Schneiden & Relief. Jede Vorlage hat eine kurze Beschreibung.
 - Darunter Vorlagen für Schilder/Piktogramme (Formen begradigen), pixelige Logos (Glatte Konturen),
   Gummistempel (invertiert), Fahrzeuge mit Schriftzug, Gebäude mit geraden Linien, Ausmalbilder,
   Porträt als Tuschezeichnung oder Bleistiftskizze, freigestelltes Relief als transparentes PNG
-  und Relief mit maximalen Details (Depth Anything V2 Large, nicht kommerziell).
+  und Relief mit maximalen Details (Depth Anything V2 Large, nicht kommerziell),
+  Himmel entfernen als Fotogravur oder Strichzeichnung.
 - **Eigene Presets** speichern, überschreiben und löschen. Der Preset-Bereich bleibt oben immer
   sichtbar; nach Änderungen erscheint ein Hinweis.
 
@@ -311,7 +313,7 @@ Main-Prozess (src/main/main.js)
 Renderer (src/renderer/index.html, klassische <script>-Tags, globale Module)
  ├─ app.js            Oberfläche, Zustand, Ablauf eines Durchlaufs, Export, Historie
  ├─ processing.js     Bildverarbeitung (Anpassungen, Schwellwert, Dithering, Kanten, Umriss)
- ├─ segmentation.js   Masken, Freistellen nach Farbe, Klickpunkte
+ ├─ segmentation.js   Masken, Freistellen nach Farbe, Himmel entfernen, Klickpunkte
  ├─ ai.js             Vor-/Nachbereitung aller KI-Modelle, ruft window.api.models.run
  ├─ restore.js        Altes Foto restaurieren
  ├─ encoders.js       SVG/PNG/JPG/BMP mit mm/DPI

@@ -2,7 +2,7 @@
 
 Electron-App, die Bilder in Schwarz-Weiß-SVGs (und optional PNG/JPG/BMP) für die Lasergravur mit LightBurn umwandelt.
 
-Aktuelle Version: **1.8.0**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
+Aktuelle Version: **1.8.1**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
 bekannte und behobene Fehler: [BUGS.md](BUGS.md).
 
 ## Starten
@@ -42,7 +42,7 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
   - *Relief*: KI-Tiefenkarte (Depth Anything V2 Small, wahlweise Base/Large) als Graustufenbild für 3D-Reliefgravur, optional mit transparentem
     weißem/freigestelltem Hintergrund (PNG/SVG)
 - **Freistellen**: KI schnell / präzise / beste Qualität / Porträt, Objekt per Klick auswählen (MobileSAM oder
-  genauer mit SAM 2.1) oder nach Farbe (Hintergrund vom Rand + Klickpunkte). Beim Objekt-Anklicken schließen Rechtsklick oder Alt+Klick
+  genauer mit SAM 2.1), nach Farbe (Hintergrund vom Rand + Klickpunkte) oder nur den Himmel entfernen. Beim Objekt-Anklicken schließen Rechtsklick oder Alt+Klick
   Bereiche aus; ein Klick auf einen vorhandenen Punkt entfernt ihn. Entfernter Hintergrund wird in der
   Vorschau rot schraffiert oder wahlweise ausgeblendet.
 - **Altes Foto restaurieren**: Rauschen/Körnung entfernen, Kratzer & Staub finden und per KI auffüllen

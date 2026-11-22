@@ -250,7 +250,7 @@ function syncControls() {
   const pts = s.samPoints.length;
   $('#btn-clear-sam').textContent = pts ? `Punkte zurücksetzen (${pts})` : 'Punkte zurücksetzen';
   $('#btn-clear-sam').disabled = !pts;
-  const pickable = (s.bgRemove === 'color' || isSam(s.bgRemove)) && !!state.source;
+  const pickable = (usesSeeds(s.bgRemove) || isSam(s.bgRemove)) && !!state.source;
   $('#pane-original').classList.toggle('pickable', pickable);
   $('#pane-original').dataset.pick = isSam(s.bgRemove) ? 'sam' : s.bgRemove;
   $('#mode-hint').textContent = MODE_HINTS[s.mode];
@@ -384,20 +384,20 @@ function bindControls() {
 
   // Klick ins Original: Hintergrundpunkt (nach Farbe) bzw. Motiv-/Ausschlusspunkt (Objekt anklicken).
   // Ein Klick auf einen vorhandenen Punkt (Plus/Minus) entfernt ihn wieder.
-  const pickPoints = () => (state.settings.bgRemove === 'color' ? state.settings.bgSeeds : state.settings.samPoints);
-  const pickActive = () => !!state.source && (state.settings.bgRemove === 'color' || isSam(state.settings.bgRemove));
+  const pickPoints = () => (usesSeeds(state.settings.bgRemove) ? state.settings.bgSeeds : state.settings.samPoints);
+  const pickActive = () => !!state.source && (usesSeeds(state.settings.bgRemove) || isSam(state.settings.bgRemove));
   const pick = (e, negative) => {
     if (!pickActive()) return;
     const mode = state.settings.bgRemove;
     const hit = markerAt(e.currentTarget, e, pickPoints());
     if (hit >= 0) {
       const points = pickPoints().filter((_, i) => i !== hit);
-      setSetting(mode === 'color' ? 'bgSeeds' : 'samPoints', points);
+      setSetting(usesSeeds(mode) ? 'bgSeeds' : 'samPoints', points);
       return;
     }
     const p = imagePointFromEvent(e.currentTarget, e);
     if (!p) return;
-    if (mode === 'color') setSetting('bgSeeds', [...state.settings.bgSeeds, p]);
+    if (usesSeeds(mode)) setSetting('bgSeeds', [...state.settings.bgSeeds, p]);
     else setSetting('samPoints', [...state.settings.samPoints, { ...p, positive: !negative }]);
   };
   $('#img-original').addEventListener('click', (e) => pick(e, e.altKey));
@@ -581,6 +581,16 @@ const BUILTIN_PRESETS = [
     group: 'Fotos & Landschaft', name: 'Landschaft als Linienzeichnung',
     desc: 'Für Landschaften, Gebäude und Skylines als feine Strichzeichnung.',
     settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 1024, threshold: 150 },
+  },
+  {
+    group: 'Fotos & Landschaft', name: 'Himmel entfernen – Fotogravur',
+    desc: 'Für Fahrzeuge, Gebäude und Landschaften: Der Himmel wird nicht graviert, alles darunter bleibt vollständig erhalten.',
+    settings: { mode: 'dither', ditherAlgo: 'jarvis', dpi: 254, contrast: 15, sharpen: 0.6, bgRemove: 'sky', bgTolerance: 20, maskSpeckPct: 0.2, subjectLine: true, subjectLineMm: 0.25 },
+  },
+  {
+    group: 'Fotos & Landschaft', name: 'Himmel entfernen – Strichzeichnung',
+    desc: 'Für Fahrzeuge, Gebäude und Landschaften als Strichzeichnung ohne Himmel; Schriftzüge bleiben gefüllt.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 1024, threshold: 150, bgRemove: 'sky', bgTolerance: 20, maskSpeckPct: 0.2, subjectLine: true, subjectLineMm: 0.3, textClean: true, textPad: 1.5 },
   },
   {
     group: 'Fotos & Landschaft', name: 'Gebäude – gerade Linien',
@@ -982,6 +992,10 @@ const Pipeline = (() => {
       const m = mask ? await createImageBitmap(mask) : null;
       return view.call('cutout', { source: src, mask: m, markers, boxes, hideBackground }, m ? [src, m] : [src]);
     },
+    async skyMask(source, tolerance, seeds) {
+      const src = await createImageBitmap(source);
+      return work.call('skyMask', { source: src, tolerance, seeds }, [src]);
+    },
     async colorMask(source, tolerance, border, seeds) {
       const src = await createImageBitmap(source);
       return work.call('colorMask', { source: src, tolerance, border, seeds }, [src]);
@@ -1131,6 +1145,8 @@ const Run = {
 const SEG_MODEL = { ai: 'u2netp', isnet: 'isnet', birefnet: 'birefnet', ben2: 'ben2', modnet: 'modnet', sam: 'sam_encoder', sam2: 'sam2_encoder' };
 /** Freistellen per Klickpunkten (MobileSAM oder SAM 2.1)? */
 const isSam = (method) => method === 'sam' || method === 'sam2';
+/** Methoden mit Hintergrund-Klickpunkten (bgSeeds). */
+const usesSeeds = (method) => method === 'color' || method === 'sky';
 /** Embedding und Maske je Klick-Modell. */
 const SAM_IMPL = {
   sam: { decoder: 'sam_decoder', embed: (b) => AI.samEmbedding(b), mask: (e, p, w, h) => AI.samMask(e, p, w, h), embMs: 2500, maskMs: 500 },
@@ -1202,6 +1218,7 @@ function rawMaskKeyFor(s) {
   if (method === 'none' || (isSam(method) && !s.samPoints.length)) return null;
   const up = maskTag(s);
   if (method === 'color') return `color:${up}:${s.bgTolerance}:${s.bgBorder}:${JSON.stringify(s.bgSeeds)}`;
+  if (method === 'sky') return `sky:${up}:${s.bgTolerance}:${JSON.stringify(s.bgSeeds)}`;
   if (isSam(method)) return `${method}:${up}:${s.maskThreshold}:${JSON.stringify(s.samPoints)}`;
   return `${method}:${up}:${s.maskThreshold}`;
 }
@@ -1363,9 +1380,9 @@ function planSteps(s) {
   if (maskKey && !(state.mask && state.mask.key === maskKey)) {
     if (state.maskRaw && state.maskRaw.key === rawMaskKeyFor(s)) {
       // Rohmaske liegt schon vor – nur neu verfeinern
-    } else if (method === 'color') {
+    } else if (method === 'color' || method === 'sky') {
       const a = Segmentation.analysisSize({ width: work.w, height: work.h });
-      add('colormask', 'Freistellen nach Farbe', 'colormask', (a.w * a.h) / 1e6, 250);
+      add('colormask', method === 'sky' ? 'Himmel entfernen' : 'Freistellen nach Farbe', 'colormask', (a.w * a.h) / 1e6, 250);
     } else if (isSam(method)) {
       const impl = SAM_IMPL[method];
       add('sam-emb', 'Objekt erkennen', method === 'sam' ? 'sam-emb' : `sam-emb:${method}`, 1, impl.embMs, KEYS.samEmb(maskTag(s), method));
@@ -1791,6 +1808,9 @@ async function ensureMask(s, bitmap) {
     } else if (method === 'color') {
       throwIfStale(s);
       canvas = await Run.track('colormask', Pipeline.colorMask(bitmap, s.bgTolerance, s.bgBorder, s.bgSeeds));
+    } else if (method === 'sky') {
+      throwIfStale(s);
+      canvas = await Run.track('colormask', Pipeline.skyMask(bitmap, s.bgTolerance, s.bgSeeds));
     } else {
       await ensureModelReady(SEG_MODEL[method]);
       let raw;
@@ -3147,7 +3167,7 @@ function renderMarkers() {
   const layer = $('#marker-layer');
   const img = $('#img-original');
   const mode = state.settings.bgRemove;
-  const points = !state.source ? [] : mode === 'color'
+  const points = !state.source ? [] : usesSeeds(mode)
     ? state.settings.bgSeeds.map((p) => ({ ...p, positive: false }))
     : isSam(mode) ? state.settings.samPoints : [];
   layer.textContent = '';
