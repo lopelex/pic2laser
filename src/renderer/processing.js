@@ -462,7 +462,9 @@ const Processing = (() => {
 
     // Relief: Graustufen bleiben erhalten (Laserleistung = Tiefe)
     if (s.mode === 'relief') {
-      return { w, h, bits: null, gray8: Uint8ClampedArray.from(gray), alpha };
+      const gray8 = Uint8ClampedArray.from(gray);
+      const alpha8 = s.reliefTransparent ? reliefAlpha(gray8, w, h, alpha) : null;
+      return { w, h, bits: null, gray8, alpha8, alpha };
     }
 
     let bits;
@@ -828,14 +830,42 @@ const Processing = (() => {
     return out;
   }
 
-  /** Graustufenbild (Relief) als Canvas. */
-  function grayToCanvas(gray8, w, h) {
+  /**
+   * Deckkraft (0…255) für „Weißen Hintergrund transparent“ im Relief.
+   * Mit Freistellmaske gilt die Maske (weiche Kante; helle = nahe Stellen im Motiv bleiben erhalten),
+   * sonst wird reines Weiß transparent, das mit dem Bildrand zusammenhängt.
+   */
+  function reliefAlpha(gray8, w, h, maskAlpha) {
+    const n = w * h;
+    const a = new Uint8ClampedArray(n).fill(255);
+    if (maskAlpha) {
+      for (let i = 0; i < n; i++) a[i] = Math.round(maskAlpha[i] * 255);
+      return a;
+    }
+    const WHITE = 254;
+    const stack = [];
+    const push = (i) => { if (a[i] && gray8[i] >= WHITE) { a[i] = 0; stack.push(i); } };
+    for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+    for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+    while (stack.length) {
+      const i = stack.pop();
+      const x = i % w;
+      if (x > 0) push(i - 1);
+      if (x < w - 1) push(i + 1);
+      if (i >= w) push(i - w);
+      if (i < n - w) push(i + w);
+    }
+    return a;
+  }
+
+  /** Graustufenbild (Relief) als Canvas – optional mit Deckkraft (alpha8). */
+  function grayToCanvas(gray8, w, h, alpha8 = null) {
     const canvas = new OffscreenCanvas(w, h);
     const ctx = canvas.getContext('2d');
     const img = ctx.createImageData(w, h);
     for (let i = 0, p = 0; p < gray8.length; i += 4, p++) {
       img.data[i] = img.data[i + 1] = img.data[i + 2] = gray8[p];
-      img.data[i + 3] = 255;
+      img.data[i + 3] = alpha8 ? alpha8[p] : 255;
     }
     ctx.putImageData(img, 0, 0);
     return canvas;
@@ -843,7 +873,7 @@ const Processing = (() => {
 
   /** Ergebnis (Binär- oder Graustufenbild) als Canvas. */
   function resultCanvas(r, transparent) {
-    return r.gray8 ? grayToCanvas(r.gray8, r.w, r.h) : bitsToCanvas(r.bits, r.w, r.h, transparent);
+    return r.gray8 ? grayToCanvas(r.gray8, r.w, r.h, transparent ? r.alpha8 : null) : bitsToCanvas(r.bits, r.w, r.h, transparent);
   }
 
   /**

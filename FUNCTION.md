@@ -46,7 +46,8 @@ Alle KI-Funktionen laufen lokal und offline.
   Mit „Gesichtszüge hervorheben“ wird jedes Gesicht mit dem gewählten Modell neu gezeichnet;
   die vergrößerte Nachzeichnung von Mund, Nase, Kinn und Wangen nutzt nur *Feine Linien* –
   die anderen Modelle malen dort Hautschattierung, die als Flecken erscheinen würde.
-- **Dithering / Relief:** Verfahren, Auflösung in DPI, Tiefen-Detail.
+- **Dithering / Relief:** Verfahren, Auflösung in DPI, Tiefen-Detail. Relief: „Weißen Hintergrund transparent“ –
+  mit Freistellen gilt die Maske, sonst wird reines Weiß am Bildrand transparent (nur PNG/SVG, JPG/BMP bleiben weiß).
 - **Ausgabegröße:** Breite oder Höhe in mm (Seitenverhältnis bleibt erhalten); Weiß optional
   transparent.
 
