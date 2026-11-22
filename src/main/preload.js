@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('api', {
   exportFiles: (payload) => ipcRenderer.invoke('export-files', payload),
   dragPrepare: (payload) => ipcRenderer.invoke('drag-prepare', payload),
   dragStart: (kind = 'result') => ipcRenderer.send('drag-start', kind),
+  lightburnSend: (payload) => ipcRenderer.invoke('lightburn-send', payload),
   cancelAll: () => ipcRenderer.invoke('cancel-all'),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
 

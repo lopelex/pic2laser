@@ -6,6 +6,7 @@ const fs = require('fs/promises');
 const crypto = require('crypto');
 
 const models = require('./models');
+const lightburn = require('./lightburn');
 const updater = require('./updater');
 
 const HISTORY_DIR = () => path.join(app.getPath('userData'), 'history');
@@ -79,7 +80,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => models.setQuitting());
   app.on('will-quit', () => {
     models.clearGpuInFlight();
-    try { require('fs').rmSync(path.join(app.getPath('temp'), 'pic2laser-drag'), { recursive: true, force: true }); } catch { /* egal */ }
+    for (const dir of ['pic2laser-drag', 'pic2laser-lightburn']) {
+      try { require('fs').rmSync(path.join(app.getPath('temp'), dir), { recursive: true, force: true }); } catch { /* egal */ }
+    }
   });
 
   app.whenReady().then(() => {
@@ -345,6 +348,35 @@ ipcMain.on('drag-start', (e, kind = 'result') => {
   const prepared = dragPrepared[kind];
   if (!prepared || !prepared.paths.length) return;
   e.sender.startDrag({ file: prepared.paths[0], files: prepared.paths, icon: prepared.icon });
+});
+
+/* ------------------------------------------------------------------ */
+/* An LightBurn senden (UDP-Schnittstelle von LightBurn)              */
+/* ------------------------------------------------------------------ */
+
+const LIGHTBURN_DIR = () => path.join(app.getPath('temp'), 'pic2laser-lightburn');
+
+ipcMain.handle('lightburn-send', async (_e, { baseName, files }) => {
+  if (!Array.isArray(files) || !files.length) throw new Error('Keine Dateien');
+  // Vorige Sendung ist importiert (LightBurn übernimmt die Daten ins Projekt) – Ordner neu anlegen.
+  // Eigener Ordner statt der Drag-Dateien: die werden bei jeder Neuberechnung ersetzt.
+  const dir = LIGHTBURN_DIR();
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+  const name = lightburn.asciiName(baseName);
+  const paths = [];
+  for (const f of files) {
+    const target = path.join(dir, `${name}.${exportExt(f.ext)}`);
+    await fs.writeFile(target, typeof f.data === 'string' ? f.data : Buffer.from(f.data));
+    paths.push(target);
+  }
+  try {
+    return { ok: true, count: paths.length, ...(await lightburn.importFiles(paths)) };
+  } catch (err) {
+    // Fehlertext unverändert in den Renderer bringen (ipc-Fehler bekämen sonst einen Präfix)
+    if (err instanceof lightburn.LightBurnError) return { ok: false, code: err.code, message: err.message };
+    throw err;
+  }
 });
 
 const EXPORT_EXTS = ['svg', 'png', 'jpg', 'bmp'];

@@ -5,6 +5,13 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.10.0 – 22.11.2026
+
+### Neu
+- **An LightBurn senden:** Der neue Knopf „An LightBurn“ (Strg/Cmd+L) fügt das Ergebnis direkt ins offene
+  LightBurn-Projekt ein, ohne Export und ohne Herausziehen. Läuft LightBurn nicht oder ist dort gerade ein
+  Fenster offen, sagt Pic2Laser das.
+
 ## 1.9.0 – 22.11.2026
 
 ### Neu
