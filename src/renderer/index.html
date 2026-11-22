@@ -293,6 +293,47 @@
         </label>
       </section>
 
+      <section class="group" data-mode="vector edges">
+        <h3>Formen verbessern</h3>
+        <div data-show="textClean">
+          <label class="field" title="Gilt für alle Verbesserungen dieses Abschnitts, nur zusammen mit „Schrift &amp; Logos“">
+            <span>Reihenfolge zu „Schrift &amp; Logos“</span>
+            <select data-key="shapeOrder">
+              <option value="after">Nach der Schrift-/Logoerkennung (auch auf Schrift)</option>
+              <option value="before">Vor der Schrift-/Logoerkennung (Schrift bleibt unverändert)</option>
+            </select>
+          </label>
+          <p class="hint info">„Nach“: Glätten, Begradigen und Ruhige Linien gelten auch für die erkannte Schrift. „Vor“: Die Schriftbereiche (samt einbezogener Logo-Elemente) bleiben so, wie „Schrift &amp; Logos“ sie zeichnet. Im Modus Linien mit „Ruhige Linien“ meist „Vor“ wählen – sonst wird gefüllte Schrift zu Strichen.</p>
+        </div>
+        <div data-mode="vector">
+          <label class="check" title="Kleine Bilder per KI (Real-ESRGAN) vergrößern und Treppenstufen vor dem Schwellwert glätten"><input type="checkbox" data-key="smoothContours" /> Glatte Konturen (KI)</label>
+          <p class="hint info">Für kleine oder pixelige Vorlagen: Das Bild wird per KI vergrößert (bei Bildern unter 2048 px), die Treppenstufen der Pixel werden vor dem Schwellwert verwischt. Ergibt runde, ruhige Umrisse statt Zacken.</p>
+        </div>
+        <div data-mode="edges">
+          <label class="check"><input type="checkbox" data-key="lineClean" /> Ruhige Linien</label>
+          <div data-show="lineClean">
+            <label class="slider">
+              <span>Linien glätten <output data-for="lineSmoothMm"></output></span>
+              <input type="range" data-key="lineSmoothMm" min="0" max="2" step="0.05" />
+            </label>
+            <label class="slider">
+              <span>Kurze Striche entfernen <output data-for="lineMinMm"></output></span>
+              <input type="range" data-key="lineMinMm" min="0" max="5" step="0.1" />
+            </label>
+            <p class="hint info">Zeichnet jede Linie entlang ihrer Mitte neu: geglättet, mit gleichmäßiger Strichbreite, ohne Krümel, kurze Ausläufer und zittrige Kanten. Kürzere Striche als „Kurze Striche entfernen“ entfallen.</p>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" data-key="shapeFit" /> Formen begradigen (Geraden, Kreise, rechte Winkel)</label>
+        <div data-show="shapeFit">
+          <label class="slider">
+            <span>Toleranz <output data-for="shapeTolMm"></output></span>
+            <input type="range" data-key="shapeTolMm" min="0.02" max="0.6" step="0.01" />
+          </label>
+          <label class="check"><input type="checkbox" data-key="shapeSnap" /> Winkel einrasten (0°/45°/90°, rechte Winkel)</label>
+          <p class="hint info">Für Logos und Schilder: Kanten, die innerhalb der Toleranz gerade bzw. rund sind, werden zu exakten Geraden, Kreisbögen, Kreisen und Ellipsen; Ecken werden scharf. Feine, unregelmäßige Details bleiben unverändert. Höhere Toleranz = stärker begradigt, aber ungenauer.</p>
+        </div>
+      </section>
+
       <section class="group" data-mode="dither">
         <h3>Dithering</h3>
         <label class="field">

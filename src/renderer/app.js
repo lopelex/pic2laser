@@ -58,6 +58,15 @@ const DEFAULTS = Object.freeze({
   outlineOffsetMm: 2,
   outlineCloseMm: 2,
   outlineOnly: false,
+  // Formen verbessern
+  shapeFit: false,
+  shapeTolMm: 0.1,
+  shapeSnap: true,
+  shapeOrder: 'after', // „Formen verbessern“ zusammen mit „Schrift & Logos“: 'before' = erkannte Schrift bleibt unverändert, 'after' = gilt auch für die Schrift
+  smoothContours: false,
+  lineClean: false,
+  lineSmoothMm: 0.3,
+  lineMinMm: 1,
   // Motivkontur
   subjectLine: false,
   subjectLineMm: 0.3,
@@ -180,6 +189,9 @@ const FORMATTERS = {
   lineBoldMm: (v) => (Number(v) ? `${Number(v).toFixed(2)} mm` : 'aus'),
   lineWidthMm: (v) => `${Number(v).toFixed(2)} mm`,
   outlineOffsetMm: (v) => `${Number(v).toFixed(1)} mm`,
+  shapeTolMm: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
+  lineSmoothMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
+  lineMinMm: (v) => (Number(v) ? `< ${Number(v).toFixed(1).replace('.', ',')} mm` : 'aus'),
   outlineCloseMm: (v) => (Number(v) ? `${Number(v).toFixed(1)} mm` : 'aus'),
   subjectLineMm: (v) => `${Number(v).toFixed(2)} mm`,
   faceStrength: (v) => `${Math.round(Number(v) * 100)} %`,
@@ -1099,6 +1111,7 @@ const KEYS = {
   depth: (up, res) => `depth:${up}:${res}`,
   faces: (up, maskKey = null) => (maskKey ? `faces:${up}:cut:${maskKey}` : `faces:${up}`),
   text: (up, maskKey = null) => (maskKey ? `text:${up}:cut:${maskKey}` : `text:${up}`),
+  smooth: (up) => `upscale:smooth:${up}`, // „Glatte Konturen“: Vergrößerung nur für die Fläche
 };
 
 const textWanted = (s) => s.textClean && s.mode !== 'relief';
@@ -1238,6 +1251,9 @@ function applyLimits(s) {
 }
 
 const upscaleApplies = (bitmap) => Math.max(bitmap.width, bitmap.height) < 2048;
+/** „Glatte Konturen“ vergrößert per KI, wenn das nicht schon „KI-Vergrößerung“ getan hat. */
+const smoothUpscaleApplies = (s, size) => s.mode === 'vector' && s.smoothContours && !s.upscale
+  && upscaleApplies({ width: size.w ?? size.width, height: size.h ?? size.height });
 
 /**
  * Plant die Schritte eines Durchlaufs mit geschätzter Dauer.
@@ -1298,6 +1314,12 @@ function planSteps(s) {
   if (textWanted(s)) add('text', 'Texterkennung', 'text', 1, 900, KEYS.text(up, textMaskKey(s)));
 
   let src = work;
+  if (smoothUpscaleApplies(s, work)) {
+    const sc = Math.min(1, 1024 / Math.max(work.w, work.h));
+    const iw = Math.round(work.w * sc), ih = Math.round(work.h * sc);
+    add('upscale-smooth', 'KI-Vergrößerung (glatte Konturen)', 'upscale', Math.ceil(iw / 192) * Math.ceil(ih / 192), 450, KEYS.smooth(up));
+    src = { w: iw * 4, h: ih * 4 };
+  }
   if (s.mode === 'edges' && s.edgeMethod === 'ai') {
     const sc = Number(s.lineRes) / Math.max(work.w, work.h);
     src = { w: Math.round(work.w * sc), h: Math.round(work.h * sc) };
@@ -1409,8 +1431,8 @@ async function runProcess() {
     }
 
     // 4. Rasterverarbeitung im Worker (blockiert die Oberfläche nicht)
-    const { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil } =
-      await Run.track('render', Pipeline.render(source, mask, s, lineMask, s.textBlocks.length && source !== work ? work : null));
+    let { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil } =
+      await Run.track('render', Pipeline.render(source, mask, s, lineMask, textSourceFor(s, source, work)));
     if (stale()) return;
     const widthMm = Math.max(0.1, s.widthMm);
     const heightMm = (widthMm * h) / w;
@@ -1426,8 +1448,7 @@ async function runProcess() {
 
     // 5. Vektorisierung (Potrace im eigenen Prozess) – Füllung und Umrisslinie parallel
     const fillJob = trace
-      ? Run.track('trace', window.api.trace({ bits, w, h },
-        { turdSize: s.turdSize, alphaMax: s.alphaMax, optTolerance: s.optTolerance }, 'fill'))
+      ? Run.track('trace', window.api.trace({ bits, w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
       : null;
     const outlineJob = sil
       ? Run.track('trace-outline', window.api.trace({ bits: sil.bits, w: sil.w, h: sil.h }, {
@@ -1442,6 +1463,8 @@ async function runProcess() {
     if (fillRes.status === 'rejected') throw fillRes.reason;
     if (outlineRes.status === 'rejected') throw outlineRes.reason;
     const fillPath = fillRes.value;
+    // Formen begradigt: Rasterexporte (PNG/JPG/BMP) und Vereinigen sollen dieselben Formen zeigen wie das SVG
+    if (s.shapeFit && fillPath && bits) bits = rasterizePath(fillPath, w, h);
     // leere Silhouette (alles unter der Mindestgröße): keine Umrisslinie – sonst hätte das SVG einen Rand, die Rasterbilder nicht
     const outline = sil && String(outlineRes.value || '').trim() ? { d: outlineRes.value, pad: sil.pad } : null;
     if (sil && !outline && s.outlineOnly) toast('Kein Motiv für die Umrisslinie gefunden – das Ergebnis ist leer.', true);
@@ -1457,6 +1480,7 @@ async function runProcess() {
       // Relief: eigene Option „Weißen Hintergrund transparent“ (gilt für PNG/SVG)
       transparent: s.mode === 'relief' ? !!alpha8 : s.transparent,
       mmPerPx, outline, outlineOnly: !!(s.outline && s.outlineOnly), // für Rasterexporte mit Umrisslinie
+      textBlocks: s.textBlocks, // für „Formen verbessern vor Schrift & Logos“ beim Vereinigen
       totalWmm: totalW, totalHmm: totalH, // inkl. Umrisslinie (SVG-Gesamtgröße)
       settings: settingsSnap,
       // Rasterergebnisse ohne Umriss als PNG anzeigen (schärfer), sonst das SVG
@@ -1495,6 +1519,54 @@ async function runProcess() {
       refreshPerf(); // GPU/CPU je Modell und Cache-Größe aktualisieren
     }
   }
+}
+
+/**
+ * Vorlage für die Schriftbereiche: Ist die Bildquelle eine KI-Strichzeichnung, wird die Schrift
+ * aus dem Arbeitsbild gerechnet. Bei „Glatte Konturen“ ist die Quelle dasselbe Bild, nur per KI
+ * vergrößert – nach der Schrifterkennung bekommt auch die Schrift die Vergrößerung, davor bleibt
+ * sie wie ohne „Glatte Konturen“.
+ */
+function textSourceFor(s, source, work) {
+  if (!s.textBlocks.length || source === work) return null;
+  if (smoothUpscaleApplies(s, work) && s.shapeOrder !== 'before') return null;
+  return work;
+}
+
+/**
+ * Parameter für Potrace (inkl. „Formen begradigen“, Toleranz in Pixeln des Arbeitsbildes).
+ * Begradigen vor „Schrift & Logos“: Die Bereiche der Schrift (samt einbezogener Logo-Elemente)
+ * gehen in Pixeln mit; Konturen darin bleiben, wie die Schrifterkennung sie zeichnet.
+ */
+function traceParams(s, mmPerPx, w = 0, h = 0, textBlocks = null) {
+  const skip = s.shapeFit && s.shapeOrder === 'before' && s.textClean && textBlocks?.length && w && h
+    ? textBlocks.map((b) => {
+      // wie in cleanText: Schrift + „Logos einbeziehen“ (Vielfaches der Zeilenhöhe), mind. eine halbe Zeile
+      const m = Math.max(2, (b.lineH || 0) * h * Math.max(0.5, Number(s.textPad ?? 1)));
+      return [b.x1 * w - m, b.y1 * h - m, b.x2 * w + m, b.y2 * h + m];
+    })
+    : null;
+  return {
+    shapeSkip: skip,
+    turdSize: s.turdSize,
+    alphaMax: s.alphaMax,
+    optTolerance: s.optTolerance,
+    shapes: !!s.shapeFit,
+    shapeTol: Math.max(0.5, (Number(s.shapeTolMm) || 0.1) / mmPerPx),
+    shapeSnap: s.shapeSnap !== false,
+  };
+}
+
+/** SVG-Pfad (gerade/gerade-ungerade gefüllt) als Binärbild w × h (1 = schwarz). */
+function rasterizePath(d, w, h) {
+  const canvas = new OffscreenCanvas(w, h);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#000';
+  ctx.fill(new Path2D(d), 'evenodd');
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const bits = new Uint8Array(w * h);
+  for (let p = 0, i = 3; p < bits.length; p++, i += 4) bits[p] = data[i] >= 128 ? 1 : 0;
+  return bits;
 }
 
 function showResult(blob, pixelated) {
@@ -1760,6 +1832,12 @@ async function contentSource(s, bitmap, mask) {
     const facesKey = lineFacesKey(key, s, s.maskKey);
     return Run.track('lineart-faces', cached(facesKey, () =>
       AI.enhanceFacesLineArt(lineInput(), base, s.faces, s.faceStrength, Processing.faceFeatureLevels(s), s.lineStyle), s));
+  }
+  if (smoothUpscaleApplies(s, bitmap)) {
+    const key = KEYS.smooth(up);
+    if (!cacheOf(s).has(key)) await ensureModelReady('esrgan');
+    return Run.track('upscale-smooth', cached(key, () =>
+      AI.upscale(bitmap, (done, total) => Run.progress('upscale-smooth', done / total)), s));
   }
   if (s.mode === 'relief') {
     const key = KEYS.depth(up, s.depthRes);
@@ -2656,9 +2734,9 @@ async function composeMerged(inRun = false) {
     let fillPath = null;
     if (res.trace) {
       const st = base.settings;
-      fillPath = await window.api.trace({ bits: res.bits, w: res.w, h: res.h },
-        { turdSize: st.turdSize, alphaMax: st.alphaMax, optTolerance: st.optTolerance }, 'fill');
+      fillPath = await window.api.trace({ bits: res.bits, w: res.w, h: res.h }, traceParams(st, base.mmPerPx, res.w, res.h, base.textBlocks), 'fill');
       if (stale()) return;
+      if (st.shapeFit && fillPath) res.bits = rasterizePath(fillPath, res.w, res.h);
     }
     const doc = { w: base.w, h: base.h, widthMm: base.widthMm, fillPath, imageB64: res.imageB64, outline: base.outline };
     const preview = res.imagePng && !base.outline

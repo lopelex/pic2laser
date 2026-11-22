@@ -48,6 +48,24 @@ Alle KI-Funktionen laufen lokal und offline.
   die anderen Modelle malen dort Hautschattierung, die als Flecken erscheinen würde.
 - **Dithering / Relief:** Verfahren, Auflösung in DPI, Tiefen-Detail. Relief: „Weißen Hintergrund transparent“ –
   mit Freistellen gilt die Maske, sonst wird reines Weiß am Bildrand transparent (nur PNG/SVG, JPG/BMP bleiben weiß).
+- **Formen verbessern** (Abschnitt unter „Vektorisierung“). Mit „Schrift & Logos“ wählbar:
+  *Reihenfolge* nach der Schrift-/Logoerkennung (Standard: die Verbesserungen gelten auch für die
+  erkannte Schrift – sie wird aus dem KI-vergrößerten Bild gerechnet, mitbegradigt bzw. bei „Ruhige
+  Linien“ mitgeglättet) oder davor (die Schriftbereiche samt einbezogener Logo-Elemente bleiben so,
+  wie die Schrifterkennung sie zeichnet).
+  - *Formen begradigen* (Fläche und Linien): Kanten, die innerhalb der Toleranz (mm) gerade bzw.
+    rund sind, werden zu exakten Geraden, Kreisbögen, Kreisen und Ellipsen, Ecken werden scharf.
+    „Winkel einrasten“ richtet fast waagrechte/senkrechte/diagonale Kanten exakt aus (0°/45°/90°)
+    und macht fast rechte Winkel zwischen Nachbarkanten exakt rechtwinklig. Was zu keiner
+    Grundform passt (feine, unregelmäßige Details), bleibt die Potrace-Kurve. Rasterexporte und
+    Vereinigen zeigen dieselben Formen wie das SVG.
+  - *Glatte Konturen (KI)* (Fläche): vergrößert Bilder unter 2048 px per Real-ESRGAN (mitgeliefert,
+    nur für die Fläche, ohne „KI-Vergrößerung“ einschalten zu müssen) und verwischt die
+    Treppenstufen vor dem Schwellwert – runde, ruhige Umrisse statt Zacken bei kleinen Vorlagen.
+  - *Ruhige Linien* (Linien): jede Linie wird auf ihre Mittellinie reduziert, Ausläufer und
+    kurze Striche entfallen („Kurze Striche entfernen“ in mm), die Mittellinie wird geglättet
+    („Linien glätten“ in mm) und mit gleichmäßiger Breite (Median je Strich) neu gezeichnet –
+    vor „Linien verstärken“ bzw. der Linienstärke.
 - **Ausgabegröße:** Breite oder Höhe in mm (Seitenverhältnis bleibt erhalten); Weiß optional
   transparent.
 
@@ -262,6 +280,7 @@ vorübergehend `mainWindow.webContents.openDevTools()` einfügen.
 ```
 Main-Prozess (src/main/main.js)
  ├─ Utility-Prozess trace-worker.js   Potrace-Vektorisierung
+ │   └─ shape-fit.js                  „Formen begradigen“: Geraden/Bögen/Kreise/Ellipsen anpassen
  ├─ Utility-Prozess model-worker.js   KI-Inferenz (onnxruntime-node mit DirectML/CoreML oder CPU,
  │                                    sonst onnxruntime-web/WASM)
  ├─ models.js                         Modell-Registry, Downloads, Steuerung des KI-Prozesses
