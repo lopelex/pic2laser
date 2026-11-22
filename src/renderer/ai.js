@@ -456,11 +456,29 @@ const AI = (() => {
       if (count < 12 || bh < 3 || sum / count < 0.55) continue;
       // „Unclip“: DB-Kerne sind schmaler als der Text → um A·1,5/U erweitern
       const d = (bw * bh * 1.5) / (2 * (bw + bh));
+      // Riesige „Zeilen“ (über ein Viertel der Bildhöhe): Fehltreffer oder Schrift, die auch ohne
+      // Sonderbehandlung sauber bleibt – als Schriftbereich würde fast das ganze Bild hart gefüllt
+      if (bh + 2 * d > 0.25 * h) continue;
       boxes.push({ x1: x0 - d, y1: y0 - d, x2: x1 + 1 + d, y2: y1 + 1 + d, lineH: bh + 2 * d });
     }
 
+    // Gesichter hält das Modell gern für Schrift (gemessen: Porträt → ein „Textblock“ über Augen und
+    // Nase mit derselben Sicherheit wie echte Schrift). Im Ergebnis entstünde dort ein hart gefülltes
+    // Rechteck. Bereiche, die überwiegend in einem erkannten Gesicht liegen, deshalb verwerfen.
+    let kept = boxes;
+    if (boxes.length) {
+      const faces = await detectFaces(source).catch(() => []);
+      if (faces.length) {
+        kept = boxes.filter((b) => !faces.some((f) => {
+          const iw = Math.max(0, Math.min(b.x2 / w, f.x2) - Math.max(b.x1 / w, f.x1));
+          const ih = Math.max(0, Math.min(b.y2 / h, f.y2) - Math.max(b.y1 / h, f.y1));
+          return iw * ih > 0.5 * ((b.x2 - b.x1) / w) * ((b.y2 - b.y1) / h);
+        }));
+      }
+    }
+
     // Benachbarte Zeilen/Wörter zu Blöcken zusammenfassen
-    let blocks = boxes.map((b) => ({ ...b }));
+    let blocks = kept.map((b) => ({ ...b }));
     let merged = true;
     while (merged) {
       merged = false;

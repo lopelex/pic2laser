@@ -5,6 +5,25 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.8.3 – 22.11.2026
+
+### Verbessert
+- **Historie öffnet sofort:** Beim Öffnen eines Eintrags erscheint das gespeicherte Ergebnis direkt (gemessen
+  ca. 0,2 s statt bis zu 28 s), die Neuberechnung läuft im Hintergrund. Die Historienliste wird schneller geladen.
+- **„Einstellungen zurücksetzen“** sitzt jetzt neben der Preset-Überschrift; der Tooltip weist darauf hin, dass
+  die Exportformate erhalten bleiben.
+
+### Behoben
+- **Festplatten-Cache für BEN2:** Ergebnisse von „Motiv – gut & sparsam (BEN2)“ und „Himmel entfernen – Motiv
+  geschützt (BEN2)“ wurden nie gespeichert (Datentyp Float16) und bei jedem Öffnen neu berechnet (ca. 20 s).
+  Jetzt kommen sie aus dem Cache (unter 0,1 s). Alle übrigen Modelle wurden geprüft: Cache-Treffer und
+  identisches Ergebnis.
+- **Schrift & Logos erzeugte Rechtecke im Ergebnis:** Im Schriftbereich wurde auch der Hintergrund hart
+  gefüllt (z. B. Wiese hinter weißer Schrift schwarz). Jetzt werden nur die Buchstaben ersetzt, helle Schrift
+  wird hell gezeichnet, und Logo-Elemente werden nur bei dunkler Schrift übernommen.
+- **Schrifterkennung auf Gesichtern:** Porträts wurden teils als Schrift erkannt (hart gefülltes Gesicht,
+  weiße Quadrate um Staubpunkte). Bereiche auf erkannten Gesichtern und riesige „Zeilen“ werden jetzt ignoriert.
+
 ## 1.8.2 – 22.11.2026
 
 ### Neu

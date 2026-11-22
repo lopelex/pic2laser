@@ -19,6 +19,8 @@ const TYPES = {
   Float32Array, Float64Array, Int8Array, Uint8Array, Int16Array, Uint16Array,
   Int32Array, Uint32Array, BigInt64Array, BigUint64Array,
 };
+// fp16-Modelle (z. B. BEN2) liefern Float16Array – ohne diesen Eintrag würden sie nie gespeichert
+if (typeof Float16Array === 'function') TYPES.Float16Array = Float16Array;
 
 let indexPromise = null; // Promise<Map name -> { size, t }>
 let writing = Promise.resolve();
@@ -98,7 +100,10 @@ function put(key, result) {
     const parts = [];
     for (const [n, r] of Object.entries(result)) {
       const type = r.data.constructor.name;
-      if (!TYPES[type]) return; // unbekannter Typ – nicht speichern
+      if (!TYPES[type]) { // unbekannter Typ – nicht speichern (sonst wird diese Berechnung jedes Mal wiederholt)
+        console.warn(`KI-Cache: Ergebnistyp ${type} wird nicht unterstützt`);
+        return;
+      }
       head[n] = { type, dims: r.dims, bytes: r.data.byteLength };
       parts.push(bytesOf(r.data));
     }

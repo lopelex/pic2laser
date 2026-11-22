@@ -388,18 +388,17 @@ async function readMeta(id) {
 ipcMain.handle('history-list', async () => {
   await fs.mkdir(HISTORY_DIR(), { recursive: true });
   const ids = (await fs.readdir(HISTORY_DIR())).filter((d) => ID_PATTERN.test(d));
-  const entries = [];
-  for (const id of ids) {
+  // alle Einträge gleichzeitig lesen (bei vielen Einträgen deutlich schneller als nacheinander)
+  const entries = (await Promise.all(ids.map(async (id) => {
     try {
-      const meta = await readMeta(id);
-      let thumb = null;
-      try {
-        const buf = await fs.readFile(path.join(entryDir(id), 'thumb.png'));
-        thumb = `data:image/png;base64,${buf.toString('base64')}`;
-      } catch { /* kein Vorschaubild */ }
-      entries.push({ ...meta, thumb });
-    } catch { /* defekter Eintrag – überspringen */ }
-  }
+      const [meta, thumb] = await Promise.all([
+        readMeta(id),
+        fs.readFile(path.join(entryDir(id), 'thumb.png'))
+          .then((buf) => `data:image/png;base64,${buf.toString('base64')}`, () => null), // kein Vorschaubild
+      ]);
+      return { ...meta, thumb };
+    } catch { return null; } // defekter Eintrag – überspringen
+  }))).filter(Boolean);
   entries.sort((a, b) => (b.updated || 0) - (a.updated || 0));
   return entries;
 });
@@ -469,7 +468,18 @@ ipcMain.handle('history-load', async (_e, id) => {
   return { meta, original: data };
 });
 
-// Eintrag mit allen Dateien kopieren (neue ID, Name mit „(Kopie)“)
+// Gespeichertes Ergebnisbild eines Eintrags – wird beim Öffnen sofort gezeigt, bis neu gerechnet ist
+ipcMain.handle('history-load-preview', async (_e, id) => {
+  const dir = entryDir(id);
+  try {
+    return { data: await fs.readFile(path.join(dir, 'result.png')), type: 'image/png' };
+  } catch {
+    try {
+      return { data: await fs.readFile(path.join(dir, 'result.svg')), type: 'image/svg+xml' };
+    } catch { return null; }
+  }
+});
+
 // Gespeichertes Ergebnis (SVG) eines Eintrags – zum Vereinigen mit dem aktuellen Ergebnis
 ipcMain.handle('history-load-result', async (_e, id) => {
   const meta = await readMeta(id);
@@ -477,6 +487,7 @@ ipcMain.handle('history-load-result', async (_e, id) => {
   return { meta, svg };
 });
 
+// Eintrag mit allen Dateien kopieren (neue ID, Name mit „(Kopie)“)
 ipcMain.handle('history-duplicate', async (_e, id) => {
   const meta = await readMeta(id);
   const newId = crypto.randomUUID();

@@ -742,10 +742,50 @@ const Processing = (() => {
   }
 
   /**
-   * Schrift & Logos sauber darstellen: In jedem Textblock wird das Bild mit einem
-   * lokal optimalen Schwellwert (Otsu) gefüllt – scharfe, gefüllte Buchstaben statt
-   * Rasterpunkten oder Umrisslinien. Grafikelemente, die direkt an die Schrift
-   * grenzen (Logo-Symbole), werden über zusammenhängende Flächen mit erfasst.
+   * Flächen (8er-Nachbarschaft) im Rechteck x0..x1 × y0..y1, deren Pixel `ink` erfüllen und die den
+   * Rand des Rechtecks nicht berühren. Rückgabe: Maske in Rechteckgröße und Anzahl der Pixel.
+   */
+  function innerParts(gray, w, x0, y0, x1, y1, ink) {
+    const rw = x1 - x0 + 1, rh = y1 - y0 + 1;
+    const label = new Int32Array(rw * rh); // Flächennummer + 1
+    const stack = new Int32Array(rw * rh);
+    const touches = [];
+    for (let s0 = 0; s0 < rw * rh; s0++) {
+      if (label[s0] || !ink(gray[(y0 + ((s0 / rw) | 0)) * w + x0 + (s0 % rw)])) continue;
+      const id = touches.length + 1;
+      let edge = false, sp = 0;
+      label[s0] = id; stack[sp++] = s0;
+      while (sp) {
+        const i = stack[--sp];
+        const x = i % rw, y = (i / rw) | 0;
+        if (x === 0 || y === 0 || x === rw - 1 || y === rh - 1) edge = true;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= rw || ny >= rh) continue;
+            const k = ny * rw + nx;
+            if (!label[k] && ink(gray[(y0 + ny) * w + x0 + nx])) { label[k] = id; stack[sp++] = k; }
+          }
+        }
+      }
+      touches.push(edge);
+    }
+    const mask = new Uint8Array(rw * rh);
+    let count = 0;
+    for (let k = 0; k < mask.length; k++) {
+      if (label[k] && !touches[label[k] - 1]) { mask[k] = 1; count++; }
+    }
+    return { mask, count };
+  }
+
+  /**
+   * Schrift & Logos sauber darstellen: In jedem Textblock werden die Buchstaben mit einem lokal
+   * optimalen Schwellwert (Otsu) bestimmt und scharf gefüllt – statt Rasterpunkten oder Umrisslinien.
+   * Als Buchstaben zählen nur Flächen, die ganz im Schriftbereich liegen. Der Hintergrund läuft über
+   * den Rand hinaus und behält seine Darstellung – sonst würde er im Kasten hart gefüllt und der
+   * Schriftbereich als Rechteck sichtbar. Helle Schrift auf dunklem Grund wird erkannt und hell
+   * gezeichnet. Grafikelemente, die direkt an die Schrift grenzen (Logo-Symbole), werden über
+   * zusammenhängende Flächen mit erfasst.
    * pad: Suchradius für Logo-Elemente in Zeilenhöhen; bold: Schwellwert-Versatz (+ = fetter).
    */
   function cleanText(bits, gray, w, h, blocks, pad, bold) {
@@ -759,13 +799,25 @@ const Processing = (() => {
       const m = Math.round(lineH * 0.15);
       const tx0 = Math.max(0, bx0 - m), ty0 = Math.max(0, by0 - m);
       const tx1 = Math.min(w - 1, bx1 + m), ty1 = Math.min(h - 1, by1 + m);
-      const t = otsuRect(gray, w, tx0, ty0, tx1, ty1) + bold;
+      const tw = tx1 - tx0 + 1;
+      const otsu = otsuRect(gray, w, tx0, ty0, tx1, ty1);
+
+      // Schrift dunkel oder hell? Die Seite der Schwelle, deren Flächen im Bereich liegen
+      const darkParts = innerParts(gray, w, tx0, ty0, tx1, ty1, (v) => v < otsu);
+      const lightParts = innerParts(gray, w, tx0, ty0, tx1, ty1, (v) => v >= otsu);
+      const dark = darkParts.count >= lightParts.count;
+      const t = dark ? otsu + bold : otsu - bold; // „fetter“ = mehr Pixel auf der Seite der Schrift
+      const glyphs = !bold ? (dark ? darkParts : lightParts)
+        : innerParts(gray, w, tx0, ty0, tx1, ty1, dark ? (v) => v < t : (v) => v >= t);
+      if (!glyphs.count) continue; // nichts Abgegrenztes gefunden – Bereich unverändert lassen
+      const ink = dark ? 1 : 0; // Farbe der Schrift im Ergebnis (1 = schwarz)
 
       // übernommene Logo-Elemente (Fenster, Pixel-Labels, angenommene Komponenten)
       let logo = null;
 
-      // Logo-Elemente neben der Schrift einbeziehen
-      if (pad > 0) {
+      // Logo-Elemente neben der Schrift einbeziehen – nur bei dunkler Schrift: Bei heller Schrift
+      // auf einem Foto wären das helle Bildteile daneben (Äste, Wiese), keine Logos
+      if (pad > 0 && dark) {
         const p = Math.round(lineH * pad);
         const wx0 = Math.max(0, bx0 - p), wy0 = Math.max(0, by0 - p);
         const wx1 = Math.min(w - 1, bx1 + p), wy1 = Math.min(h - 1, by1 + p);
@@ -826,7 +878,7 @@ const Processing = (() => {
         logo = { wx0, wy0, ww, label, used };
       }
 
-      // Schwarz werden nur: Schrift im Textbereich + genau die übernommenen Logo-Elemente
+      // Schrift werden nur: abgegrenzte Buchstaben im Textbereich + genau die übernommenen Logo-Elemente
       bx0 = Math.min(bx0, tx0); by0 = Math.min(by0, ty0);
       bx1 = Math.max(bx1, tx1); by1 = Math.max(by1, ty1);
       const rw = bx1 - bx0 + 1, rh = by1 - by0 + 1;
@@ -835,8 +887,7 @@ const Processing = (() => {
         const gy = by0 + y;
         for (let x = 0; x < rw; x++) {
           const gx = bx0 + x;
-          const i = gy * w + gx;
-          let on = gx >= tx0 && gx <= tx1 && gy >= ty0 && gy <= ty1 && gray[i] < t;
+          let on = gx >= tx0 && gx <= tx1 && gy >= ty0 && gy <= ty1 && glyphs.mask[(gy - ty0) * tw + gx - tx0] === 1;
           if (!on && logo) {
             const lx = gx - logo.wx0, ly = gy - logo.wy0;
             if (lx >= 0 && ly >= 0 && lx < logo.ww) {
@@ -847,15 +898,15 @@ const Processing = (() => {
           tm[y * rw + x] = on ? 1 : 0;
         }
       }
-      // Schrift schwarz, schmaler Saum darum weiß (scharfe Kanten); der übrige
-      // Hintergrund behält seine Darstellung (Rasterung/Linien) – keine weißen Kästen
+      // Schrift in ihrer Farbe, schmaler Saum darum in der Gegenfarbe (scharfe Kanten); der übrige
+      // Hintergrund behält seine Darstellung (Rasterung/Linien) – keine Kästen
       const halo = boxDilate(tm, rw, rh, Math.max(1, Math.round(lineH * 0.08)));
       for (let y = 0; y < rh; y++) {
         for (let x = 0; x < rw; x++) {
           const k = y * rw + x;
           const i = (by0 + y) * w + bx0 + x;
-          if (tm[k]) bits[i] = 1;
-          else if (halo[k]) bits[i] = 0;
+          if (tm[k]) bits[i] = ink;
+          else if (halo[k]) bits[i] = 1 - ink;
         }
       }
     }

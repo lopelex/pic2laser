@@ -2798,14 +2798,21 @@ function iconButton(text, title, onClick) {
 
 async function openHistoryEntry(id) {
   try {
+    // gespeichertes Ergebnisbild parallel laden und sofort zeigen – die Neuberechnung läuft dahinter
+    const preview = window.api.history.loadPreview(id).catch(() => null);
     const { meta, original } = await window.api.history.load(id);
     await loadImage(meta.originalName || `${meta.name}.png`, new Uint8Array(original), {
       historyId: id,
       settings: meta.settings,
     });
+    const source = state.source;
+    preview.then((p) => {
+      // nur, solange dieser Eintrag offen ist und noch kein frisches Ergebnis vorliegt
+      if (!p || state.source !== source || state.historyId !== id || state.result) return;
+      showResult(new Blob([p.data], { type: p.type }), p.type === 'image/png' && meta.settings?.mode === 'dither');
+    });
     // war das Ergebnis mit einem anderen Eintrag vereinigt: wiederherstellen
     if (meta.merge && state.historyId === id) {
-      const source = state.source;
       try {
         const layer = await loadMergeLayer(meta.merge.id);
         if (state.source !== source) return; // inzwischen anderes Bild geöffnet
