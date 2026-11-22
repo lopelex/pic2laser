@@ -299,19 +299,30 @@ const Restore = (() => {
   /* Gesichter: Gesichtspunkte (YuNet) & Restaurierung (RestoreFormer++) */
   /* ---------------------------------------------------------------- */
 
-  /** Schutzzonen für die Kratzer-Erkennung: Augen mit Brauen, Nase, Mund (aus den 5 Gesichtspunkten). */
-  function protectZones(faces) {
+  /**
+   * Schutzzonen für die Kratzer-Erkennung: Augen mit Brauen, Nase, Mund (aus den 5 Gesichtspunkten).
+   * parsed (optional): je Gesicht [Auge, Auge, Nase, Mund] per Face Parsing – vorhandene Zonen
+   * ersetzen die geschätzten.
+   */
+  function protectZones(faces, parsed = null) {
     const zones = [];
-    for (const f of faces) {
+    faces.forEach((f, i) => {
       const [le, re, nose, ml, mr] = f.kps;
       const ed = Math.hypot(re[0] - le[0], re[1] - le[1]);
-      for (const eye of [le, re]) zones.push({ cx: eye[0], cy: eye[1] - ed * 0.15, rx: ed * 0.45, ry: ed * 0.5 });
-      zones.push({ cx: nose[0], cy: nose[1], rx: ed * 0.32, ry: ed * 0.3 });
       const mw = Math.hypot(mr[0] - ml[0], mr[1] - ml[1]);
-      zones.push({ cx: (ml[0] + mr[0]) / 2, cy: (ml[1] + mr[1]) / 2, rx: mw / 2 + ed * 0.15, ry: ed * 0.28 });
-    }
+      const est = [
+        ...[le, re].map((eye) => ({ cx: eye[0], cy: eye[1] - ed * 0.15, rx: ed * 0.45, ry: ed * 0.5 })),
+        { cx: nose[0], cy: nose[1], rx: ed * 0.32, ry: ed * 0.3 },
+        { cx: (ml[0] + mr[0]) / 2, cy: (ml[1] + mr[1]) / 2, rx: mw / 2 + ed * 0.15, ry: ed * 0.28 },
+      ];
+      const exact = parsed?.[i];
+      est.forEach((z, k) => zones.push(exact?.[k] || z));
+    });
     return zones;
   }
+
+  /** Ausrichtung eines Gesichts (5 Punkte) auf die FFHQ-Vorlage 512×512: { a, b, tx, ty }. */
+  const alignFace = (kps) => similarity(kps, TEMPLATE);
 
   /** Gesichter mit 5 Punkten (Augen, Nase, Mundwinkel), Koordinaten in Pixeln der Quelle. */
   async function landmarks(source, minScore = 0.7) {
@@ -383,8 +394,10 @@ const Restore = (() => {
   /**
    * Restauriert alle Gesichter der Canvas (in place).
    * strength 0..1: Mischung zwischen Original und restauriertem Gesicht.
+   * model: 'restoreformer' (RestoreFormer++) oder 'codeformer'; fidelity 0..1 nur für CodeFormer
+   * (0 = stärker restauriert, 1 = näher am Original).
    */
-  async function restoreFaces(canvas, faces, strength, onProgress) {
+  async function restoreFaces(canvas, faces, strength, onProgress, { model = 'restoreformer', fidelity = 0.7 } = {}) {
     const ctx = canvas.getContext('2d');
     let done = 0;
     const check = AI.guard();
@@ -411,7 +424,10 @@ const Restore = (() => {
       }
 
       // 2. Restaurieren (Werte −1..1)
-      const out = await AI.run('restoreformer', { input: { data: input, dims: [1, 3, 512, 512] } });
+      const feeds = { input: { data: input, dims: [1, 3, 512, 512] } };
+      const out = model === 'codeformer'
+        ? (await AI.run('codeformer', { ...feeds, weight: { data: new Float64Array([fidelity]), dims: [], type: 'float64' } }, ['output'])).output
+        : await AI.run('restoreformer', feeds);
       const img = cctx.createImageData(512, 512);
       for (let p = 0; p < n; p++) {
         img.data[p * 4] = clamp255((out.data[p] + 1) * 127.5);
@@ -472,5 +488,5 @@ const Restore = (() => {
     if (denoiseTile) DN_TILE = denoiseTile;
   }
 
-  return { configure, get MAX_SIDE() { return MAX_SIDE; }, workingCopy, denoise, denoiseTiles, detectScratches, protectZones, inpaint, inpaintTiles, landmarks, restoreFaces };
+  return { configure, get MAX_SIDE() { return MAX_SIDE; }, workingCopy, denoise, denoiseTiles, detectScratches, protectZones, alignFace, inpaint, inpaintTiles, landmarks, restoreFaces };
 })();

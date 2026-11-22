@@ -46,7 +46,10 @@ Alle KI-Funktionen laufen lokal und offline.
   Mit „Gesichtszüge hervorheben“ wird jedes Gesicht mit dem gewählten Modell neu gezeichnet;
   die vergrößerte Nachzeichnung von Mund, Nase, Kinn und Wangen nutzt nur *Feine Linien* –
   die anderen Modelle malen dort Hautschattierung, die als Flecken erscheinen würde.
-- **Dithering / Relief:** Verfahren, Auflösung in DPI, Tiefen-Detail. Relief: „Weißen Hintergrund transparent“ –
+- **Dithering / Relief:** Verfahren, Auflösung in DPI, Tiefen-Detail. Relief: **Tiefenmodell** *Standard*
+  (Depth Anything V2 Small, Apache-2.0), *Fein* (Base, ca. 2–3× langsamer) oder *Sehr fein* (Large, ca. 7–9×
+  langsamer, 2–3,6 GB RAM); Base und Large stehen unter CC BY-NC 4.0 (nicht kommerziell). Reicht der Speicher
+  nicht, wird automatisch das nächstkleinere Modell genommen (`DEPTH_FALLBACK` in app.js). „Weißen Hintergrund transparent“ –
   mit Freistellen gilt die Maske, sonst wird reines Weiß am Bildrand transparent (nur PNG/SVG, JPG/BMP bleiben weiß).
 - **Formen verbessern** (Abschnitt unter „Vektorisierung“). Mit „Schrift & Logos“ wählbar:
   *Reihenfolge* nach der Schrift-/Logoerkennung (Standard: die Verbesserungen gelten auch für die
@@ -109,8 +112,13 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 - **Rauschen & Körnung entfernen** (SCUNet).
 - **Kratzer & Staub entfernen:** klassische Erkennung dünner Linien und Flecken, Auffüllen per
   KI (LaMa). Augen mit Brauen, Nase und Mund bleiben geschützt. Regler „Empfindlichkeit“.
-- **Gesichter restaurieren** (RestoreFormer++): Gesicht über 5 Gesichtspunkte (YuNet)
-  ausgerichtet, restauriert und mit den Tonwerten des Originals zurückgesetzt. Regler „Stärke“.
+  **Gesichtsschutz:** *Geschätzt* (Ellipsen aus den 5 Gesichtspunkten) oder *Genau* (Face Parsing,
+  nicht kommerziell): die Zonen liegen dann genau auf Augen/Brauen, Nase und Mund; nicht gefundene
+  Merkmale fallen auf die Schätzung zurück.
+- **Gesichter restaurieren:** Gesicht über 5 Gesichtspunkte (YuNet) ausgerichtet, restauriert und
+  mit den Tonwerten des Originals zurückgesetzt. Regler „Stärke“. **Modell:** *RestoreFormer++*
+  (Apache-2.0) oder *CodeFormer* (S-Lab License, nicht kommerziell) mit Regler **„Treue zum
+  Original“** (niedrig = stärker restauriert, hoch = Person bleibt besser erkennbar; Standard 70 %).
 - Die Originalansicht zeigt das restaurierte Bild; darunter steht, was gemacht wurde.
 
 ## KI-Verbesserung
@@ -123,6 +131,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   Brauen und Gesamtgesicht. Im Modus Linien wird jedes Gesicht zusätzlich in hoher Auflösung
   nachgezeichnet.
 - **Reihenfolge:** vor dem Freistellen (ganzes Bild) oder danach (nur Gesichter im Motiv).
+- **Merkmale finden:** *Geschätzt* (feste Anteile des Gesichtsrahmens) oder *Genau* (Face Parsing,
+  BiSeNet, nicht kommerziell): jedes Gesicht wird in Haut, Augen, Brauen, Nase und Lippen zerlegt;
+  Mund, Nase, Kinn und Wangen werden genau dort verstärkt bzw. nachgezeichnet.
 - Eigene Regler für **Mund, Nase, Kinn und Wangen** (0 = aus). Auf glatter Haut werden Poren
   und Sommersprossen nicht mitverstärkt.
 
@@ -147,9 +158,13 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 ## Presets
 
-- **29 Vorlagen**, gegliedert nach Eingangsbild: Logos, Schrift & Grafik · Porträts & Personen ·
+- **40 Vorlagen**, gegliedert nach Eingangsbild: Logos, Schrift & Grafik · Porträts & Personen ·
   Tiere · Fotos & Landschaft · Material (Holz, Schiefer/Glas/Alu, Leder, Acryl) ·
   Schneiden & Relief. Jede Vorlage hat eine kurze Beschreibung.
+- Darunter Vorlagen für Schilder/Piktogramme (Formen begradigen), pixelige Logos (Glatte Konturen),
+  Gummistempel (invertiert), Fahrzeuge mit Schriftzug, Gebäude mit geraden Linien, Ausmalbilder,
+  Porträt als Tuschezeichnung oder Bleistiftskizze, freigestelltes Relief als transparentes PNG
+  und Relief mit maximalen Details (Depth Anything V2 Large, nicht kommerziell).
 - **Eigene Presets** speichern, überschreiben und löschen. Der Preset-Bereich bleibt oben immer
   sichtbar; nach Änderungen erscheint ein Hinweis.
 
@@ -242,9 +257,12 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 | Mitgeliefert | Download bei Bedarf (geprüft per SHA-256) |
 |---|---|
-| U²-Net, Informative Drawings (anime), Real-ESRGAN, MobileSAM, UltraFace, YuNet, PaddleOCR-Detektor | Informative Drawings (contour, opensketch), U²-Net Portrait, TEED, MODNet, IS-Net, BiRefNet lite, BEN2 Base, SAM 2.1 Small, Depth Anything V2 Small, SCUNet, LaMa, RestoreFormer++ |
+| U²-Net, Informative Drawings (anime), Real-ESRGAN, MobileSAM, UltraFace, YuNet, PaddleOCR-Detektor | Informative Drawings (contour, opensketch), U²-Net Portrait, TEED, MODNet, IS-Net, BiRefNet lite, BEN2 Base, SAM 2.1 Small, Depth Anything V2 Small, SCUNet, LaMa, RestoreFormer++; **nicht kommerziell:** Depth Anything V2 Base/Large, CodeFormer, BiSeNet Face Parsing |
 
-- Alle Modelle sind für kommerzielle Nutzung lizenziert (MIT, Apache-2.0, BSD-3).
+- Mitgelieferte Modelle und die Standard-Auswahl sind für kommerzielle Nutzung lizenziert (MIT, Apache-2.0, BSD-3).
+- Modelle mit nicht-kommerzieller Lizenz sind nur zusätzlich wählbar (nie Standard), werden nicht mitgeliefert,
+  sondern bei Bedarf von der Quelle geladen, und sind in der Auswahl („· NC“ mit orangem Hinweis) und im
+  Modell-Dialog (orange Lizenz) gekennzeichnet. In der Registry (`src/main/models.js`) tragen sie `nc: true`.
 - Im Bereich „KI-Modelle“: Status, Größe, Speicherbedarf; Laden und Entfernen per Klick.
 
 ## Plattformen

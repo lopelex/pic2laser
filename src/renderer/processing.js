@@ -575,9 +575,22 @@ const Processing = (() => {
     ],
   };
 
-  /** Bereiche eines Merkmals für ein Gesicht (relativ zum Bild). */
+  /**
+   * Bereiche eines Merkmals für ein Gesicht (relativ zum Bild). Mit Face Parsing (f.parts) liegt
+   * die Ellipse genau auf dem Merkmal, sonst wird sie aus dem Gesichtsrahmen geschätzt.
+   */
   function faceFeatureRegions(f, key, forLines = false) {
     const fw = f.x2 - f.x1, fh = f.y2 - f.y1, fcx = (f.x1 + f.x2) / 2;
+    const exact = f.parts?.[key];
+    if (exact && exact.length === (FACE_FEATURES[key] || []).length) {
+      return FACE_FEATURES[key].map((d, i) => {
+        const e = exact[i];
+        return {
+          cx: e.cx, cy: e.cy, rx: forLines ? e.lrx : e.rx, ry: forLines ? e.lry : e.ry,
+          rad: d.rad, dark: d.dark, light: d.light, floor: d.floor || 0, inner: d.inner || 0,
+        };
+      });
+    }
     return (FACE_FEATURES[key] || []).map((d) => ({
       cx: fcx + d.dx * fw,
       cy: f.y1 + d.y * fh,

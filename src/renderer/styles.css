@@ -563,3 +563,7 @@ body.ctrl-drag #img-original:active { cursor: grabbing !important; }
 .perf-status:empty { display: none; }
 .perf-cache-row { margin-top: 8px; align-items: center; }
 .perf-cache-row .perf-status { margin: 0; }
+
+/* Hinweis auf nicht-kommerzielle Modell-Lizenz */
+.hint.nc { color: #f59e0b; margin-bottom: 10px; }
+.model-license.nc { color: #f59e0b; }

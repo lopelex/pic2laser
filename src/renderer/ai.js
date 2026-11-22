@@ -687,16 +687,172 @@ const AI = (() => {
   }
 
   /* ---------------------------------------------------------------- */
+  /* Face Parsing (BiSeNet, CelebAMask-HQ-Klassen)                    */
+  /* ---------------------------------------------------------------- */
+
+  const PARSE = 512;
+  // Klassen: 1 Haut, 2/3 Braue l/r, 4/5 Auge l/r, 10 Nase, 11 Mundinneres, 12/13 Ober-/Unterlippe
+  const PARSE_GROUPS = {
+    skin: [1], browL: [2], browR: [3], eyeL: [4], eyeR: [5], nose: [10], mouth: [11, 12, 13],
+  };
+
+  /**
+   * Zerlegt ein Gesicht in Merkmale. m: DOMMatrix Quelle → 512×512-Ausschnitt (Gesicht mittig,
+   * aufrecht). Rückgabe je Gruppe (siehe PARSE_GROUPS) der robuste Begrenzungsrahmen in
+   * Quellkoordinaten { x1, y1, x2, y2, cx, cy, n } oder null, wenn das Merkmal nicht zu sehen ist.
+   */
+  async function parseFace(source, m) {
+    const c = new OffscreenCanvas(PARSE, PARSE);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, PARSE, PARSE);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.setTransform(m);
+    ctx.drawImage(source, 0, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const rgba = ctx.getImageData(0, 0, PARSE, PARSE).data;
+    const out = await run('faceparse', { input: { data: toNCHW(rgba, PARSE, PARSE, IMAGENET), dims: [1, 3, PARSE, PARSE] } }, ['output']);
+    const logits = out.output.data;
+    const C = out.output.dims[1], n = PARSE * PARSE;
+    const cls2group = new Map();
+    for (const [g, ids] of Object.entries(PARSE_GROUPS)) for (const id of ids) cls2group.set(id, g);
+
+    // jede 2. Zeile/Spalte genügt für die Rahmen; Punkte zurück in Quellkoordinaten
+    const inv = m.inverse();
+    const pts = Object.fromEntries(Object.keys(PARSE_GROUPS).map((g) => [g, { xs: [], ys: [] }]));
+    for (let y = 0; y < PARSE; y += 2) {
+      for (let x = 0; x < PARSE; x += 2) {
+        const p = y * PARSE + x;
+        let best = 0, bv = -Infinity;
+        for (let k = 0; k < C; k++) {
+          const v = logits[k * n + p];
+          if (v > bv) { bv = v; best = k; }
+        }
+        const g = cls2group.get(best);
+        if (!g) continue;
+        pts[g].xs.push(inv.a * x + inv.c * y + inv.e);
+        pts[g].ys.push(inv.b * x + inv.d * y + inv.f);
+      }
+    }
+    const q = (arr, t) => arr[Math.min(arr.length - 1, Math.max(0, Math.round((arr.length - 1) * t)))];
+    const parts = {};
+    for (const [g, { xs, ys }] of Object.entries(pts)) {
+      if (xs.length < 6) { parts[g] = null; continue; }
+      xs.sort((a, b) => a - b);
+      ys.sort((a, b) => a - b);
+      // 2-/98-%-Quantile: einzelne Fehlpixel verschieben den Rahmen nicht
+      const x1 = q(xs, 0.02), x2 = q(xs, 0.98), y1 = q(ys, 0.02), y2 = q(ys, 0.98);
+      parts[g] = { x1, y1, x2, y2, cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, n: xs.length };
+    }
+    return parts;
+  }
+
+  /** Augenbereich (Auge + Braue) einer Seite aus den Merkmalen. */
+  function eyeRegion(p, side) {
+    const parts = [p[`eye${side}`], p[`brow${side}`]].filter(Boolean);
+    if (!parts.length) return null;
+    const x1 = Math.min(...parts.map((r) => r.x1)), x2 = Math.max(...parts.map((r) => r.x2));
+    const y1 = Math.min(...parts.map((r) => r.y1)), y2 = Math.max(...parts.map((r) => r.y2));
+    return { x1, y1, x2, y2, cx: (x1 + x2) / 2, cy: (y1 + y2) / 2 };
+  }
+
+  /**
+   * Genaue Lage von Mund, Nase, Kinn und Wangen für „Gesichtszüge hervorheben“ per Face Parsing.
+   * faces: UltraFace-Rahmen (relativ). Ergänzt je Gesicht `parts` (relativ zum Bild):
+   * { mouth: [{ cx, cy, rx, ry, lrx, lry }], nose: [...], chin: [...], cheeks: [links, rechts] }
+   * (lrx/lry: größere Ellipse zum Nachzeichnen im Modus Linien). Fehlende Merkmale bleiben weg –
+   * dafür gilt dann die geschätzte Lage aus dem Gesichtsrahmen.
+   */
+  async function faceParts(source, faces) {
+    const W = source.width, H = source.height;
+    const check = guard();
+    const result = [];
+    for (const f of faces) {
+      check();
+      // Ausschnitt wie bei CelebAMask-HQ: Gesicht mittig, mit Haaren und Kinn (ca. 2× Gesichtsrahmen)
+      const fw = (f.x2 - f.x1) * W, fh = (f.y2 - f.y1) * H;
+      const side = Math.max(fw, fh) * 2;
+      if (side < 24) { result.push(f); continue; }
+      const cx = ((f.x1 + f.x2) / 2) * W, cy = ((f.y1 + f.y2) / 2) * H;
+      const sc = PARSE / side;
+      const m = new DOMMatrix([sc, 0, 0, sc, PARSE / 2 - cx * sc, PARSE / 2 - cy * sc]);
+      const p = await parseFace(source, m);
+      result.push({ ...f, parts: partsToRegions(p, W, H) });
+    }
+    return result;
+  }
+
+  /** Merkmalsrahmen (Pixel) → Ellipsen relativ zum Bild. */
+  function partsToRegions(p, W, H) {
+    const out = {};
+    const rel = (cx, cy, rx, ry, k = 1.25) => ({ cx: cx / W, cy: cy / H, rx: rx / W, ry: ry / H, lrx: (rx * k) / W, lry: (ry * k) / H });
+    const skin = p.skin;
+    const eyeL = eyeRegion(p, 'L'), eyeR = eyeRegion(p, 'R');
+    const faceW = skin ? skin.x2 - skin.x1 : null;
+    const faceH = skin ? skin.y2 - skin.y1 : null;
+    if (p.mouth) {
+      const hw = (p.mouth.x2 - p.mouth.x1) / 2, hh = (p.mouth.y2 - p.mouth.y1) / 2;
+      out.mouth = [rel(p.mouth.cx, p.mouth.cy, hw * 1.25, Math.max(hh * 1.7, hw * 0.45), 1.3)];
+    }
+    if (p.nose) {
+      // wie bisher vor allem Nasenspitze, -flügel und -löcher (unteres Drittel)
+      const hw = (p.nose.x2 - p.nose.x1) / 2, h = p.nose.y2 - p.nose.y1;
+      out.nose = [rel(p.nose.cx, p.nose.y1 + h * 0.72, hw * 1.2, Math.max(h * 0.32, hw * 0.6), 1.2)];
+    }
+    if (skin && p.mouth) {
+      const hw = (p.mouth.x2 - p.mouth.x1) / 2;
+      out.chin = [rel(p.mouth.cx, skin.y2 - faceH * 0.04, Math.max(hw * 1.3, faceW * 0.28), faceH * 0.11, 1.2)];
+    }
+    if (skin && (eyeL || eyeR) && p.mouth) {
+      const eyeY = [p.eyeL, p.eyeR].filter(Boolean).map((e) => e.cy);
+      const ey = eyeY.length ? eyeY.reduce((a, b) => a + b, 0) / eyeY.length : [eyeL, eyeR].filter(Boolean)[0].y2;
+      const cy = ey + (p.mouth.cy - ey) * 0.55;
+      const mid = p.nose ? p.nose.cx : p.mouth.cx;
+      const r = faceW * 0.15;
+      out.cheeks = [rel(mid - faceW * 0.27, cy, r, faceH * 0.13, 1.2), rel(mid + faceW * 0.27, cy, r, faceH * 0.13, 1.2)];
+    }
+    return out;
+  }
+
+  /**
+   * Schutzzonen für die Kratzer-Erkennung per Face Parsing (Pixel der Quelle): Augen mit Brauen,
+   * Nase, Mund. faces: YuNet-Gesichter mit 5 Punkten; ausgerichtet wie die Gesichtsrestaurierung.
+   * Rückgabe je Gesicht [Auge, Auge, Nase, Mund] als Ellipsen { cx, cy, rx, ry }; nicht gefundene
+   * Merkmale sind null (dafür gelten die geschätzten Zonen), ebenso das ganze Gesicht, wenn zu klein.
+   */
+  async function faceProtectZones(source, faces, align) {
+    const check = guard();
+    const result = [];
+    for (const f of faces) {
+      check();
+      const ed = Math.hypot(f.kps[1][0] - f.kps[0][0], f.kps[1][1] - f.kps[0][1]);
+      if (ed < 8) { result.push(null); continue; }
+      const t = align(f.kps);
+      const p = await parseFace(source, new DOMMatrix([t.a, t.b, -t.b, t.a, t.tx, t.ty]));
+      const pad = ed * 0.08;
+      const zone = (r, kx, ky) => r && { cx: r.cx, cy: r.cy, rx: ((r.x2 - r.x1) / 2) * kx + pad, ry: ((r.y2 - r.y1) / 2) * ky + pad };
+      let eyes = [zone(eyeRegion(p, 'L'), 1.15, 1.3), zone(eyeRegion(p, 'R'), 1.15, 1.3)];
+      if (!eyes.every(Boolean)) eyes = [null, null]; // ein Auge fehlt → beide geschätzt (sonst doppelt/fehlend)
+      result.push([...eyes, zone(p.nose, 1.2, 1.1), zone(p.mouth, 1.25, 1.6)]);
+    }
+    return result;
+  }
+
+  /* ---------------------------------------------------------------- */
   /* Tiefenkarte (Depth Anything V2)                                  */
   /* ---------------------------------------------------------------- */
 
-  /** Tiefenkarte als Graustufen-Canvas: nah = hell, fern = dunkel. */
-  async function depthMap(source, longSide) {
+  /** Modell-ID je Tiefenmodell-Auswahl (Small ist Apache-2.0, Base/Large sind CC BY-NC 4.0). */
+  const DEPTH_MODELS = { small: 'depth', base: 'depth_base', large: 'depth_large' };
+  const depthModel = (choice) => DEPTH_MODELS[choice] || 'depth';
+
+  /** Tiefenkarte als Graustufen-Canvas: nah = hell, fern = dunkel. model: Modell-ID (depth, depth_base, depth_large). */
+  async function depthMap(source, longSide, model = 'depth') {
     const sc = longSide / Math.max(source.width, source.height);
     const w = roundTo(source.width * sc, 14);
     const h = roundTo(source.height * sc, 14);
     const input = toNCHW(pixels(source, w, h), w, h, IMAGENET);
-    const out = await run('depth', { pixel_values: { data: input, dims: [1, 3, h, w] } });
+    const out = await run(model, { pixel_values: { data: input, dims: [1, 3, h, w] } });
     const [, oh, ow] = out.dims;
     const outW = Math.round(source.width * sc), outH = Math.round(source.height * sc);
     return grayToCanvas(minMax(out.data), ow, oh, outW, outH);
@@ -769,5 +925,5 @@ const AI = (() => {
     if (upscaleMaxInput) UPSCALE_MAX_INPUT = upscaleMaxInput;
   }
 
-  return { configure, run, pipelined, abort, beginRun, guard, get cacheHits() { return cacheHits; }, pixels, toNCHW, detectText, segment, samEmbedding, samMask, sam2Embedding, sam2Mask, lineArt, lineModel, lineFixedSize, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
+  return { configure, run, pipelined, abort, beginRun, guard, get cacheHits() { return cacheHits; }, pixels, toNCHW, detectText, segment, samEmbedding, samMask, sam2Embedding, sam2Mask, lineArt, lineModel, lineFixedSize, depthMap, depthModel, upscale, detectFaces, enhanceFacesLineArt, faceRegion, faceParts, faceProtectZones };
 })();
