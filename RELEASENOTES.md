@@ -5,6 +5,16 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.8.1 – 22.11.2026
+
+### Neu
+- **Freistellen: „Himmel entfernen“** – neue Methode ohne KI: Der Himmel (blau, Wolken, Dunst) wird vom
+  oberen Bildrand aus entfernt und nicht graviert. Sie folgt dem Farbverlauf bis zum Horizont und stoppt an
+  harten Kanten – Landschaft, Fahrzeuge und Gebäude bleiben vollständig erhalten. Mit Farbtoleranz und
+  Klickpunkten für Himmel zwischen Ästen oder hinter Scheiben.
+- **2 neue Presets:** *Himmel entfernen – Fotogravur* und *Himmel entfernen – Strichzeichnung*
+  (Schriftzüge bleiben gefüllt)
+
 ## 1.8.0 – 22.11.2026
 
 ### Neu

@@ -241,6 +241,11 @@ const Segmentation = (() => {
       fill(y * w + x);
     }
 
+    return bgToMask(bg, w, h);
+  }
+
+  /** Hintergrund-Bitmaske (1 = entfernen) → Freistellmaske mit leicht geglätteter Kante. */
+  function bgToMask(bg, w, h) {
     const mask = new OffscreenCanvas(w, h);
     const ctx = mask.getContext('2d');
     const img = ctx.createImageData(w, h);
@@ -264,6 +269,88 @@ const Segmentation = (() => {
     sctx.filter = `blur(${radius}px)`;
     sctx.drawImage(pad, -m, -m);
     return smooth;
+  }
+
+  /**
+   * Himmel entfernen: wächst vom oberen Bildrand aus über alle himmelartigen Pixel (blau oder
+   * hell-neutral wie Wolken und Dunst). Jeder Schritt vergleicht mit dem Nachbarpixel, nicht mit
+   * einer festen Farbe – so folgt die Fläche dem Verlauf von Dunkelblau oben bis Hellblau am
+   * Horizont und stoppt an harten Kanten (Maschine, Gebäude, Baumkronen, Horizont).
+   * tolerance 1..100: erlaubter Farbsprung je Schritt. seeds: zusätzliche Startpunkte (z. B. Himmel
+   * zwischen Ästen oder hinter Fenstern), relativ 0..1.
+   */
+  function skyMask(bitmap, tolerance, seeds) {
+    const { w, h } = analysisSize(bitmap);
+    const d = drawRgba(bitmap, w, h);
+    // Rauschen und JPEG-Blöcke glätten, damit der Verlauf nicht an Körnung hängen bleibt
+    const n = w * h;
+    const ch = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+    const tmp = new Float32Array(n), tmp2 = new Float32Array(n);
+    const r = Math.max(1, Math.round(w / 600));
+    for (let c = 0; c < 3; c++) {
+      for (let p = 0; p < n; p++) tmp[p] = d[p * 4 + c];
+      boxBlurRows(tmp, tmp2, w, h, r);
+      boxBlurCols(tmp2, ch[c], w, h, r);
+    }
+    const [R, G, B] = ch;
+    const skyLike = (p) => {
+      const rr = R[p], gg = G[p], bb = B[p];
+      const lum = (rr + gg + bb) / 3;
+      if (lum < 55) return false;
+      if (bb >= gg + 4 && bb >= rr + 12) return true; // blau bis hellblau / türkis
+      const spread = Math.max(rr, gg, bb) - Math.min(rr, gg, bb);
+      return lum >= 165 && spread <= 45 && bb >= rr - 8; // Wolken, Dunst, bedeckter Himmel
+    };
+    const step = 2 + tolerance * 0.3; // Standard 20 → 8 Graustufen je Pixel
+    const step2 = step * step;
+    const bg = new Uint8Array(n);
+    const stack = new Int32Array(n);
+    let sp = 0;
+    const start = (p) => { if (!bg[p] && skyLike(p)) { bg[p] = 1; stack[sp++] = p; } };
+    for (let x = 0; x < w; x++) start(x);
+    for (const s of seeds || []) {
+      const x = Math.min(w - 1, Math.max(0, Math.round(s.x * (w - 1))));
+      const y = Math.min(h - 1, Math.max(0, Math.round(s.y * (h - 1))));
+      start(y * w + x);
+    }
+    const visit = (from, k) => {
+      if (bg[k]) return;
+      const dr = R[k] - R[from], dg = G[k] - G[from], db = B[k] - B[from];
+      if (dr * dr + dg * dg + db * db <= step2 && skyLike(k)) { bg[k] = 1; stack[sp++] = k; }
+    };
+    while (sp) {
+      const i = stack[--sp];
+      const x = i % w;
+      if (x > 0) visit(i, i - 1);
+      if (x < w - 1) visit(i, i + 1);
+      if (i >= w) visit(i, i - w);
+      if (i < (h - 1) * w) visit(i, i + w);
+    }
+    // Kleine Inseln im Himmel (Vögel, Leitungen, Bildrauschen) gehören zum Himmel
+    fillSmallIslands(bg, w, h, Math.max(16, Math.round(n * 0.0004)));
+    return bgToMask(bg, w, h);
+  }
+
+  /** Setzt Nicht-Hintergrund-Flächen unter minSize Pixeln, die den Bildrand nicht berühren, auf Hintergrund. */
+  function fillSmallIslands(bg, w, h, minSize) {
+    const seen = new Uint8Array(w * h);
+    const stack = new Int32Array(w * h);
+    const comp = [];
+    for (let p0 = 0; p0 < w * h; p0++) {
+      if (bg[p0] || seen[p0]) continue;
+      let sp = 0, border = false;
+      comp.length = 0;
+      seen[p0] = 1; stack[sp++] = p0;
+      while (sp) {
+        const i = stack[--sp];
+        comp.push(i);
+        const x = i % w, y = (i - x) / w;
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) border = true;
+        const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
+        for (const k of nb) if (k >= 0 && !bg[k] && !seen[k]) { seen[k] = 1; stack[sp++] = k; }
+      }
+      if (!border && comp.length < minSize) for (const i of comp) bg[i] = 1;
+    }
   }
 
   /**
@@ -391,5 +478,5 @@ const Segmentation = (() => {
     }
   }
 
-  return { aiMask, colorMask, refineMask, cutoutPreview, analysisSize };
+  return { aiMask, colorMask, skyMask, refineMask, cutoutPreview, analysisSize };
 })();
