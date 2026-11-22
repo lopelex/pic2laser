@@ -140,7 +140,7 @@ Downloads sind auf feste Versionen gepinnt und werden per SHA-256 geprüft; sie 
 
 ### Lizenzen der Modelle
 
-Pic2Laser selbst ist Open Source (MIT). Für die Modelle gilt:
+Pic2Laser selbst ist Open Source (GPL-2.0-or-later, siehe [Lizenz](#lizenz)). Für die Modelle gilt:
 
 - **Mitgelieferte Modelle** (im Ordner `models/` bzw. im Installer) müssen eine freie Lizenz haben,
   die die Weitergabe erlaubt (z. B. MIT, Apache-2.0, BSD).
@@ -170,3 +170,18 @@ Pic2Laser selbst ist Open Source (MIT). Für die Modelle gilt:
 - `src/renderer/index.html`, `styles.css` – Oberfläche
 - `models/` – mitgelieferte ONNX-Modelle
 - `build/` – Icon, macOS-Intel-Konfiguration, Ad-hoc-Signierskript
+
+## Lizenz
+
+Pic2Laser ist freie Software unter der **GNU General Public License, Version 2 oder (nach Wahl)
+jeder späteren Version** (GPL-2.0-or-later), Volltext in [LICENSE](LICENSE).
+
+Grund ist die Vektorisierung mit [Potrace](https://potrace.sourceforge.net/) über das npm-Paket
+[`potrace`](https://github.com/tooolbox/node-potrace) (GPL-2.0); `src/main/trace-worker.js` baut
+direkt darauf auf. Wer Pic2Laser (oder eine geänderte Fassung) weitergibt, muss deshalb auch den
+Quellcode unter der GPL bereitstellen.
+
+Die übrigen Abhängigkeiten (Electron, onnxruntime u. a.) stehen unter freien, GPL-kompatiblen Lizenzen
+(MIT, BSD, ISC, Apache-2.0); die KI-Modelle haben eigene Lizenzen, siehe
+[Lizenzen der Modelle](#lizenzen-der-modelle). Mit Pic2Laser erzeugte Bilder und SVGs fallen nicht
+unter die GPL – sie gehören dir.
