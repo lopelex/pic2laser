@@ -13,6 +13,8 @@
 const { Potrace } = require('potrace');
 const Path = require('potrace/lib/types/Path');
 const Point = require('potrace/lib/types/Point');
+const potraceUtils = require('potrace/lib/utils');
+const { fitCurve } = require('./shape-fit');
 
 function clamp(v, min, max) {
   if (!Number.isFinite(v)) return min;
@@ -131,6 +133,24 @@ function trace({ bits, w, h }, params) {
   tracer._bmToPathlist = function bmToPathlist() {
     this._pathlist = bitsToPathlist(bits, w, h, turdSize, this._params.turnPolicy);
   };
+  // Formen begradigen: Potrace-Kurven durch Geraden, Bögen, Kreise und Ellipsen ersetzen
+  if (params.shapes) {
+    tracer._bmToPathlist();
+    tracer._processPath();
+    tracer._processed = true;
+    const opts = {
+      tol: clamp(Number(params.shapeTol) || 1.5, 0.5, 50),
+      snap: params.shapeSnap !== false,
+      snapDeg: 4,
+      renderOriginal: (curve) => potraceUtils.renderCurve(curve),
+    };
+    // Begradigen vor „Schrift & Logos“: Konturen ganz innerhalb eines Schriftbereichs bleiben unverändert
+    const skip = Array.isArray(params.shapeSkip) ? params.shapeSkip : [];
+    const inText = (p) => skip.some(([x0, y0, x1, y1]) => p.minX >= x0 && p.maxX <= x1 && p.minY >= y0 && p.maxY <= y1);
+    return tracer._pathlist
+      .map((p) => (inText(p) ? opts.renderOriginal(p.curve) : fitCurve(p.curve, opts)))
+      .join(' ');
+  }
   // Nur das "d"-Attribut zurückgeben; das SVG baut der Renderer selbst (mit mm-Maßen)
   const tag = tracer.getPathTag('#000');
   const start = tag.indexOf(' d="') + 4;

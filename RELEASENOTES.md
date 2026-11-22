@@ -5,6 +5,22 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.7.0 – 22.11.2026
+
+### Neu
+- **Formen verbessern** – neuer Abschnitt unter „Vektorisierung“:
+  - **Formen begradigen** (Fläche und Linien): Kanten, die innerhalb einer Toleranz in mm gerade
+    oder rund sind, werden zu exakten Geraden, Kreisbögen, Kreisen und Ellipsen; Ecken werden scharf.
+    „Winkel einrasten“ richtet Kanten exakt auf 0°/45°/90° aus und macht fast rechte Winkel rechtwinklig.
+    Feine, unregelmäßige Details bleiben unverändert. Das SVG wird dabei deutlich kleiner.
+  - **Glatte Konturen (KI)** (Fläche): kleine Vorlagen werden per Real-ESRGAN vergrößert und die
+    Treppenstufen vor dem Schwellwert verwischt – runde, ruhige Umrisse statt Zacken.
+  - **Ruhige Linien** (Linien): Striche werden entlang ihrer Mitte geglättet und mit gleichmäßiger
+    Breite neu gezeichnet; Krümel und kurze Ausläufer entfallen.
+  - Zusammen mit **Schrift & Logos** wählbar, ob die Verbesserungen **vor oder nach der
+    Schrift-/Logoerkennung** laufen: danach gelten sie auch für die erkannte Schrift, davor bleibt
+    die Schrift so, wie die Schrifterkennung sie zeichnet.
+
 ## 1.6.1 – 22.11.2026
 
 ### Neu

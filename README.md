@@ -2,7 +2,7 @@
 
 Electron-App, die Bilder in Schwarz-Weiß-SVGs (und optional PNG/JPG/BMP) für die Lasergravur mit LightBurn umwandelt.
 
-Aktuelle Version: **1.1.3**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
+Aktuelle Version: **1.7.0**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
 bekannte und behobene Fehler: [BUGS.md](BUGS.md).
 
 ## Starten
@@ -57,6 +57,10 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
 - **Umrisslinie**: Randkontur um das Motiv mit Abstand in mm (rote Linie → eigene LightBurn-Ebene,
   z. B. zum Ausschneiden), optional nur die Umrisslinie ohne Gravur. In PNG/JPG/BMP, Historien-Vorschau
   und Drag-Symbol erscheint sie schwarz, in gleicher Größe und Lage wie im SVG.
+- **Formen verbessern**: *Formen begradigen* (exakte Geraden, Kreise, Ellipsen und rechte Winkel für Logos
+  und Schilder, Toleranz in mm), *Glatte Konturen (KI)* im Modus Fläche (KI-Vergrößerung + Glätten der
+  Treppenstufen) und *Ruhige Linien* im Modus Linien (Mittellinie geglättet, gleichmäßige Strichbreite,
+  ohne Krümel und kurze Ausläufer)
 - **Einstellungen**: Helligkeit, Kontrast, Gamma, Weichzeichnen, Schärfen, Invertieren,
   Schwellwert (inkl. Auto/Otsu), Fleckenfilter, Ecken glätten, Kurventoleranz, Auflösung/DPI.
   Doppelklick auf einen Regler setzt ihn zurück.
@@ -126,6 +130,20 @@ Alle Modelle laufen lokal und offline über onnxruntime (nativ, mit WebAssembly-
 
 Downloads sind auf feste Versionen gepinnt und werden per SHA-256 geprüft; sie landen in
 `<userData>/models` und lassen sich in der App wieder entfernen.
+
+### Lizenzen der Modelle
+
+Pic2Laser selbst ist Open Source (MIT). Für die Modelle gilt:
+
+- **Mitgelieferte Modelle** (im Ordner `models/` bzw. im Installer) müssen eine freie Lizenz haben,
+  die die Weitergabe erlaubt (z. B. MIT, Apache-2.0, BSD).
+- **Modelle zum Download bei Bedarf** dürfen auch Lizenzen ohne kommerzielle Nutzung haben
+  (z. B. CC BY-NC). Pic2Laser verbreitet diese Modelle nicht und verdient nichts an ihnen: Die App
+  lädt sie erst auf Wunsch des Nutzers direkt von der Originalquelle herunter. Die Lizenz gilt dann
+  im Verhältnis zwischen Nutzer und Rechteinhaber.
+- Solche Modelle werden in der Tabelle oben und in der App mit ihrer Lizenz gekennzeichnet. Wer die
+  Ergebnisse gewerblich nutzt (z. B. Gravuren verkauft), sollte die Lizenz des jeweiligen Modells
+  prüfen bzw. auf ein Modell mit freier Lizenz ausweichen.
 
 ## Aufbau
 

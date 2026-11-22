@@ -468,15 +468,26 @@ const Processing = (() => {
     }
 
     let bits;
+    const mmPerPx = s.widthMm / w;
+    const hasText = !!(s.textClean && s.textBlocks && s.textBlocks.length);
+    // „Formen verbessern“ vor oder nach „Schrift & Logos“: davor = erkannte Schrift bleibt, wie die
+    // Schrifterkennung sie zeichnet; danach = die Verbesserung gilt auch für die Schrift
+    const improveAfterText = hasText && s.shapeOrder !== 'before';
+    const cleanAll = (b) => cleanLines(b, w, h, (Number(s.lineSmoothMm) || 0) / mmPerPx, (Number(s.lineMinMm) || 0) / mmPerPx);
+    // Ruhige Linien: vor dem Verbreitern, damit die Striche gleichmäßig breit bleiben
+    const calm = (b) => (s.lineClean && !improveAfterText ? cleanAll(b) : b);
     if (s.mode === 'edges' && s.edgeMethod === 'ai') {
-      bits = threshold(gray, s.threshold);
-      const r = s.lineBoldMm / (s.widthMm / w) / 2;
+      bits = calm(threshold(gray, s.threshold));
+      const r = s.lineBoldMm / mmPerPx / 2;
       if (r >= 0.5) bits = dilate(bits, w, h, r);
     } else if (s.mode === 'edges') {
-      bits = canny(gray, w, h, s.edgeSensitivity);
-      const mmPerPx = s.widthMm / w;
+      bits = calm(canny(gray, w, h, s.edgeSensitivity));
       const r = Math.max(0, s.lineWidthMm / mmPerPx / 2 - 0.5);
       bits = dilate(bits, w, h, r);
+    } else if (s.mode === 'vector' && s.smoothContours) {
+      // Glatte Konturen: Treppenstufen des hochskalierten Bildes vor dem Schwellwert verwischen
+      // (Stärke wächst mit der Vergrößerung beim Zeichnen auf die Arbeitsgröße)
+      bits = threshold(gaussBlur(gray, w, h, Math.max(0.8, 0.45 * (w / bitmap.width))), s.threshold);
     } else if (s.mode === 'vector' || s.ditherAlgo === 'threshold') {
       bits = threshold(gray, s.threshold);
     } else if (s.ditherAlgo === 'ordered') {
@@ -485,7 +496,7 @@ const Processing = (() => {
       bits = errorDiffusion(gray, w, h, s.ditherAlgo);
     }
     // Schrift & Logos: in erkannten Textbereichen sauber gefüllt statt gerastert/nachgezeichnet
-    if (s.textClean && s.textBlocks && s.textBlocks.length) {
+    if (hasText) {
       let tg = toGray(textSource || bitmap, w, h, { ...s, blur: 0 });
       tg = sharpen(tg, w, h, s.sharpen);
       tg = adjust(tg, s);
@@ -493,7 +504,12 @@ const Processing = (() => {
       // (sonst entstünden mit „Invertieren“ schwarze Kästen um die Schrift)
       if (s.invert) whitenTransparent(tg, textSource || bitmap, w, h);
       if (alpha) for (let i = 0; i < tg.length; i++) tg[i] = tg[i] * alpha[i] + 255 * (1 - alpha[i]);
+      // Glatte Konturen auch in den Schriftbereichen (gleiche Glättung wie im übrigen Bild)
+      if (s.mode === 'vector' && s.smoothContours && improveAfterText) tg = gaussBlur(tg, w, h, Math.max(0.8, 0.45 * (w / (textSource || bitmap).width)));
       cleanText(bits, tg, w, h, s.textBlocks, s.textPad ?? 1, s.textBold ?? 0);
+      // Ruhige Linien nach der Schrifterkennung: auch die Schrift wird entlang ihrer Mitte geglättet
+      // (Strichbreite bleibt, da sie aus den Strichen selbst gemessen wird)
+      if (s.mode === 'edges' && s.lineClean && improveAfterText) bits = cleanAll(bits);
     }
 
     return { w, h, bits, gray8: null, alpha };
@@ -900,5 +916,234 @@ const Processing = (() => {
     return bits;
   }
 
-  return { faceFeatureRegions, faceFeatureLevels, process, ditherGray, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate, distanceTransformSq, addSubjectLine };
+  /** Gaußscher Weichzeichner (separabel) auf einem Float32-Graustufenbild. */
+  function gaussBlur(gray, w, h, sigma) {
+    if (!(sigma > 0.2)) return gray;
+    const r = Math.ceil(sigma * 3);
+    const k = new Float32Array(2 * r + 1);
+    let sum = 0;
+    for (let i = -r; i <= r; i++) sum += k[i + r] = Math.exp(-(i * i) / (2 * sigma * sigma));
+    for (let i = 0; i < k.length; i++) k[i] /= sum;
+    const tmp = new Float32Array(w * h);
+    const out = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      for (let x = 0; x < w; x++) {
+        let acc = 0;
+        for (let i = -r; i <= r; i++) {
+          const xx = x + i < 0 ? 0 : x + i >= w ? w - 1 : x + i;
+          acc += gray[row + xx] * k[i + r];
+        }
+        tmp[row + x] = acc;
+      }
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let acc = 0;
+        for (let i = -r; i <= r; i++) {
+          const yy = y + i < 0 ? 0 : y + i >= h ? h - 1 : y + i;
+          acc += tmp[yy * w + x] * k[i + r];
+        }
+        out[y * w + x] = acc;
+      }
+    }
+    return out;
+  }
+
+  /* ---------------- Ruhige Linien ---------------- */
+
+  /** Skelett (Zhang-Suen-Verdünnung) eines Binärbildes. */
+  function thin(bits, w, h) {
+    const img = new Uint8Array(bits);
+    for (let x = 0; x < w; x++) { img[x] = 0; img[(h - 1) * w + x] = 0; }
+    for (let y = 0; y < h; y++) { img[y * w] = 0; img[y * w + w - 1] = 0; }
+    // nur Pixel am Rand der Striche prüfen: Kandidatenliste statt ganzer Bilddurchläufe
+    let cand = [];
+    for (let i = 0; i < img.length; i++) if (img[i]) cand.push(i);
+    const del = [];
+    for (let changed = true; changed;) {
+      changed = false;
+      for (let step = 0; step < 2; step++) {
+        del.length = 0;
+        for (const i of cand) {
+          if (!img[i]) continue;
+          const p2 = img[i - w], p3 = img[i - w + 1], p4 = img[i + 1], p5 = img[i + w + 1];
+          const p6 = img[i + w], p7 = img[i + w - 1], p8 = img[i - 1], p9 = img[i - w - 1];
+          const B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+          if (B < 2 || B > 6) continue;
+          const A = (!p2 && p3) + (!p3 && p4) + (!p4 && p5) + (!p5 && p6) + (!p6 && p7) + (!p7 && p8) + (!p8 && p9) + (!p9 && p2);
+          if (A !== 1) continue;
+          if (step === 0 ? (p2 && p4 && p6) || (p4 && p6 && p8) : (p2 && p4 && p8) || (p2 && p6 && p8)) continue;
+          del.push(i);
+        }
+        if (del.length) {
+          changed = true;
+          for (const i of del) img[i] = 0;
+        }
+      }
+      if (changed) cand = cand.filter((i) => img[i]);
+    }
+    return img;
+  }
+
+  const NB8 = (w) => [-w - 1, -w, -w + 1, 1, w + 1, w, w - 1, -1];
+
+  /**
+   * Skelett in Linienzüge zerlegen. Knoten sind Endpunkte (1 Nachbar) und Verzweigungen (≥ 3).
+   * Rückgabe: [{ pts: Int32Array-artige Indexliste, closed }]
+   */
+  function skeletonPaths(sk, w, h) {
+    const nb = NB8(w);
+    const deg = new Uint8Array(sk.length);
+    const pix = [];
+    for (let i = 0; i < sk.length; i++) {
+      if (!sk[i]) continue;
+      pix.push(i);
+      let d = 0;
+      for (const o of nb) d += sk[i + o];
+      deg[i] = d;
+    }
+    const isNode = (i) => deg[i] !== 2;
+    const used = new Uint8Array(sk.length); // Nicht-Knoten-Pixel schon einem Linienzug zugeordnet
+    const paths = [];
+    const nodeEdges = new Set(); // direkt benachbarte Knoten nur einmal verbinden
+    const walk = (start, next) => {
+      const pts = [start];
+      let prev = start, cur = next;
+      for (;;) {
+        pts.push(cur);
+        if (isNode(cur)) break;
+        used[cur] = 1;
+        let nxt = -1;
+        for (const o of nb) {
+          const j = cur + o;
+          if (!sk[j] || j === prev) continue;
+          if (j === start ? pts.length > 2 : !(used[j] && !isNode(j))) { nxt = j; if (isNode(j) || j === start) break; }
+        }
+        if (nxt < 0 || nxt === start && pts.length < 3) break;
+        prev = cur; cur = nxt;
+        if (cur === start) { pts.push(cur); break; }
+      }
+      return pts;
+    };
+    for (const i of pix) {
+      if (!isNode(i) || deg[i] === 0) continue;
+      for (const o of nb) {
+        const j = i + o;
+        if (!sk[j]) continue;
+        if (isNode(j)) {
+          const key = i < j ? `${i},${j}` : `${j},${i}`;
+          if (nodeEdges.has(key)) continue;
+          nodeEdges.add(key);
+          paths.push({ pts: [i, j], closed: false });
+        } else if (!used[j]) {
+          paths.push({ pts: walk(i, j), closed: false });
+        }
+      }
+    }
+    // geschlossene Schleifen ohne Knoten
+    for (const i of pix) {
+      if (used[i] || isNode(i)) continue;
+      used[i] = 1;
+      let nxt = -1;
+      for (const o of nb) if (sk[i + o] && !used[i + o]) { nxt = i + o; break; }
+      if (nxt < 0) continue;
+      const pts = walk(i, nxt);
+      paths.push({ pts, closed: pts[pts.length - 1] === i });
+    }
+    return { paths, deg };
+  }
+
+  /**
+   * Ruhige Linien: Striche auf ihre Mittellinie reduzieren, Ausläufer und kurze Striche
+   * entfernen, die Mittellinien glätten und mit gleichmäßiger Breite (Median je Strich) neu zeichnen.
+   * smoothPx: Glättung (Gauß-Sigma entlang der Linie), minLenPx: kürzere Striche/Ausläufer entfallen.
+   */
+  function cleanLines(bits, w, h, smoothPx, minLenPx) {
+    const d2 = distanceTransformSq(bits, w, h, 0, 64);
+    const sk = thin(bits, w, h);
+    let { paths, deg } = skeletonPaths(sk, w, h);
+    const len = (pts) => {
+      let L = 0;
+      for (let k = 1; k < pts.length; k++) {
+        const a = pts[k - 1], b = pts[k];
+        L += (a % w !== b % w && (a / w | 0) !== (b / w | 0)) ? Math.SQRT2 : 1;
+      }
+      return L;
+    };
+    // Ausläufer (ein Ende frei, anderes an einer Verzweigung) und kurze Einzelstriche entfernen
+    for (let pass = 0; pass < 2; pass++) {
+      const nodeUse = new Map();
+      for (const p of paths) {
+        if (p.closed) continue;
+        for (const e of [p.pts[0], p.pts[p.pts.length - 1]]) nodeUse.set(e, (nodeUse.get(e) || 0) + 1);
+      }
+      const isFree = (i) => deg[i] <= 1 || nodeUse.get(i) === 1;
+      paths = paths.filter((p) => {
+        if (p.closed) return len(p.pts) >= minLenPx;
+        const a = p.pts[0], b = p.pts[p.pts.length - 1];
+        const fa = isFree(a), fb = isFree(b);
+        const L = len(p.pts);
+        if (fa && fb) return L >= minLenPx; // einzelner Strich
+        if (fa || fb) return L >= minLenPx * 0.5; // Ausläufer an einer Verzweigung
+        return true;
+      });
+    }
+
+    const out = new Uint8Array(w * h);
+    const stamp = (x0, y0, x1, y1, r) => {
+      const minX = Math.max(0, Math.floor(Math.min(x0, x1) - r)), maxX = Math.min(w - 1, Math.ceil(Math.max(x0, x1) + r));
+      const minY = Math.max(0, Math.floor(Math.min(y0, y1) - r)), maxY = Math.min(h - 1, Math.ceil(Math.max(y0, y1) + r));
+      const vx = x1 - x0, vy = y1 - y0, l2 = vx * vx + vy * vy;
+      const rr = (r + 0.05) * (r + 0.05);
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          let t = l2 > 0 ? ((x - x0) * vx + (y - y0) * vy) / l2 : 0;
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const dx = x - x0 - t * vx, dy = y - y0 - t * vy;
+          if (dx * dx + dy * dy <= rr) out[y * w + x] = 1;
+        }
+      }
+    };
+    const sigma = Math.max(0, smoothPx);
+    const R = Math.ceil(sigma * 2.5);
+    const kern = new Float64Array(2 * R + 1);
+    for (let i = -R; i <= R; i++) kern[i + R] = sigma > 0 ? Math.exp(-(i * i) / (2 * sigma * sigma)) : (i === 0 ? 1 : 0);
+    for (const p of paths) {
+      let pts = p.pts;
+      if (p.closed && pts.length > 1 && pts[0] === pts[pts.length - 1]) pts = pts.slice(0, -1);
+      const n = pts.length;
+      const X = new Float64Array(n), Y = new Float64Array(n);
+      const widths = [];
+      for (let k = 0; k < n; k++) {
+        X[k] = pts[k] % w; Y[k] = (pts[k] / w) | 0;
+        widths.push(2 * Math.sqrt(d2[pts[k]]) - 1);
+      }
+      widths.sort((a, b) => a - b);
+      const width = Math.max(1, widths[widths.length >> 1]);
+      // glätten (Enden bleiben fest, damit Verbindungen an Verzweigungen erhalten bleiben)
+      let SX = X, SY = Y;
+      if (sigma > 0.3 && n > 2) {
+        SX = new Float64Array(n); SY = new Float64Array(n);
+        for (let k = 0; k < n; k++) {
+          let ax = 0, ay = 0, aw = 0;
+          // offene Linien: Fenster zum Ende hin verkleinern
+          const r = p.closed ? R : Math.min(R, k, n - 1 - k);
+          for (let i = -r; i <= r; i++) {
+            const j = p.closed ? (k + i + n) % n : k + i;
+            const wt = kern[i + R];
+            ax += X[j] * wt; ay += Y[j] * wt; aw += wt;
+          }
+          SX[k] = ax / aw; SY[k] = ay / aw;
+        }
+      }
+      const r = width / 2;
+      if (n === 1) stamp(SX[0], SY[0], SX[0], SY[0], r);
+      for (let k = 1; k < n; k++) stamp(SX[k - 1], SY[k - 1], SX[k], SY[k], r);
+      if (p.closed && n > 2) stamp(SX[n - 1], SY[n - 1], SX[0], SY[0], r);
+    }
+    return out;
+  }
+
+  return { faceFeatureRegions, faceFeatureLevels, process, ditherGray, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate, distanceTransformSq, addSubjectLine, cleanLines, gaussBlur, thin };
 })();
