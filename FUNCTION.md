@@ -76,18 +76,19 @@ Alle KI-Funktionen laufen lokal und offline.
 
 | Methode | Modell | Hinweis |
 |---|---|---|
-| KI – schnell | U²-Net | mitgeliefert |
-| KI – präzise | IS-Net | Download bei Bedarf |
-| KI – beste Qualität | BiRefNet lite | Download; braucht ca. 6,7 GB RAM, weicht sonst automatisch auf BEN2, notfalls IS-Net aus |
-| KI – gut & sparsam | BEN2 Base (int8) | Download; ca. 3 GB RAM, etwa doppelt so schnell wie BiRefNet; bei sauberen Fotos fast gleich gut, bei alten/verrauschten Fotos deutlich schwächer; weicht bei zu wenig Speicher auf IS-Net aus |
-| KI – Porträt/Haare | MODNet | Download |
-| KI – Objekt anklicken | MobileSAM | Linksklick = Motiv (+), Rechtsklick/Alt+Klick = ausschließen (−) |
-| KI – Objekt anklicken, genau | SAM 2.1 Small (Download ca. 180 MB) | wie MobileSAM, genauere Objektgrenzen; erstes Erkennen je Bild einige Sekunden, ca. 0,9 GB RAM |
+| Motiv – schnell | U²-Net | mitgeliefert |
+| Motiv – präzise | IS-Net | Download bei Bedarf |
+| Motiv – gut & sparsam | BEN2 Base (int8) | Download; ca. 3 GB RAM, etwa doppelt so schnell wie BiRefNet; bei sauberen Fotos fast gleich gut, bei alten/verrauschten Fotos deutlich schwächer; weicht bei zu wenig Speicher auf IS-Net aus |
+| Motiv – beste Qualität | BiRefNet lite | Download; braucht ca. 6,7 GB RAM, weicht sonst automatisch auf BEN2, notfalls IS-Net aus |
+| Motiv – Porträt & Haare | MODNet | Download |
+| Objekt anklicken – schnell | MobileSAM | Linksklick = Motiv (+), Rechtsklick/Alt+Klick = ausschließen (−) |
+| Objekt anklicken – genau | SAM 2.1 Small (Download ca. 180 MB) | wie MobileSAM, genauere Objektgrenzen; erstes Erkennen je Bild einige Sekunden, ca. 0,9 GB RAM |
+| Himmel entfernen – schnell | – | Himmel (blau, Wolken, Dunst) vom oberen Bildrand aus, folgt dem Farbverlauf bis zum Horizont und stoppt an harten Kanten; Landschaft, Fahrzeuge und Gebäude bleiben. Toleranz = erlaubter Farbsprung je Pixel, Klickpunkte für Himmel zwischen Ästen oder hinter Scheiben |
+| Himmel entfernen – Motiv geschützt | BEN2 Base (int8), Download | wie „Himmel entfernen – schnell“, zusätzlich schützt BEN2 das Hauptmotiv: helle, weiße oder bläuliche Teile von Fahrzeugen, Gebäuden oder Personen werden nie als Himmel entfernt. Ist BEN2 nicht nutzbar, wird der Himmel ohne Schutz entfernt (mit Hinweis) |
 | Nach Farbe | – | Hintergrund vom Bildrand aus + zusätzliche Klickpunkte, Farbtoleranz |
-| Himmel entfernen | – | Himmel (blau, Wolken, Dunst) vom oberen Bildrand aus, folgt dem Farbverlauf bis zum Horizont und stoppt an harten Kanten; Landschaft, Fahrzeuge und Gebäude bleiben. Toleranz = erlaubter Farbsprung je Pixel, Klickpunkte für Himmel zwischen Ästen oder hinter Scheiben |
 
 - **Maskenschwelle** für die KI-Methoden.
-- **Maske verfeinern** (für alle Methoden, auch „Nach Farbe“ und „Objekt anklicken“):
+- **Maske verfeinern** (für alle Methoden, auch „Nach Farbe“, „Objekt anklicken“ und „Himmel entfernen“):
   - *Kante verschieben* (−3…+3 mm): Plus lässt einen Rand um das Motiv stehen, Minus schneidet
     Hintergrundreste und Lichtsäume weg.
   - *Kante glätten* (0…3 mm): rundet Zacken und kleine Ausbuchtungen ab, für ruhigere Vektoren.
@@ -252,9 +253,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   statt eines Absturzes.
 - Geht beim Rechnen doch der Speicher aus oder beendet das System den KI-Prozess, wird er
   frisch gestartet und die Berechnung einmal wiederholt.
-- „Freistellen – beste Qualität“ (BiRefNet, ca. 6,7 GB) weicht nur dann auf „gut & sparsam“
+- „Motiv – beste Qualität“ (BiRefNet, ca. 6,7 GB) weicht nur dann auf „Motiv – gut & sparsam“
   (BEN2, ca. 3 GB) aus, wenn trotz aller Freigaben nicht genug Speicher frei wird; reicht auch
-  das nicht, auf „präzise“ (IS-Net, ca. 0,75 GB). Ein Hinweis nennt das tatsächlich verwendete
+  das nicht, auf „Motiv – präzise“ (IS-Net, ca. 0,75 GB). Ein Hinweis nennt das tatsächlich verwendete
   Modell. Die Kette steht in `SEG_FALLBACK` (src/renderer/app.js).
 
 ## KI-Modelle

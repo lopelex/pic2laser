@@ -278,10 +278,21 @@ const Segmentation = (() => {
    * Horizont und stoppt an harten Kanten (Maschine, Gebäude, Baumkronen, Horizont).
    * tolerance 1..100: erlaubter Farbsprung je Schritt. seeds: zusätzliche Startpunkte (z. B. Himmel
    * zwischen Ästen oder hinter Fenstern), relativ 0..1.
+   * protect: optionale Motivmaske (Alpha = Motiv, z. B. von BEN2) – dort wächst der Himmel nie hinein,
+   * auch wenn das Motiv hell oder bläulich ist wie der Himmel.
    */
-  function skyMask(bitmap, tolerance, seeds) {
+  function skyMask(bitmap, tolerance, seeds, protect = null) {
     const { w, h } = analysisSize(bitmap);
     const d = drawRgba(bitmap, w, h);
+    let keep = null;
+    if (protect) {
+      const pc = new OffscreenCanvas(w, h);
+      const pctx = pc.getContext('2d', { willReadFrequently: true });
+      pctx.drawImage(protect, 0, 0, w, h);
+      const a = pctx.getImageData(0, 0, w, h).data;
+      keep = new Uint8Array(w * h);
+      for (let p = 0; p < keep.length; p++) keep[p] = a[p * 4 + 3] > 127 ? 1 : 0;
+    }
     // Rauschen und JPEG-Blöcke glätten, damit der Verlauf nicht an Körnung hängen bleibt
     const n = w * h;
     const ch = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
@@ -294,6 +305,7 @@ const Segmentation = (() => {
     }
     const [R, G, B] = ch;
     const skyLike = (p) => {
+      if (keep && keep[p]) return false;
       const rr = R[p], gg = G[p], bb = B[p];
       const lum = (rr + gg + bb) / 3;
       if (lum < 55) return false;

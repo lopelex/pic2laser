@@ -498,7 +498,8 @@ body.ctrl-drag #img-original:active { cursor: grabbing !important; }
   line-height: 1.45;
 }
 .pane.pickable[data-pick=color] .pane-label::after,
-.pane.pickable[data-pick=sky] .pane-label::after { content: " · Klick = Hintergrund entfernen"; }
+.pane.pickable[data-pick=sky] .pane-label::after,
+.pane.pickable[data-pick=skyai] .pane-label::after { content: " · Klick = Hintergrund entfernen"; }
 
 /* ---------- Dialog: KI-Modelle ---------- */
 .dialog {

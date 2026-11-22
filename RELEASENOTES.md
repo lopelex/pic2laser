@@ -5,6 +5,20 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.8.2 – 22.11.2026
+
+### Neu
+- **Freistellen: „Himmel entfernen – Motiv geschützt (BEN2)“** – wie „Himmel entfernen“, zusätzlich schützt
+  KI (BEN2) das Hauptmotiv: Helle, weiße oder bläuliche Teile von Fahrzeugen, Gebäuden oder Personen werden
+  nie als Himmel entfernt. Ist BEN2 nicht nutzbar (z. B. zu wenig Arbeitsspeicher), wird der Himmel ohne Schutz
+  entfernt und ein Hinweis angezeigt. Die beiden Himmel-Presets nutzen jetzt diese Methode.
+
+### Verbessert
+- **Freistell-Methoden geordnet und einheitlich benannt:** gruppiert nach *Motiv automatisch freistellen (KI)*,
+  *Objekt anklicken (KI)*, *Himmel entfernen* und *Weitere*; durchgängig „Bereich – Variante (Modell)“, z. B.
+  „Motiv – gut & sparsam (BEN2)“, „Objekt anklicken – genau (SAM 2.1)“, „Himmel entfernen – schnell (ohne KI)“.
+  Die Motiv-Methoden stehen nach Qualität sortiert (schnell → präzise → gut & sparsam → beste Qualität).
+
 ## 1.8.1 – 22.11.2026
 
 ### Neu
