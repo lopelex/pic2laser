@@ -228,6 +228,70 @@ const AI = (() => {
   }
 
   /* ---------------------------------------------------------------- */
+  /* Objekt anklicken – genau (SAM 2.1 Small)                         */
+  /* ---------------------------------------------------------------- */
+
+  const SAM2_SIZE = 1024;
+  const SAM2_EMB = ['image_embeddings.0', 'image_embeddings.1', 'image_embeddings.2'];
+
+  /** Bild-Embedding (einmal pro Bild, ca. 2–3 s). Das Bild wird wie im Original auf 1024×1024 gestreckt. */
+  async function sam2Embedding(bitmap) {
+    const S = SAM2_SIZE;
+    const input = toNCHW(pixels(bitmap, S, S), S, S, { mean: IMAGENET.mean, std: IMAGENET.std });
+    const emb = await run('sam2_encoder', { pixel_values: { data: input, dims: [1, 3, S, S] } }, SAM2_EMB);
+    return { emb };
+  }
+
+  /**
+   * Maske für Klickpunkte. points: [{ x, y, positive }] relativ (0..1).
+   * Der Decoder liefert drei Vorschläge (256×256, Logits über das gestreckte Bild);
+   * genommen wird der mit der höchsten vorhergesagten Güte (IoU).
+   */
+  async function sam2Mask(embedding, points, outW, outH) {
+    const n = points.length;
+    const coords = new Float32Array(n * 2);
+    const labels = new BigInt64Array(n);
+    points.forEach((p, i) => {
+      coords[i * 2] = p.x * SAM2_SIZE;
+      coords[i * 2 + 1] = p.y * SAM2_SIZE;
+      labels[i] = p.positive ? 1n : 0n;
+    });
+    const feeds = {
+      input_points: { data: coords, dims: [1, 1, n, 2] },
+      input_labels: { data: labels, dims: [1, 1, n], type: 'int64' },
+      input_boxes: { data: new Float32Array(0), dims: [1, 0, 4] },
+    };
+    for (const name of SAM2_EMB) feeds[name] = embedding.emb[name];
+    const res = await run('sam2_decoder', feeds, ['pred_masks', 'iou_scores']);
+    const iou = res.iou_scores.data;
+    const dims = res.pred_masks.dims;
+    const mh = dims[dims.length - 2], mw = dims[dims.length - 1];
+    let best = 0;
+    for (let k = 1; k < iou.length; k++) if (iou[k] > iou[best]) best = k;
+    const logits = res.pred_masks.data.subarray(best * mw * mh, (best + 1) * mw * mh);
+    // Logits glatt hochskalieren, erst danach in Wahrscheinlichkeiten umrechnen (saubere Kanten)
+    return { data: sigmoid(resizeBilinear(logits, mw, mh, outW, outH)), w: outW, h: outH };
+  }
+
+  /** Bilineares Skalieren eines Float-Rasters (Pixelmitten aufeinander abgebildet). */
+  function resizeBilinear(src, sw, sh, dw, dh) {
+    const out = new Float32Array(dw * dh);
+    const fx = sw / dw, fy = sh / dh;
+    for (let y = 0; y < dh; y++) {
+      const sy = Math.min(sh - 1, Math.max(0, (y + 0.5) * fy - 0.5));
+      const y0 = Math.floor(sy), y1 = Math.min(sh - 1, y0 + 1), ty = sy - y0;
+      for (let x = 0; x < dw; x++) {
+        const sx = Math.min(sw - 1, Math.max(0, (x + 0.5) * fx - 0.5));
+        const x0 = Math.floor(sx), x1 = Math.min(sw - 1, x0 + 1), tx = sx - x0;
+        const a = src[y0 * sw + x0] + (src[y0 * sw + x1] - src[y0 * sw + x0]) * tx;
+        const b = src[y1 * sw + x0] + (src[y1 * sw + x1] - src[y1 * sw + x0]) * tx;
+        out[y * dw + x] = a + (b - a) * ty;
+      }
+    }
+    return out;
+  }
+
+  /* ---------------------------------------------------------------- */
   /* Strichzeichnung (Informative Drawings)                           */
   /* ---------------------------------------------------------------- */
 
@@ -705,5 +769,5 @@ const AI = (() => {
     if (upscaleMaxInput) UPSCALE_MAX_INPUT = upscaleMaxInput;
   }
 
-  return { configure, run, pipelined, abort, beginRun, guard, get cacheHits() { return cacheHits; }, pixels, toNCHW, detectText, segment, samEmbedding, samMask, lineArt, lineModel, lineFixedSize, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
+  return { configure, run, pipelined, abort, beginRun, guard, get cacheHits() { return cacheHits; }, pixels, toNCHW, detectText, segment, samEmbedding, samMask, sam2Embedding, sam2Mask, lineArt, lineModel, lineFixedSize, depthMap, upscale, detectFaces, enhanceFacesLineArt, faceRegion };
 })();

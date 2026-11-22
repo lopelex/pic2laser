@@ -139,6 +139,8 @@ const MODEL_PEAK_MB = {
   lineart_teed: 250,
   sam_encoder: 350,
   sam_decoder: 150,
+  sam2_encoder: 900,
+  sam2_decoder: 160,
   modnet: 250,
   depth: 450,
   isnet: 750,

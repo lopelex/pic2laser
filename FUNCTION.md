@@ -60,6 +60,7 @@ Alle KI-Funktionen laufen lokal und offline.
 | KI – gut & sparsam | BEN2 Base (int8) | Download; ca. 3 GB RAM, etwa doppelt so schnell wie BiRefNet; bei sauberen Fotos fast gleich gut, bei alten/verrauschten Fotos deutlich schwächer; weicht bei zu wenig Speicher auf IS-Net aus |
 | KI – Porträt/Haare | MODNet | Download |
 | KI – Objekt anklicken | MobileSAM | Linksklick = Motiv (+), Rechtsklick/Alt+Klick = ausschließen (−) |
+| KI – Objekt anklicken, genau | SAM 2.1 Small (Download ca. 180 MB) | wie MobileSAM, genauere Objektgrenzen; erstes Erkennen je Bild einige Sekunden, ca. 0,9 GB RAM |
 | Nach Farbe | – | Hintergrund vom Bildrand aus + zusätzliche Klickpunkte, Farbtoleranz |
 
 - **Maskenschwelle** für die KI-Methoden.
@@ -161,12 +162,16 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   Laufzeiten auf dem jeweiligen Rechner. Bei Downloads Restzeit aus der Datenrate.
 - **Abbrechen** (Knopf im Fortschrittsfeld oder Esc): stoppt Berechnungen, KI, Vektorisierung
   und Downloads; das letzte Ergebnis bleibt erhalten.
+- **Übersichtliche Seitenleiste:** Längere Erklärungen sind eingeklappt und lassen sich je Abschnitt
+  über das ⓘ in der Überschrift einblenden (Zustand wird gemerkt). Statusmeldungen bleiben sichtbar.
+- **KI-Modelle verwalten** (Bereich „KI-Modelle“ → „Verwalten…“): Dialog mit allen Modellen nach
+  Gruppen, Größe, Lizenz und RAM-Bedarf; Modelle laden oder entfernen.
 - **Zwischenspeicher:** KI-Ergebnisse werden pro Bild gemerkt – Umschalten geht sofort.
-- **Festplatten-Cache** (Bereich „Leistung“, abschaltbar): jedes KI-Ergebnis wird mit einem
+- **Festplatten-Cache** (Bereich „Leistung“ → „Einstellungen…“, abschaltbar): jedes KI-Ergebnis wird mit einem
   Fingerabdruck der Eingabe gespeichert (max. 2 GB, älteste Einträge fliegen zuerst raus).
   Ein erneut geöffnetes Bild oder ein Historie-Eintrag muss nicht neu berechnet werden, auch
   nach einem Neustart. „Cache leeren“ löscht ihn.
-- **GPU-Beschleunigung** (Bereich „Leistung“, Standard an außer unter Linux): Windows → DirectML, Mac mit
+- **GPU-Beschleunigung** (Bereich „Leistung“ → „Einstellungen…“, Standard an außer unter Linux): Windows → DirectML, Mac mit
   Apple-Chip → CoreML. Scheitert ein Modell auf der GPU, rechnet es automatisch auf der CPU
   weiter und wird dafür dauerhaft vorgemerkt (Einschalten der GPU setzt das zurück).
   **Absturzschutz:** Stürzt der KI-Prozess während einer GPU-Berechnung ab, wird sie sofort auf
@@ -204,7 +209,7 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 | Mitgeliefert | Download bei Bedarf (geprüft per SHA-256) |
 |---|---|
-| U²-Net, Informative Drawings (anime), Real-ESRGAN, MobileSAM, UltraFace, YuNet, PaddleOCR-Detektor | Informative Drawings (contour, opensketch), U²-Net Portrait, TEED, MODNet, IS-Net, BiRefNet lite, BEN2 Base, Depth Anything V2 Small, SCUNet, LaMa, RestoreFormer++ |
+| U²-Net, Informative Drawings (anime), Real-ESRGAN, MobileSAM, UltraFace, YuNet, PaddleOCR-Detektor | Informative Drawings (contour, opensketch), U²-Net Portrait, TEED, MODNet, IS-Net, BiRefNet lite, BEN2 Base, SAM 2.1 Small, Depth Anything V2 Small, SCUNet, LaMa, RestoreFormer++ |
 
 - Alle Modelle sind für kommerzielle Nutzung lizenziert (MIT, Apache-2.0, BSD-3).
 - Im Bereich „KI-Modelle“: Status, Größe, Speicherbedarf; Laden und Entfernen per Klick.

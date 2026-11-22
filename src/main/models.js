@@ -17,6 +17,7 @@ const prefs = require('./prefs');
 const resultCache = require('./result-cache');
 
 const HF = 'https://huggingface.co';
+const SAM2 = `${HF}/onnx-community/sam2.1-hiera-small-ONNX/resolve/a7df49d8de14b9d2e4504d1687b0d568f905fd8d/onnx`;
 
 const MODELS = {
   u2netp: {
@@ -127,6 +128,46 @@ const MODELS = {
     file: 'mobilesam_decoder.onnx',
     license: 'Apache-2.0 / MIT',
   },
+  // SAM 2.1 Hiera Small (Meta, Apache-2.0) als ONNX von onnx-community (transformers.js-Export).
+  // Genauere Objektgrenzen als MobileSAM, dafür größer und langsamer (Encoder ca. 2–3 s).
+  // Die Gewichte liegen extern (*.onnx_data) und werden über ihren Dateinamen gefunden –
+  // deshalb in einem eigenen Unterordner mit den Original-Dateinamen.
+  // Encoder: pixel_values 1×3×1024×1024 (ImageNet-Norm) → image_embeddings.0/1/2.
+  // Decoder lädt mit dem Encoder herunter (Teil von dessen Download).
+  sam2_encoder: {
+    label: 'Objekt anklicken – genau (SAM 2.1 Small)',
+    file: 'sam2.1-hiera-small/vision_encoder.onnx',
+    license: 'Apache-2.0',
+    url: `${SAM2}/vision_encoder.onnx`,
+    size: 467440,
+    sha256: 'aacf1f7137bb6fffcf6bf166abcfabe28f57a76059254f3fb611c4a64a208119',
+    extra: [
+      {
+        file: 'sam2.1-hiera-small/vision_encoder.onnx_data',
+        url: `${SAM2}/vision_encoder.onnx_data`,
+        size: 162476288,
+        sha256: '260fd1f0a34e72a3dc79a739e563b4facc0ba75504818b433a1f808e66637456',
+      },
+      {
+        file: 'sam2.1-hiera-small/prompt_encoder_mask_decoder.onnx',
+        url: `${SAM2}/prompt_encoder_mask_decoder.onnx`,
+        size: 213114,
+        sha256: '079c59b261f723ff5c6a125e69b0170a957b21c58738c28d2b0394ecd0587d7f',
+      },
+      {
+        file: 'sam2.1-hiera-small/prompt_encoder_mask_decoder.onnx_data',
+        url: `${SAM2}/prompt_encoder_mask_decoder.onnx_data`,
+        size: 20958208,
+        sha256: 'f9e59a584ab8ced21fa812c211bc01084204db1c9e92a5ef4fb3a49972b4e864',
+      },
+    ],
+  },
+  sam2_decoder: {
+    label: 'Objekt anklicken – genau, Decoder (SAM 2.1 Small)',
+    file: 'sam2.1-hiera-small/prompt_encoder_mask_decoder.onnx',
+    license: 'Apache-2.0',
+    extra: [{ file: 'sam2.1-hiera-small/prompt_encoder_mask_decoder.onnx_data' }],
+  },
   modnet: {
     label: 'Freistellen – Porträt (MODNet)',
     file: 'modnet.onnx',
@@ -234,6 +275,7 @@ function download(id, onProgress) {
       check();
       const target = path.join(DOWNLOAD_DIR(), part.file);
       if (fsSync.existsSync(target)) { before += part.size || 0; continue; }
+      await fs.mkdir(path.dirname(target), { recursive: true }); // Modelle in Unterordnern (z. B. SAM 2.1)
       await downloadFile(part, target, (received) => onProgress?.({ id, received: before + received, total }), job);
       before += part.size || 0;
     }
@@ -336,6 +378,9 @@ async function remove(id) {
   const file = path.join(DOWNLOAD_DIR(), m.file);
   if (worker.proc) worker.proc.postMessage({ type: 'drop', file });
   for (const part of modelParts(m)) await fs.rm(path.join(DOWNLOAD_DIR(), part.file), { force: true });
+  // leeren Unterordner mit aufräumen
+  const sub = path.dirname(m.file);
+  if (sub !== '.') await fs.rmdir(path.join(DOWNLOAD_DIR(), sub)).catch(() => {});
 }
 
 /* ------------------------------------------------------------------ */

@@ -40,8 +40,8 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
     Feine Kanten) oder klassische Kantenerkennung (Canny) → Strichzeichnung als Vektor
   - *Foto*: Dithering mit Floyd-Steinberg, Atkinson, Jarvis, Stucki, Bayer, Schwellwert
   - *Relief*: KI-Tiefenkarte als Graustufenbild für 3D-Reliefgravur
-- **Freistellen**: KI schnell / präzise / beste Qualität / Porträt, Objekt per Klick auswählen (MobileSAM)
-  oder nach Farbe (Hintergrund vom Rand + Klickpunkte). Bei MobileSAM schließen Rechtsklick oder Alt+Klick
+- **Freistellen**: KI schnell / präzise / beste Qualität / Porträt, Objekt per Klick auswählen (MobileSAM oder
+  genauer mit SAM 2.1) oder nach Farbe (Hintergrund vom Rand + Klickpunkte). Beim Objekt-Anklicken schließen Rechtsklick oder Alt+Klick
   Bereiche aus; ein Klick auf einen vorhandenen Punkt entfernt ihn. Entfernter Hintergrund wird in der
   Vorschau rot schraffiert oder wahlweise ausgeblendet.
 - **Altes Foto restaurieren**: Rauschen/Körnung entfernen, Kratzer & Staub finden und per KI auffüllen
@@ -108,6 +108,7 @@ Alle Modelle laufen lokal und offline über onnxruntime (nativ, mit WebAssembly-
 | TEED (ONNX von Shaboomi) | KI-Strichzeichnung „Feine Kanten“ | MIT | Download bei Bedarf (0,3 MB) |
 | Real-ESRGAN general x4v3 | KI-Vergrößerung | BSD-3-Clause | mitgeliefert (aus den offiziellen Gewichten nach ONNX konvertiert) |
 | MobileSAM | Objekt anklicken | Apache-2.0 | mitgeliefert |
+| SAM 2.1 Hiera Small (ONNX von onnx-community) | Objekt anklicken (genau) | Apache-2.0 | Download bei Bedarf (180 MB) |
 | YuNet (OpenCV Zoo) | Gesichtspunkte für die Gesichtsrestaurierung | MIT | mitgeliefert |
 | SCUNet (color real PSNR, ONNX von Heliosoph) | Rauschen & Körnung entfernen | Apache-2.0 | Download bei Bedarf (77 MB); identisch mit eigener Konvertierung der offiziellen Gewichte |
 | LaMa (ONNX von Carve) | Kratzer & Staub auffüllen | Apache-2.0 | Download bei Bedarf (208 MB) |

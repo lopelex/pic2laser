@@ -222,11 +222,59 @@ function syncControls() {
   const pts = s.samPoints.length;
   $('#btn-clear-sam').textContent = pts ? `Punkte zurücksetzen (${pts})` : 'Punkte zurücksetzen';
   $('#btn-clear-sam').disabled = !pts;
-  const pickable = (s.bgRemove === 'color' || s.bgRemove === 'sam') && !!state.source;
+  const pickable = (s.bgRemove === 'color' || isSam(s.bgRemove)) && !!state.source;
   $('#pane-original').classList.toggle('pickable', pickable);
-  $('#pane-original').dataset.pick = s.bgRemove;
+  $('#pane-original').dataset.pick = isSam(s.bgRemove) ? 'sam' : s.bgRemove;
   $('#mode-hint').textContent = MODE_HINTS[s.mode];
+  refreshInfoToggles();
   updateHeightField();
+}
+
+/*
+ * Lange Erklärungen (.hint.info) sind standardmäßig eingeklappt und lassen sich je Abschnitt über
+ * ein kleines ⓘ in der Überschrift einblenden. Der Zustand bleibt je Abschnitt gespeichert.
+ */
+const INFO_KEY = 'pic2laser.infoOpen';
+
+function loadInfoOpen() {
+  try { return new Set(JSON.parse(localStorage.getItem(INFO_KEY) || '[]')); } catch { return new Set(); }
+}
+
+function bindInfoToggles() {
+  const open = loadInfoOpen();
+  for (const group of $$('.group')) {
+    const h3 = group.querySelector('h3');
+    if (!h3 || !group.querySelector('.hint.info')) continue;
+    const id = h3.textContent.trim();
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'info-btn';
+    btn.textContent = 'i';
+    btn.title = 'Erklärungen ein-/ausblenden';
+    btn.setAttribute('aria-label', `Erklärungen zu „${id}“ ein-/ausblenden`);
+    const apply = (on) => {
+      group.classList.toggle('info-open', on);
+      btn.setAttribute('aria-expanded', String(on));
+    };
+    apply(open.has(id));
+    btn.addEventListener('click', () => {
+      const on = !group.classList.contains('info-open');
+      apply(on);
+      const ids = [...loadInfoOpen()].filter((x) => x !== id);
+      if (on) ids.push(id);
+      try { localStorage.setItem(INFO_KEY, JSON.stringify(ids)); } catch { /* nur Komfort */ }
+    });
+    h3.classList.add('has-info');
+    h3.append(btn);
+  }
+}
+
+/** ⓘ nur zeigen, wenn im Abschnitt gerade eine Erklärung sichtbar wäre (abhängig von Modus/Optionen). */
+function refreshInfoToggles() {
+  for (const btn of $$('.info-btn')) {
+    const group = btn.closest('.group');
+    btn.hidden = ![...group.querySelectorAll('.hint.info')].some((h) => h.textContent.trim() && !h.closest('[hidden]'));
+  }
 }
 
 function updateHeightField() {
@@ -309,7 +357,7 @@ function bindControls() {
   // Klick ins Original: Hintergrundpunkt (nach Farbe) bzw. Motiv-/Ausschlusspunkt (Objekt anklicken).
   // Ein Klick auf einen vorhandenen Punkt (Plus/Minus) entfernt ihn wieder.
   const pickPoints = () => (state.settings.bgRemove === 'color' ? state.settings.bgSeeds : state.settings.samPoints);
-  const pickActive = () => !!state.source && (state.settings.bgRemove === 'color' || state.settings.bgRemove === 'sam');
+  const pickActive = () => !!state.source && (state.settings.bgRemove === 'color' || isSam(state.settings.bgRemove));
   const pick = (e, negative) => {
     if (!pickActive()) return;
     const mode = state.settings.bgRemove;
@@ -326,7 +374,7 @@ function bindControls() {
   };
   $('#img-original').addEventListener('click', (e) => pick(e, e.altKey));
   $('#img-original').addEventListener('contextmenu', (e) => {
-    if (state.settings.bgRemove !== 'sam') return;
+    if (!isSam(state.settings.bgRemove)) return;
     e.preventDefault();
     pick(e, true);
   });
@@ -993,11 +1041,19 @@ const Run = {
 /* Zwischenspeicher & Schlüssel                                       */
 /* ------------------------------------------------------------------ */
 
-const SEG_MODEL = { ai: 'u2netp', isnet: 'isnet', birefnet: 'birefnet', ben2: 'ben2', modnet: 'modnet', sam: 'sam_encoder' };
+const SEG_MODEL = { ai: 'u2netp', isnet: 'isnet', birefnet: 'birefnet', ben2: 'ben2', modnet: 'modnet', sam: 'sam_encoder', sam2: 'sam2_encoder' };
+/** Freistellen per Klickpunkten (MobileSAM oder SAM 2.1)? */
+const isSam = (method) => method === 'sam' || method === 'sam2';
+/** Embedding und Maske je Klick-Modell. */
+const SAM_IMPL = {
+  sam: { decoder: 'sam_decoder', embed: (b) => AI.samEmbedding(b), mask: (e, p, w, h) => AI.samMask(e, p, w, h), embMs: 2500, maskMs: 500 },
+  sam2: { decoder: 'sam2_decoder', embed: (b) => AI.sam2Embedding(b), mask: (e, p, w, h) => AI.sam2Mask(e, p, w, h), embMs: 3500, maskMs: 400 },
+};
 const SEG_SEED_MS = { ai: 1500, isnet: 4000, birefnet: 26000, ben2: 14000, modnet: 2200 };
 const MODEL_NAMES = {
   u2netp: 'Freistellen (schnell)', isnet: 'Freistellen (präzise)', birefnet: 'Freistellen (beste Qualität)', ben2: 'Freistellen (gut & sparsam)',
   modnet: 'Porträt-Freistellen', sam_encoder: 'Objekt anklicken', sam_decoder: 'Objekt anklicken',
+  sam2_encoder: 'Objekt anklicken (genau)', sam2_decoder: 'Objekt anklicken (genau)',
   lineart: 'KI-Strichzeichnung', lineart_contour: 'KI-Strichzeichnung (Konturen)', lineart_sketch: 'KI-Strichzeichnung (Skizze)',
   lineart_portrait: 'KI-Strichzeichnung (Tusche-Porträt)', lineart_teed: 'KI-Strichzeichnung (Kanten)', esrgan: 'KI-Vergrößerung', depth: 'Tiefenkarte', faces: 'Gesichtserkennung',
   scunet: 'Rauschen entfernen', lama: 'Kratzer auffüllen', restoreformer: 'Gesichter restaurieren', yunet: 'Gesichtspunkte',
@@ -1023,8 +1079,8 @@ const maskTag = (s) => (restoreAfterCut(s) ? 'src' : upTag(s));
 const restoreKey = (s) => `${restoreSig(s)}${restoreAfterCut(s) ? `@${maskKeyFor(s)}` : ''}`;
 const KEYS = {
   seg: (method, up) => `seg:${method}:${up}`,
-  samEmb: (up) => `sam-emb:${up}`,
-  samMask: (up, points) => `sam-mask:${up}:${JSON.stringify(points)}`,
+  samEmb: (up, method = 'sam') => `sam-emb:${method === 'sam' ? '' : `${method}:`}${up}`,
+  samMask: (up, points, method = 'sam') => `sam-mask:${method === 'sam' ? '' : `${method}:`}${up}:${JSON.stringify(points)}`,
   lineart: (up, res, maskKey, style = 'fine') => `lineart${style === 'fine' ? '' : `-${style}`}:${up}:${res}:${maskKey}`,
   depth: (up, res) => `depth:${up}:${res}`,
   faces: (up, maskKey = null) => (maskKey ? `faces:${up}:cut:${maskKey}` : `faces:${up}`),
@@ -1050,10 +1106,10 @@ function maskKeyFor(s) {
 /** Schlüssel der Maske vor dem Verfeinern. */
 function rawMaskKeyFor(s) {
   const method = s.bgRemove;
-  if (method === 'none' || (method === 'sam' && !s.samPoints.length)) return null;
+  if (method === 'none' || (isSam(method) && !s.samPoints.length)) return null;
   const up = maskTag(s);
   if (method === 'color') return `color:${up}:${s.bgTolerance}:${s.bgBorder}:${JSON.stringify(s.bgSeeds)}`;
-  if (method === 'sam') return `sam:${up}:${s.maskThreshold}:${JSON.stringify(s.samPoints)}`;
+  if (isSam(method)) return `${method}:${up}:${s.maskThreshold}:${JSON.stringify(s.samPoints)}`;
   return `${method}:${up}:${s.maskThreshold}`;
 }
 
@@ -1211,9 +1267,10 @@ function planSteps(s) {
     } else if (method === 'color') {
       const a = Segmentation.analysisSize({ width: work.w, height: work.h });
       add('colormask', 'Freistellen nach Farbe', 'colormask', (a.w * a.h) / 1e6, 250);
-    } else if (method === 'sam') {
-      add('sam-emb', 'Objekt erkennen', 'sam-emb', 1, 2500, KEYS.samEmb(maskTag(s)));
-      add('sam-mask', 'Objekt auswählen', 'sam-mask', 1, 500, KEYS.samMask(maskTag(s), s.samPoints));
+    } else if (isSam(method)) {
+      const impl = SAM_IMPL[method];
+      add('sam-emb', 'Objekt erkennen', method === 'sam' ? 'sam-emb' : `sam-emb:${method}`, 1, impl.embMs, KEYS.samEmb(maskTag(s), method));
+      add('sam-mask', 'Objekt auswählen', method === 'sam' ? 'sam-mask' : `sam-mask:${method}`, 1, impl.maskMs, KEYS.samMask(maskTag(s), s.samPoints, method));
     } else {
       add('seg', MODEL_NAMES[SEG_MODEL[method]], `seg:${method}`, 1, SEG_SEED_MS[method], KEYS.seg(method, maskTag(s)));
     }
@@ -1567,10 +1624,12 @@ async function ensureMask(s, bitmap) {
     } else {
       await ensureModelReady(SEG_MODEL[method]);
       let raw;
-      if (method === 'sam') {
-        const emb = await Run.track('sam-emb', cached(KEYS.samEmb(up), () => AI.samEmbedding(bitmap), s));
+      if (isSam(method)) {
+        const impl = SAM_IMPL[method];
+        await ensureModelReady(impl.decoder);
+        const emb = await Run.track('sam-emb', cached(KEYS.samEmb(up, method), () => impl.embed(bitmap), s));
         const { w, h } = Segmentation.analysisSize(bitmap);
-        raw = await Run.track('sam-mask', cached(KEYS.samMask(up, s.samPoints), () => AI.samMask(emb, s.samPoints, w, h), s));
+        raw = await Run.track('sam-mask', cached(KEYS.samMask(up, s.samPoints, method), () => impl.mask(emb, s.samPoints, w, h), s));
       } else {
         raw = await segmentWithFallback(method, bitmap, up, s);
       }
@@ -1770,6 +1829,9 @@ function renderPerf(p) {
     if (p.cpuOnly.length) info += ` Auf dem Prozessor (GPU nicht unterstützt): ${p.cpuOnly.map(name).join(', ')}.`;
   }
   $('#perf-info').textContent = info;
+  const gpuShort = !p.gpuAvailable ? 'Prozessor' : p.gpu ? 'GPU an' : 'GPU aus';
+  const cacheShort = !p.diskCache ? 'Cache aus' : p.cache.count ? `Cache ${fmtMB(p.cache.bytes)}` : 'Cache leer';
+  $('#perf-summary').textContent = `${gpuShort} · ${cacheShort}`;
 }
 
 async function refreshPerf() {
@@ -1777,6 +1839,10 @@ async function refreshPerf() {
 }
 
 function bindPerf() {
+  $('#btn-perf').addEventListener('click', () => {
+    refreshPerf(); // aktuelle Cache-Größe und genutzte Geräte
+    $('#perf-dialog').showModal();
+  });
   $('#perf-gpu').addEventListener('change', async (e) => {
     // KI-Prozess startet neu (laufende Berechnung wird abgebrochen) → danach neu umwandeln
     renderPerf(await window.api.perf.set({ gpu: e.target.checked }));
@@ -1809,64 +1875,147 @@ async function ensureModel(id) {
   if (info && !info.available) await refreshModels();
 }
 
+/** Gruppen im Modell-Dialog (Reihenfolge = Anzeige); nicht aufgeführte Modelle landen unter „Weitere“. */
+const MODEL_GROUPS = [
+  ['Freistellen', ['u2netp', 'isnet', 'birefnet', 'ben2', 'modnet', 'sam_encoder', 'sam2_encoder']],
+  ['Strichzeichnung', ['lineart', 'lineart_contour', 'lineart_sketch', 'lineart_portrait', 'lineart_teed']],
+  ['Restaurieren & Verbessern', ['scunet', 'lama', 'restoreformer', 'yunet', 'esrgan']],
+  ['Erkennung & Relief', ['faces', 'text', 'depth']],
+];
+// Teilmodelle, die mit ihrem Hauptmodell geladen und entfernt werden
+const MODEL_HIDDEN = new Set(['sam_decoder', 'sam2_decoder']);
+const modelsLoading = new Set(); // ids, deren Download aus dem Dialog läuft
+
 function renderModels() {
-  const list = $('#model-list');
-  list.replaceChildren();
-  const seen = new Set();
-  for (const m of state.models) {
-    const name = MODEL_NAMES[m.id] || m.label;
-    if (m.id === 'sam_decoder') continue;
-    if (seen.has(name)) continue;
-    seen.add(name);
-    const li = document.createElement('li');
-    const label = document.createElement('div');
-    label.className = 'model-name';
-    label.textContent = m.label;
-    label.title = `Lizenz: ${m.license}`;
-    const peak = state.sys?.modelPeakMB?.[m.id];
-    if (peak && peak >= 1000) {
-      const req = document.createElement('div');
-      req.className = 'model-req' + (state.sys && peak > state.sys.totalMB * 0.6 ? ' warn' : '');
-      req.textContent = `braucht ca. ${fmtGB(peak)} RAM`;
-      label.append(req);
-    }
-    const st = document.createElement('div');
-    st.className = 'model-state';
-    if (m.bundled) {
-      st.textContent = 'mitgeliefert';
-    } else if (m.available) {
-      st.textContent = 'installiert ';
-      const del = document.createElement('button');
-      del.className = 'link-btn';
-      del.textContent = 'entfernen';
-      del.addEventListener('click', async () => {
-        state.models = await window.api.models.remove(m.id);
-        state.cache = new Map();
-        state.mask = null;
-        state.maskRaw = null;
-        renderModels();
-      });
-      st.append(del);
-    } else {
-      const dl = document.createElement('button');
-      dl.className = 'link-btn';
-      dl.textContent = `laden (${fmtMB(m.size)})`;
-      dl.addEventListener('click', async () => {
-        dl.disabled = true;
-        try {
-          await ensureModel(m.id);
-          toast(`Modell „${m.label}“ installiert`);
-        } catch (err) {
-          if (!isCancelled(err)) toast(`Download fehlgeschlagen: ${cleanError(err)}`, true);
-        } finally {
-          hideProgress();
-          refreshModels();
-        }
-      });
-      st.append(dl);
-    }
-    li.append(label, st);
-    list.append(li);
+  const models = state.models.filter((m) => !MODEL_HIDDEN.has(m.id));
+  const extra = models.filter((m) => !m.bundled);
+  const installed = extra.filter((m) => m.available);
+  const usedMB = installed.reduce((sum, m) => sum + (m.size || 0), 0);
+  const summary = extra.length
+    ? `${installed.length} von ${extra.length} Zusatzmodellen installiert${installed.length ? ` (${fmtMB(usedMB)})` : ''}`
+    : '';
+  $('#models-summary').textContent = summary;
+  $('#models-dialog-summary').textContent = summary ? `${summary} · ${models.length - extra.length} mitgeliefert` : '';
+
+  const root = $('#model-list');
+  root.replaceChildren();
+  const byId = new Map(models.map((m) => [m.id, m]));
+  const grouped = new Set();
+  const groups = MODEL_GROUPS.map(([title, ids]) => {
+    const list = ids.map((id) => byId.get(id)).filter(Boolean);
+    list.forEach((m) => grouped.add(m.id));
+    return [title, list];
+  });
+  groups.push(['Weitere', models.filter((m) => !grouped.has(m.id))]);
+
+  for (const [title, list] of groups) {
+    if (!list.length) continue;
+    const sec = document.createElement('section');
+    sec.className = 'model-group';
+    const h = document.createElement('h3');
+    h.textContent = title;
+    const ul = document.createElement('ul');
+    ul.className = 'model-list';
+    for (const m of list) ul.append(modelRow(m, title));
+    sec.append(h, ul);
+    root.append(sec);
+  }
+}
+
+/** Anzeigename im Dialog: Gruppenname und technische Zusätze weglassen („Freistellen – schnell“ → „schnell“). */
+function modelDisplayName(m, group) {
+  let name = m.label.replace(' – Encoder', '');
+  const prefix = `${group} – `;
+  if (name.startsWith(prefix)) name = name.slice(prefix.length);
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function modelRow(m, group = '') {
+  const li = document.createElement('li');
+  li.className = 'model-row' + (m.available ? ' is-installed' : '');
+
+  const info = document.createElement('div');
+  info.className = 'model-info';
+  const name = document.createElement('div');
+  name.className = 'model-name';
+  name.textContent = modelDisplayName(m, group);
+  const meta = document.createElement('div');
+  meta.className = 'model-meta';
+  const parts = [`Lizenz ${m.license}`];
+  if (m.size) parts.push(fmtMB(m.size));
+  meta.textContent = parts.join(' · ');
+  const peak = state.sys?.modelPeakMB?.[m.id];
+  if (peak && peak >= 1000) {
+    const req = document.createElement('span');
+    req.className = 'model-req' + (state.sys && peak > state.sys.totalMB * 0.6 ? ' warn' : '');
+    req.textContent = ` · braucht ca. ${fmtGB(peak)} RAM`;
+    meta.append(req);
+  }
+  info.append(name, meta);
+
+  const actions = document.createElement('div');
+  actions.className = 'model-actions';
+  const badge = document.createElement('span');
+  badge.className = 'model-badge';
+  if (m.bundled) {
+    badge.textContent = 'mitgeliefert';
+    actions.append(badge);
+  } else if (m.available) {
+    badge.textContent = 'installiert';
+    badge.classList.add('ok');
+    const del = document.createElement('button');
+    del.className = 'btn btn-small btn-ghost';
+    del.textContent = 'Entfernen';
+    del.addEventListener('click', async () => {
+      if (!confirm(`„${m.label}“ entfernen? Es wird bei Bedarf erneut geladen (${fmtMB(m.size)}).`)) return;
+      del.disabled = true;
+      state.models = await window.api.models.remove(m.id);
+      state.cache = new Map();
+      state.mask = null;
+      state.maskRaw = null;
+      renderModels();
+    });
+    actions.append(badge, del);
+  } else {
+    const loading = modelsLoading.has(m.id);
+    const dl = document.createElement('button');
+    dl.className = 'btn btn-small';
+    dl.textContent = loading ? 'Lädt …' : 'Laden';
+    dl.disabled = loading;
+    dl.addEventListener('click', async () => {
+      modelsLoading.add(m.id);
+      renderModels();
+      try {
+        await ensureModel(m.id);
+        toast(`Modell „${m.label}“ installiert`);
+      } catch (err) {
+        if (!isCancelled(err)) toast(`Download fehlgeschlagen: ${cleanError(err)}`, true);
+      } finally {
+        modelsLoading.delete(m.id);
+        hideProgress();
+        refreshModels();
+      }
+    });
+    actions.append(dl);
+  }
+  li.append(info, actions);
+  return li;
+}
+
+function bindModelsDialog() {
+  const dlg = $('#models-dialog');
+  $('#btn-models').addEventListener('click', () => {
+    renderModels();
+    $('#models-dialog-system').textContent = $('#system-info').textContent;
+    dlg.showModal();
+  });
+}
+
+/** Gemeinsames Verhalten aller Dialoge: [data-close] und Klick auf den abgedunkelten Hintergrund schließen. */
+function bindDialogs() {
+  for (const dlg of $$('dialog.dialog')) {
+    for (const btn of dlg.querySelectorAll('[data-close]')) btn.addEventListener('click', () => dlg.close());
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
   }
 }
 
@@ -2177,6 +2326,7 @@ function bindCancel() {
   $('#btn-cancel').addEventListener('click', cancelAll);
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (document.querySelector('dialog[open]')) return; // Esc schließt nur den Dialog, Berechnungen/Downloads laufen weiter
     const busy = $('#busy').classList.contains('on') || !$('#progress').hidden;
     if (busy) { e.preventDefault(); cancelAll(); }
   });
@@ -2555,7 +2705,7 @@ function renderMarkers() {
   const mode = state.settings.bgRemove;
   const points = !state.source ? [] : mode === 'color'
     ? state.settings.bgSeeds.map((p) => ({ ...p, positive: false }))
-    : mode === 'sam' ? state.settings.samPoints : [];
+    : isSam(mode) ? state.settings.samPoints : [];
   layer.textContent = '';
   if (!points.length || !img.naturalWidth) return;
   // Lage des Bildinhalts (object-fit: contain) innerhalb des <img>
@@ -2595,6 +2745,9 @@ function toast(msg, isError = false, action = null) {
 
 /* ------------------------------------------------------------------ */
 
+bindInfoToggles();
+bindModelsDialog();
+bindDialogs();
 bindControls();
 bindPresets();
 bindResultDrag();
