@@ -617,6 +617,15 @@ const Processing = (() => {
   function enhanceFaces(gray, w, h, faces, strength, levels) {
     for (const f of faces) {
       const fw = (f.x2 - f.x1) * w, fh = (f.y2 - f.y1) * h;
+      // Ausgangswerte merken: Die Schritte unten überlagern sich (Gesicht, Mund, Nase, Kinn, Wangen)
+      // und würden tiefe Falten und Schatten sonst bis ins Schwarze ziehen
+      const bx0 = Math.max(0, Math.floor(((f.x1 + f.x2) / 2) * w - fw * 0.8));
+      const bx1 = Math.min(w - 1, Math.ceil(((f.x1 + f.x2) / 2) * w + fw * 0.8));
+      const by0 = Math.max(0, Math.floor(((f.y1 + f.y2) / 2) * h - fh * 0.85));
+      const by1 = Math.min(h - 1, Math.ceil(((f.y1 + f.y2) / 2) * h + fh * 0.85));
+      const bw = bx1 - bx0 + 1;
+      const orig = new Float32Array(bw * Math.max(0, by1 - by0 + 1));
+      for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) orig[(y - by0) * bw + x - bx0] = gray[y * w + x];
       // 1. ganzes Gesicht: Details in Größe von Augen/Brauen/Nase
       localContrast(gray, w, h, {
         cx: ((f.x1 + f.x2) / 2) * w, cy: ((f.y1 + f.y2) / 2) * h, rx: fw * 0.75, ry: fh * 0.8,
@@ -635,8 +644,24 @@ const Processing = (() => {
           });
         }
       }
+      // Gesamtänderung je Pixel weich begrenzen: feine Unterschiede (Lippen, Lidfalte) werden voll
+      // verstärkt, deutliche Falten und Schatten nur noch wenig – keine schwarzen Flecken
+      const capDark = FACE_CAP_DARK * Math.max(0.5, Math.min(1.5, strength));
+      const capLight = FACE_CAP_LIGHT * Math.max(0.5, Math.min(1.5, strength));
+      for (let y = by0; y <= by1; y++) {
+        for (let x = bx0; x <= bx1; x++) {
+          const i = y * w + x, o = orig[(y - by0) * bw + x - bx0];
+          const d = gray[i] - o;
+          if (d < 0) gray[i] = o - capDark * Math.tanh(-d / capDark);
+          else if (d > 0) gray[i] = o + capLight * Math.tanh(d / capLight);
+        }
+      }
     }
   }
+
+  /** Höchste Gesamtänderung (Graustufen) durch „Gesichtszüge hervorheben“ bei Stärke 100 %. */
+  const FACE_CAP_DARK = 38;
+  const FACE_CAP_LIGHT = 30;
 
   /**
    * Unscharfe Maskierung (lokaler Kontrast), elliptisch weich begrenzt.
@@ -682,7 +707,9 @@ const Processing = (() => {
         let detail = center - mean;
         // Rauschschwelle: feine Hautstruktur nicht verstärken
         if (floor > 0) detail = detail > 0 ? Math.max(0, detail - floor) : Math.min(0, detail + floor);
-        const k = detail < 0 ? dark : light;
+        // Verstärkung nimmt mit der Größe des Unterschieds ab: schwache Konturen (Lippen mit
+        // fast Hautton) werden betont, ohnehin dunkle Falten und Schatten nicht vervielfacht
+        const k = (detail < 0 ? dark : light) / (1 + Math.abs(detail) / 24);
         gray[i] = Math.max(0, Math.min(255, gray[i] + wgt * k * detail));
       }
     }

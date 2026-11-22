@@ -23,6 +23,16 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
   - *Schneiden & Relief:* Relief-Motiv freigestellt (PNG, transparent),
     Relief – maximale Details (nicht kommerziell)
 
+### Verbessert
+- **Gesichtszüge hervorheben (Fläche/Foto):** Die Verstärkung ist jetzt begrenzt. Bisher wurden
+  deutliche Falten und Schatten – vor allem bei älteren Gesichtern – von mehreren Schritten
+  (Gesicht, Mund, Nase, Kinn, Wangen) nacheinander verstärkt und zu schwarzen Flecken und Strichen
+  um Mund und Kinn. Feine Konturen wie Lippen und Lidfalte werden weiter betont.
+- **Preset „Porträt – Schablone (Stencil)“:** stärker weichgezeichnet, Gamma 1,25, Schwellwert 100
+  und mehr Fleckenfilter – Gesichter mit Schatten werden nicht mehr halbseitig schwarz.
+- **Preset „Porträt – Strichzeichnung“:** Nase nicht mehr extra nachgezeichnet (ergab einen
+  schwarzen Fleck unter der Nase), Mund, Kinn und Wangen etwas zurückhaltender.
+
 ## 1.7.0 – 22.11.2026
 
 ### Neu

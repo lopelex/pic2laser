@@ -129,7 +129,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 - **Gesichtszüge hervorheben:** Gesichtserkennung (UltraFace), dann lokaler Kontrast für Augen,
   Brauen und Gesamtgesicht. Im Modus Linien wird jedes Gesicht zusätzlich in hoher Auflösung
-  nachgezeichnet.
+  nachgezeichnet. Die Verstärkung ist begrenzt: Schwache Konturen (Lippen, Lidfalte) werden
+  deutlich betont, ohnehin dunkle Falten und Schatten nur wenig – so entstehen bei faltiger Haut
+  keine schwarzen Flecken.
 - **Reihenfolge:** vor dem Freistellen (ganzes Bild) oder danach (nur Gesichter im Motiv).
 - **Merkmale finden:** *Geschätzt* (feste Anteile des Gesichtsrahmens) oder *Genau* (Face Parsing,
   BiSeNet, nicht kommerziell): jedes Gesicht wird in Haut, Augen, Brauen, Nase und Lippen zerlegt;

@@ -516,12 +516,12 @@ const BUILTIN_PRESETS = [
   {
     group: 'Porträts & Personen', name: 'Porträt – Schablone (Stencil)',
     desc: 'Für Porträts als flächige Schwarz-Weiß-Grafik im Stencil-Stil, z. B. für Holzschilder.',
-    settings: { mode: 'vector', bgRemove: 'modnet', contrast: 25, blur: 1, threshold: 110, turdSize: 25, alphaMax: 1.2, optTolerance: 0.4, subjectLine: true, subjectLineMm: 0.4, faceBoost: true, faceStrength: 1, mouthStrength: 1, noseStrength: 0.6, chinStrength: 0.6, cheekStrength: 0.3 },
+    settings: { mode: 'vector', bgRemove: 'modnet', contrast: 25, blur: 2, gamma: 1.25, threshold: 100, turdSize: 40, alphaMax: 1.2, optTolerance: 0.4, subjectLine: true, subjectLineMm: 0.4, faceBoost: true, faceStrength: 1, mouthStrength: 1, noseStrength: 0.6, chinStrength: 0.6, cheekStrength: 0.3 },
   },
   {
     group: 'Porträts & Personen', name: 'Porträt – Strichzeichnung',
     desc: 'Für Porträtfotos: KI zeichnet das Gesicht wie von Hand nach.',
-    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 832, threshold: 150, bgRemove: 'modnet', faceBoost: true, faceStrength: 1, mouthStrength: 1.2, noseStrength: 0.8, chinStrength: 0.8, cheekStrength: 0.5 },
+    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 832, threshold: 150, bgRemove: 'modnet', faceBoost: true, faceStrength: 1, mouthStrength: 0.8, noseStrength: 0, chinStrength: 0.4, cheekStrength: 0.3 },
   },
   {
     group: 'Porträts & Personen', name: 'Porträt – Tuschezeichnung',
