@@ -2,7 +2,7 @@
 
 Electron-App, die Bilder in Schwarz-Weiß-SVGs (und optional PNG/JPG/BMP) für die Lasergravur mit LightBurn umwandelt.
 
-Aktuelle Version: **1.7.0**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
+Aktuelle Version: **1.8.0**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
 bekannte und behobene Fehler: [BUGS.md](BUGS.md).
 
 ## Starten
@@ -39,18 +39,20 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
   - *Linien*: KI-Strichzeichnung (Modelle: Feine Linien, Kräftige Konturen, Zarte Skizze, Tusche-Porträt,
     Feine Kanten) oder klassische Kantenerkennung (Canny) → Strichzeichnung als Vektor
   - *Foto*: Dithering mit Floyd-Steinberg, Atkinson, Jarvis, Stucki, Bayer, Schwellwert
-  - *Relief*: KI-Tiefenkarte als Graustufenbild für 3D-Reliefgravur, optional mit transparentem
+  - *Relief*: KI-Tiefenkarte (Depth Anything V2 Small, wahlweise Base/Large) als Graustufenbild für 3D-Reliefgravur, optional mit transparentem
     weißem/freigestelltem Hintergrund (PNG/SVG)
 - **Freistellen**: KI schnell / präzise / beste Qualität / Porträt, Objekt per Klick auswählen (MobileSAM oder
   genauer mit SAM 2.1) oder nach Farbe (Hintergrund vom Rand + Klickpunkte). Beim Objekt-Anklicken schließen Rechtsklick oder Alt+Klick
   Bereiche aus; ein Klick auf einen vorhandenen Punkt entfernt ihn. Entfernter Hintergrund wird in der
   Vorschau rot schraffiert oder wahlweise ausgeblendet.
 - **Altes Foto restaurieren**: Rauschen/Körnung entfernen, Kratzer & Staub finden und per KI auffüllen
-  (Augen, Nase und Mund geschützt), Gesichter per KI restaurieren (ausgerichtet über 5 Gesichtspunkte,
+  (Augen, Nase und Mund geschützt – geschätzt oder genau per Face Parsing), Gesichter per KI restaurieren
+  (RestoreFormer++ oder CodeFormer mit Regler „Treue zum Original“; ausgerichtet über 5 Gesichtspunkte,
   Tonwerte vom Original)
 - **KI-Vergrößerung 4×** für kleine oder unscharfe Bilder
 - **Gesichtszüge hervorheben**: erkennt Gesichter und betont Augen, Brauen, Nase und Mund
-  (Linien: Gesicht zusätzlich hochaufgelöst nachgezeichnet; Fläche/Foto: lokaler Kontrast)
+  (Linien: Gesicht zusätzlich hochaufgelöst nachgezeichnet; Fläche/Foto: lokaler Kontrast).
+  Mund, Nase, Kinn und Wangen werden aus dem Gesichtsrahmen geschätzt oder genau per Face Parsing gefunden
 - **Motivkontur**: dünne Linie dort, wo Motiv und Hintergrund ineinander verschwimmen
 - **Schrift & Logos**: erkennt Schriftzüge und angrenzende Logo-Elemente und stellt sie scharf und gefüllt dar,
   statt sie zu rastern oder nachzuzeichnen (Bereiche werden im Original blau markiert)
@@ -127,6 +129,10 @@ Alle Modelle laufen lokal und offline über onnxruntime (nativ, mit WebAssembly-
 | BiRefNet lite | Freistellen – beste Qualität | MIT | Download bei Bedarf (224 MB) |
 | BEN2 Base (int8-Gewichte von moonbox-dev) | Freistellen – gut & sparsam | MIT | Download bei Bedarf (131 MB) |
 | Depth Anything V2 Small | Tiefenkarte (Relief) | Apache-2.0 | Download bei Bedarf (99 MB) |
+| Depth Anything V2 Base (ONNX von onnx-community) | Tiefenkarte „fein“ (Relief) | **CC BY-NC 4.0** (nicht kommerziell) | Download bei Bedarf (389 MB) |
+| Depth Anything V2 Large (ONNX von onnx-community) | Tiefenkarte „sehr fein“ (Relief) | **CC BY-NC 4.0** (nicht kommerziell) | Download bei Bedarf (1,3 GB); fp32, da fp16 auf der CPU langsamer ist und mehr Speicher braucht |
+| CodeFormer (ONNX von FaceFusion) | Gesichter restaurieren, mit Regler „Treue zum Original“ | **S-Lab License 1.0** (nicht kommerziell) | Download bei Bedarf (377 MB) |
+| BiSeNet Face Parsing (ResNet-34, ONNX von FaceFusion) | Gesichtsmerkmale genau finden („Gesichtszüge hervorheben“, Gesichtsschutz bei Kratzern) | **CelebAMask-HQ** (nicht kommerziell) | Download bei Bedarf (94 MB) |
 
 Downloads sind auf feste Versionen gepinnt und werden per SHA-256 geprüft; sie landen in
 `<userData>/models` und lassen sich in der App wieder entfernen.

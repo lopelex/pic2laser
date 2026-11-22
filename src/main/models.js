@@ -210,6 +210,55 @@ const MODELS = {
     size: 99060839,
     sha256: 'afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c',
   },
+
+  /*
+   * Modelle mit nicht-kommerzieller Lizenz (nc: true): nur Download bei Bedarf direkt von der
+   * Quelle, nie mitgeliefert. Die App kennzeichnet sie in der Auswahl und im Modell-Dialog.
+   */
+
+  // Depth Anything V2 Base/Large: gleiche Vor-/Nachverarbeitung wie Small, feinere Tiefe.
+  // fp32 – die fp16-Variante ist auf der CPU langsamer und braucht mehr Speicher (gemessen).
+  depth_base: {
+    label: 'Tiefenkarte für Relief – fein (Depth Anything V2 Base)',
+    file: 'depth_anything_v2_base.onnx',
+    license: 'CC BY-NC 4.0',
+    nc: true,
+    url: `${HF}/onnx-community/depth-anything-v2-base/resolve/dd4557d492cd7b563738ac8d9ccff9094620983c/onnx/model.onnx`,
+    size: 388917010,
+    sha256: 'dab40f67d5ead5e0ed52acfae41a717a708b02bc57f6cb761c5de828f26a7289',
+  },
+  depth_large: {
+    label: 'Tiefenkarte für Relief – sehr fein (Depth Anything V2 Large)',
+    file: 'depth_anything_v2_large.onnx',
+    license: 'CC BY-NC 4.0',
+    nc: true,
+    url: `${HF}/onnx-community/depth-anything-v2-large/resolve/1fa1591c7b080e98da9655827c3a33a3972a4a83/onnx/model.onnx`,
+    size: 1336922232,
+    sha256: 'a93aa89b5e92e30e0afbe0f7c3ec692b35cfca791ae9004a190fb0ca2010e905',
+  },
+  // CodeFormer (sczhou, S-Lab License 1.0) als ONNX von FaceFusion. Eingabe RGB −1..1 (512×512,
+  // FFHQ-ausgerichtet) und „weight“ (float64, 0 = stärker restauriert, 1 = näher am Original).
+  codeformer: {
+    label: 'Gesichter restaurieren (CodeFormer)',
+    file: 'codeformer.onnx',
+    license: 'S-Lab License 1.0 (nicht kommerziell)',
+    nc: true,
+    url: 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/codeformer.onnx',
+    size: 376951650,
+    sha256: '21710e7ab61c82683576c428e9c1b6fe1ed419586b7b39e394c3449c294b550f',
+  },
+  // Face Parsing: BiSeNet (ResNet-34) auf CelebAMask-HQ, ONNX von FaceFusion. Eingabe 512×512 RGB
+  // (ImageNet-Norm), Ausgabe 19 Klassen (Haut, Brauen, Augen, Nase, Lippen …). Der Datensatz ist
+  // nur für nicht-kommerzielle Forschung freigegeben.
+  faceparse: {
+    label: 'Gesichtsmerkmale genau finden (Face Parsing, BiSeNet)',
+    file: 'bisenet_resnet_34.onnx',
+    license: 'CelebAMask-HQ (nicht kommerziell)',
+    nc: true,
+    url: 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/bisenet_resnet_34.onnx',
+    size: 93632546,
+    sha256: '4a0b8c958a3c938913bd06a8365dbb3c8761afba6ecbf0d14b3b1f77eb230c96',
+  },
 };
 
 const BUNDLED_DIR = path
@@ -243,6 +292,7 @@ function status() {
       id,
       label: m.label,
       license: m.license,
+      nc: !!m.nc,
       size: modelParts(m).reduce((sum, p) => sum + (p.size || 0), 0) || null,
       available: !!p,
       downloadable: !!m.url,

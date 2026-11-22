@@ -52,6 +52,7 @@ const DEFAULTS = Object.freeze({
   lineWidthMm: 0.4,
   // Relief
   depthRes: '518',
+  depthModel: 'small', // 'small' (Apache-2.0), 'base' / 'large' (CC BY-NC 4.0)
   reliefTransparent: false,
   // Umrisslinie
   outline: false,
@@ -78,13 +79,17 @@ const DEFAULTS = Object.freeze({
   chinStrength: 0.5,
   cheekStrength: 0,
   faceOrder: 'before', // Gesichter erkennen: 'before' = ganzes Bild, 'after' = nur im freigestellten Motiv
+  faceLocate: 'box', // Merkmale: 'box' = aus dem Gesichtsrahmen geschätzt, 'parse' = Face Parsing (nicht kommerziell)
   // Altes Foto restaurieren
   restoreOn: false, // Hauptschalter „Altes Foto restaurieren“
   restoreDenoise: false,
   restoreScratches: false,
   scratchSensitivity: 50,
+  scratchProtect: 'points', // Gesichtsschutz: 'points' = aus 5 Gesichtspunkten, 'parse' = Face Parsing (nicht kommerziell)
   restoreFaces: false,
   faceRestoreStrength: 1,
+  faceRestoreModel: 'restoreformer', // 'restoreformer' (Apache-2.0) oder 'codeformer' (nicht kommerziell)
+  faceFidelity: 0.7, // CodeFormer: 0 = stärker restauriert, 1 = näher am Original
   restoreOrder: 'before', // 'before' = ganzes Bild restaurieren, 'after' = erst freistellen, dann nur das Motiv
   // Schrift & Logos
   textClean: false,
@@ -201,6 +206,7 @@ const FORMATTERS = {
   cheekStrength: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
   scratchSensitivity: (v) => `${v}`,
   faceRestoreStrength: (v) => `${Math.round(Number(v) * 100)} %`,
+  faceFidelity: (v) => `${Math.round(Number(v) * 100)} %`,
   textPad: (v) => (Number(v) ? `${Number(v).toFixed(1)} × Zeilenhöhe` : 'nur Schrift'),
   textBold: (v) => (Number(v) > 0 ? `+${v}` : `${v}`),
 };
@@ -233,6 +239,11 @@ function syncControls() {
   for (const el of $$('[data-line-hide]')) el.hidden = el.dataset.lineHide.split(' ').includes(s.lineStyle);
   $('#line-model-hint').textContent = LINE_HINTS[s.lineStyle] || LINE_HINTS.fine;
   for (const el of $$('[data-show]')) el.hidden = !s[el.dataset.show];
+  // data-if="schlüssel:wert1 wert2" – sichtbar, wenn die Einstellung einen der Werte hat
+  for (const el of $$('[data-if]')) {
+    const [key, values] = el.dataset.if.split(':');
+    el.hidden = !values.split(' ').includes(String(s[key]));
+  }
   const seeds = s.bgSeeds.length;
   $('#btn-clear-seeds').textContent = seeds ? `Klickpunkte zurücksetzen (${seeds})` : 'Klickpunkte zurücksetzen';
   $('#btn-clear-seeds').disabled = !seeds;
@@ -475,6 +486,26 @@ const BUILTIN_PRESETS = [
     desc: 'Für gescannte Zeichnungen und Skizzen: helle Striche werden kräftiger, Papierstruktur verschwindet.',
     settings: { mode: 'vector', contrast: 45, brightness: 15, gamma: 0.8, sharpen: 0.4, threshold: 160, turdSize: 6, workRes: 2500 },
   },
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Schild / Piktogramm (exakte Formen)',
+    desc: 'Für Schilder, Piktogramme und technische Grafiken: Kanten werden zu exakten Geraden, Kreisen und rechten Winkeln.',
+    settings: { mode: 'vector', threshold: 128, turdSize: 8, alphaMax: 1, optTolerance: 0.2, workRes: 2400, shapeFit: true, shapeTolMm: 0.15, shapeSnap: true },
+  },
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Pixeliges Logo / Icon glätten',
+    desc: 'Für winzige Logos, Icons und Favicons mit sichtbaren Pixelstufen: KI vergrößert und rundet die Umrisse.',
+    settings: { mode: 'vector', smoothContours: true, threshold: 128, turdSize: 8, alphaMax: 1.2, optTolerance: 0.3, workRes: 2400 },
+  },
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Stempel (Gummi, invertiert)',
+    desc: 'Für Gummistempel: Der Hintergrund wird graviert, das Motiv bleibt erhaben. In LightBurn spiegeln!',
+    settings: { mode: 'vector', invert: true, threshold: 128, turdSize: 10, alphaMax: 1, optTolerance: 0.2, workRes: 2400 },
+  },
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Fahrzeug / Maschine mit Schriftzug – Linien',
+    desc: 'Für Autos, Traktoren und Maschinen: kräftige, ruhige Umrisse, Schriftzüge und Logos bleiben gefüllt.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineStyle: 'contour', lineRes: 1024, threshold: 150, lineClean: true, lineSmoothMm: 0.3, lineMinMm: 1.5, textClean: true, textPad: 1.5, shapeOrder: 'before' },
+  },
 
   // ---- Porträts & Personen ----
   {
@@ -485,12 +516,22 @@ const BUILTIN_PRESETS = [
   {
     group: 'Porträts & Personen', name: 'Porträt – Schablone (Stencil)',
     desc: 'Für Porträts als flächige Schwarz-Weiß-Grafik im Stencil-Stil, z. B. für Holzschilder.',
-    settings: { mode: 'vector', bgRemove: 'modnet', contrast: 25, blur: 1, threshold: 110, turdSize: 25, alphaMax: 1.2, optTolerance: 0.4, subjectLine: true, subjectLineMm: 0.4, faceBoost: true, faceStrength: 1, mouthStrength: 1, noseStrength: 0.6, chinStrength: 0.6, cheekStrength: 0.3 },
+    settings: { mode: 'vector', bgRemove: 'modnet', contrast: 25, blur: 2, gamma: 1.25, threshold: 100, turdSize: 40, alphaMax: 1.2, optTolerance: 0.4, subjectLine: true, subjectLineMm: 0.4, faceBoost: true, faceStrength: 1, mouthStrength: 1, noseStrength: 0.6, chinStrength: 0.6, cheekStrength: 0.3 },
   },
   {
     group: 'Porträts & Personen', name: 'Porträt – Strichzeichnung',
     desc: 'Für Porträtfotos: KI zeichnet das Gesicht wie von Hand nach.',
-    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 832, threshold: 150, bgRemove: 'modnet', faceBoost: true, faceStrength: 1, mouthStrength: 1.2, noseStrength: 0.8, chinStrength: 0.8, cheekStrength: 0.5 },
+    settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 832, threshold: 150, bgRemove: 'modnet', faceBoost: true, faceStrength: 1, mouthStrength: 0.8, noseStrength: 0, chinStrength: 0.4, cheekStrength: 0.3 },
+  },
+  {
+    group: 'Porträts & Personen', name: 'Porträt – Tuschezeichnung',
+    desc: 'Für Porträts mit großem, mittigem Gesicht: wie mit Tusche gezeichnet, Haare als dunkle Fläche.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineStyle: 'portrait', threshold: 150, bgRemove: 'modnet' },
+  },
+  {
+    group: 'Porträts & Personen', name: 'Porträt – Bleistiftskizze',
+    desc: 'Für Porträts als lockere, zarte Skizze mit wenigen Strichen.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineStyle: 'sketch', lineRes: 896, threshold: 170, bgRemove: 'modnet', faceBoost: true, faceStrength: 0.8, mouthStrength: 1, noseStrength: 0.6, chinStrength: 0.4, cheekStrength: 0 },
   },
   {
     group: 'Porträts & Personen', name: 'Altes Porträtfoto restaurieren',
@@ -540,6 +581,16 @@ const BUILTIN_PRESETS = [
     group: 'Fotos & Landschaft', name: 'Landschaft als Linienzeichnung',
     desc: 'Für Landschaften, Gebäude und Skylines als feine Strichzeichnung.',
     settings: { mode: 'edges', edgeMethod: 'ai', lineRes: 1024, threshold: 150 },
+  },
+  {
+    group: 'Fotos & Landschaft', name: 'Gebäude – gerade Linien',
+    desc: 'Für Häuser, Kirchen und Brücken: ruhige Umrisse, Kanten werden zu exakten Geraden und Bögen.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineStyle: 'contour', lineRes: 1024, threshold: 150, lineClean: true, lineSmoothMm: 0.2, lineMinMm: 1.5, shapeFit: true, shapeTolMm: 0.2, shapeSnap: true },
+  },
+  {
+    group: 'Fotos & Landschaft', name: 'Ausmalbild / Malvorlage',
+    desc: 'Für Kinder-Ausmalbilder aus Fotos: Motiv freigestellt, wenige, geschlossene und gleichmäßig dicke Umrisse ohne Krümel.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineStyle: 'contour', lineRes: 640, threshold: 150, bgRemove: 'ben2', subjectLine: true, subjectLineMm: 0.4, lineClean: true, lineSmoothMm: 0.6, lineMinMm: 4, lineBoldMm: 0.2 },
   },
   {
     group: 'Fotos & Landschaft', name: 'Dunkles / kontrastarmes Foto',
@@ -599,6 +650,16 @@ const BUILTIN_PRESETS = [
     group: 'Schneiden & Relief', name: 'Porträt-Relief (3D)',
     desc: 'Für Porträts: Person freigestellt, glatte Tiefenkarte für Reliefgravur.',
     settings: { mode: 'relief', depthRes: '770', dpi: 254, blur: 1.5, contrast: 15, bgRemove: 'modnet' },
+  },
+  {
+    group: 'Schneiden & Relief', name: 'Relief-Motiv freigestellt (PNG, transparent)',
+    desc: 'Für Objekte und Figuren: nur das Motiv als Tiefenkarte, Hintergrund transparent – als PNG direkt in LightBurn.',
+    settings: { mode: 'relief', depthRes: '770', dpi: 254, blur: 1, contrast: 10, bgRemove: 'ben2', reliefTransparent: true, fmtPng: true },
+  },
+  {
+    group: 'Schneiden & Relief', name: 'Relief – maximale Details (nicht kommerziell)',
+    desc: 'Plastischste Tiefe mit Depth Anything V2 Large und höchster Auflösung. Download ca. 1,3 GB, braucht ca. 3,5 GB RAM, ca. 30 s. Lizenz CC BY-NC 4.0 – nicht für verkaufte Gravuren.',
+    settings: { mode: 'relief', depthModel: 'large', depthRes: '1022', dpi: 254, blur: 0.5, contrast: 10 },
   },
 ];
 
@@ -1082,6 +1143,8 @@ const MODEL_NAMES = {
   sam2_encoder: 'Objekt anklicken (genau)', sam2_decoder: 'Objekt anklicken (genau)',
   lineart: 'KI-Strichzeichnung', lineart_contour: 'KI-Strichzeichnung (Konturen)', lineart_sketch: 'KI-Strichzeichnung (Skizze)',
   lineart_portrait: 'KI-Strichzeichnung (Tusche-Porträt)', lineart_teed: 'KI-Strichzeichnung (Kanten)', esrgan: 'KI-Vergrößerung', depth: 'Tiefenkarte', faces: 'Gesichtserkennung',
+  depth_base: 'Tiefenkarte (fein)', depth_large: 'Tiefenkarte (sehr fein)', codeformer: 'Gesichter restaurieren (CodeFormer)',
+  faceparse: 'Gesichtsmerkmale (Face Parsing)',
   scunet: 'Rauschen entfernen', lama: 'Kratzer auffüllen', restoreformer: 'Gesichter restaurieren', yunet: 'Gesichtspunkte',
   text: 'Texterkennung',
 };
@@ -1089,7 +1152,9 @@ const MODEL_NAMES = {
 /** Kennung der Restaurierungs-Einstellungen ('' = keine Restaurierung). */
 function restoreSig(s) {
   if (!s.restoreOn || (!s.restoreDenoise && !s.restoreScratches && !s.restoreFaces)) return '';
-  return `r${s.restoreDenoise ? 'D' : ''}${s.restoreScratches ? `S${s.scratchSensitivity}` : ''}${s.restoreFaces ? `F${s.faceRestoreStrength}` : ''}`;
+  const scratch = s.restoreScratches ? `S${s.scratchSensitivity}${s.scratchProtect === 'parse' ? 'p' : ''}` : '';
+  const faces = s.restoreFaces ? `F${s.faceRestoreStrength}${s.faceRestoreModel === 'codeformer' ? `c${s.faceFidelity}` : ''}` : '';
+  return `r${s.restoreDenoise ? 'D' : ''}${scratch}${faces}`;
 }
 // Alle KI-Zwischenergebnisse hängen am Eingangsbild: Restaurierung + Vergrößerung
 // Restaurierung nach dem Freistellen: Maske kommt vom unbearbeiteten Original, Restaurierung hängt an der Maske
@@ -1108,8 +1173,9 @@ const KEYS = {
   samEmb: (up, method = 'sam') => `sam-emb:${method === 'sam' ? '' : `${method}:`}${up}`,
   samMask: (up, points, method = 'sam') => `sam-mask:${method === 'sam' ? '' : `${method}:`}${up}:${JSON.stringify(points)}`,
   lineart: (up, res, maskKey, style = 'fine') => `lineart${style === 'fine' ? '' : `-${style}`}:${up}:${res}:${maskKey}`,
-  depth: (up, res) => `depth:${up}:${res}`,
+  depth: (up, res, model = 'depth') => `depth${model === 'depth' ? '' : `-${model}`}:${up}:${res}`,
   faces: (up, maskKey = null) => (maskKey ? `faces:${up}:cut:${maskKey}` : `faces:${up}`),
+  faceParts: (up, maskKey = null) => `${KEYS.faces(up, maskKey)}:parse`,
   text: (up, maskKey = null) => (maskKey ? `text:${up}:cut:${maskKey}` : `text:${up}`),
   smooth: (up) => `upscale:smooth:${up}`, // „Glatte Konturen“: Vergrößerung nur für die Fläche
 };
@@ -1280,7 +1346,10 @@ function planSteps(s) {
     const key = `restore:${restoreKey(s)}`;
     if (s.restoreDenoise) add('restore-denoise', 'Rauschen entfernen', 'restore-denoise', Restore.denoiseTiles(work.w, work.h), 6000, key);
     if (s.restoreScratches) add('restore-scratch', 'Kratzer & Staub entfernen', 'restore-scratch', 1, 6000, key);
-    if (s.restoreFaces) add('restore-faces', 'Gesichter restaurieren', 'restore-faces', state.restoreFaceCount ?? 1, 5000, key);
+    if (s.restoreFaces) {
+      const cf = s.faceRestoreModel === 'codeformer';
+      add('restore-faces', 'Gesichter restaurieren', cf ? 'restore-faces:codeformer' : 'restore-faces', state.restoreFaceCount ?? 1, cf ? 5500 : 5000, key);
+    }
   }
   if (s.upscale && upscaleApplies({ width: work.w, height: work.h })) {
     const sc = Math.min(1, 1024 / Math.max(work.w, work.h));
@@ -1310,7 +1379,12 @@ function planSteps(s) {
     }
   }
 
-  if (facesWanted(s)) add('faces', 'Gesichtserkennung', 'faces', 1, 300, KEYS.faces(up, faceMaskKey(s)));
+  if (facesWanted(s)) {
+    add('faces', 'Gesichtserkennung', 'faces', 1, 300, KEYS.faces(up, faceMaskKey(s)));
+    if (s.faceLocate === 'parse' && (state.faceCount ?? 1) > 0) {
+      add('face-parse', 'Gesichtsmerkmale finden', 'face-parse', state.faceCount ?? 1, 300, KEYS.faceParts(up, faceMaskKey(s)));
+    }
+  }
   if (textWanted(s)) add('text', 'Texterkennung', 'text', 1, 900, KEYS.text(up, textMaskKey(s)));
 
   let src = work;
@@ -1332,7 +1406,8 @@ function planSteps(s) {
     }
   } else if (s.mode === 'relief') {
     const sc = Number(s.depthRes) / Math.max(work.w, work.h);
-    add('depth', 'Tiefenkarte', 'depth', (work.w * sc * work.h * sc) / 1e6, 6000, KEYS.depth(up, s.depthRes));
+    const model = AI.depthModel(s.depthModel);
+    add('depth', MODEL_NAMES[model], model, (work.w * sc * work.h * sc) / 1e6, DEPTH_SEED_MS[model], KEYS.depth(up, s.depthRes, model));
   }
   if (s.subjectLine && !maskKey && s.mode !== 'relief') {
     add('contour', 'Motivkontur', `seg:ai`, 1, SEG_SEED_MS.ai, KEYS.seg('ai', up));
@@ -1610,7 +1685,8 @@ async function restoredBitmap(s, mask = null) {
     if (s.restoreDenoise) await ensureModelReady('scunet');
     if (s.restoreScratches) await ensureModelReady('lama');
     if (s.restoreFaces || s.restoreScratches) await ensureModelReady('yunet');
-    if (s.restoreFaces) await ensureModelReady('restoreformer');
+    if (s.restoreScratches && s.scratchProtect === 'parse') await ensureModelReady('faceparse');
+    if (s.restoreFaces) await ensureModelReady(s.faceRestoreModel === 'codeformer' ? 'codeformer' : 'restoreformer');
   }
   const restored = await cached(key, async () => {
     const canvas = Restore.workingCopy(state.source.bitmap);
@@ -1624,7 +1700,8 @@ async function restoredBitmap(s, mask = null) {
     if (inside) faces = faces.filter((f) => inside[Math.round(f.kps[2][1]) * canvas.width + Math.round(f.kps[2][0])] > 127);
     if (s.restoreScratches) {
       await Run.track('restore-scratch', (async () => {
-        const { mask, count } = Restore.detectScratches(canvas, s.scratchSensitivity, Restore.protectZones(faces));
+        const parsed = s.scratchProtect === 'parse' && faces.length ? await AI.faceProtectZones(canvas, faces, Restore.alignFace) : null;
+        const { mask, count } = Restore.detectScratches(canvas, s.scratchSensitivity, Restore.protectZones(faces, parsed));
         if (inside) for (let i = 0; i < mask.length; i++) if (inside[i] <= 127) mask[i] = 0;
         if (count) await Restore.inpaint(canvas, mask, (d, t) => Run.progress('restore-scratch', d / t));
         info.push(count ? `${count} Kratzer/Staubstellen aufgefüllt` : 'keine Kratzer gefunden');
@@ -1633,7 +1710,8 @@ async function restoredBitmap(s, mask = null) {
     if (s.restoreFaces) {
       canvas.restoreFaceCount = faces.length;
       await Run.track('restore-faces', Restore.restoreFaces(canvas, faces, s.faceRestoreStrength,
-        (d, t) => Run.progress('restore-faces', d / t)));
+        (d, t) => Run.progress('restore-faces', d / t),
+        { model: s.faceRestoreModel === 'codeformer' ? 'codeformer' : 'restoreformer', fidelity: Number(s.faceFidelity) }));
       info.push(faces.length ? `${faces.length} Gesicht${faces.length === 1 ? '' : 'er'} restauriert` : 'kein Gesicht gefunden');
     }
     // Info gehört zum Ergebnis (bei einem Cache-Treffer passt sie so zur angezeigten Restaurierung)
@@ -1775,8 +1853,14 @@ function maskedBitmap(bitmap, mask) {
 async function detectFaces(s, bitmap, mask = null) {
   try {
     const maskKey = mask ? s.maskKey : null;
-    const faces = await Run.track('faces', cached(KEYS.faces(upTag(s), maskKey), () => AI.detectFaces(mask ? maskedBitmap(bitmap, mask) : bitmap), s));
+    let faces = await Run.track('faces', cached(KEYS.faces(upTag(s), maskKey), () => AI.detectFaces(mask ? maskedBitmap(bitmap, mask) : bitmap), s));
     state.faceCount = faces.length;
+    if (s.faceLocate === 'parse' && faces.length) {
+      const key = KEYS.faceParts(upTag(s), maskKey);
+      if (!cacheOf(s).has(key)) await ensureModelReady('faceparse');
+      const found = faces;
+      faces = await Run.track('face-parse', cached(key, () => AI.faceParts(bitmap, found), s));
+    }
     $('#face-info').textContent = faces.length
       ? `${faces.length} Gesicht${faces.length === 1 ? '' : 'er'} erkannt.`
       : 'Kein Gesicht erkannt – die Option wirkt nur auf Gesichter.';
@@ -1807,7 +1891,37 @@ async function contourMask(s, bitmap) {
 /** Schlüssel der hochaufgelöst nachgezeichneten Gesichter; enthält auch, wo die Gesichter gesucht wurden (vor/nach dem Freistellen). */
 function lineFacesKey(lineKey, s, maskKey) {
   const where = s.faceOrder === 'after' && maskKey ? `cut:${maskKey}` : 'all';
-  return `${lineKey}:faces:${where}:${s.faceStrength}:${s.mouthStrength}:${s.noseStrength}:${s.chinStrength}:${s.cheekStrength}`;
+  return `${lineKey}:faces:${where}:${s.faceLocate === 'parse' ? 'parse:' : ''}${s.faceStrength}:${s.mouthStrength}:${s.noseStrength}:${s.chinStrength}:${s.cheekStrength}`;
+}
+
+// Erste Schätzung der Rechendauer je Tiefenmodell in ms pro Megapixel (aus Messungen hochgerechnet, wird gelernt)
+const DEPTH_SEED_MS = { depth: 6000, depth_base: 15000, depth_large: 35000 };
+// Reicht der Speicher nicht: nächstkleineres Tiefenmodell
+const DEPTH_FALLBACK = { depth_large: 'depth_base', depth_base: 'depth' };
+
+/**
+ * KI-Tiefenkarte mit dem gewählten Modell. Reicht der Arbeitsspeicher auch nach dem Freigeben aller
+ * anderen Modelle nicht (LOW_MEMORY), wird das nächstkleinere Modell genommen.
+ */
+async function depthWithFallback(s, bitmap, up) {
+  const wanted = AI.depthModel(s.depthModel);
+  let model = wanted;
+  for (;;) {
+    const key = KEYS.depth(up, s.depthRes, model);
+    try {
+      if (!cacheOf(s).has(key)) await ensureModelReady(model);
+      const run = cached(key, () => AI.depthMap(bitmap, Number(s.depthRes), model), s);
+      const map = await (model === wanted ? Run.track('depth', run) : run);
+      if (model !== wanted) {
+        toast(`Zu wenig Arbeitsspeicher für „${MODEL_NAMES[wanted]}“ – es wurde „${MODEL_NAMES[model]}“ verwendet. Andere Programme schließen oder ein geringeres Tiefen-Detail wählen.`);
+      }
+      return map;
+    } catch (err) {
+      const next = DEPTH_FALLBACK[model];
+      if (!next || !isLowMemory(err)) throw err;
+      model = next;
+    }
+  }
 }
 
 /** Bild, das tatsächlich umgewandelt wird: Original, KI-Strichzeichnung oder KI-Tiefenkarte. */
@@ -1839,11 +1953,7 @@ async function contentSource(s, bitmap, mask) {
     return Run.track('upscale-smooth', cached(key, () =>
       AI.upscale(bitmap, (done, total) => Run.progress('upscale-smooth', done / total)), s));
   }
-  if (s.mode === 'relief') {
-    const key = KEYS.depth(up, s.depthRes);
-    if (!cacheOf(s).has(key)) await ensureModelReady('depth');
-    return Run.track('depth', cached(key, () => AI.depthMap(bitmap, Number(s.depthRes)), s));
-  }
+  if (s.mode === 'relief') return depthWithFallback(s, bitmap, up);
   return bitmap;
 }
 
@@ -1977,8 +2087,8 @@ async function ensureModel(id) {
 const MODEL_GROUPS = [
   ['Freistellen', ['u2netp', 'isnet', 'birefnet', 'ben2', 'modnet', 'sam_encoder', 'sam2_encoder']],
   ['Strichzeichnung', ['lineart', 'lineart_contour', 'lineart_sketch', 'lineart_portrait', 'lineart_teed']],
-  ['Restaurieren & Verbessern', ['scunet', 'lama', 'restoreformer', 'yunet', 'esrgan']],
-  ['Erkennung & Relief', ['faces', 'text', 'depth']],
+  ['Restaurieren & Verbessern', ['scunet', 'lama', 'restoreformer', 'codeformer', 'yunet', 'esrgan']],
+  ['Erkennung & Relief', ['faces', 'faceparse', 'text', 'depth', 'depth_base', 'depth_large']],
 ];
 // Teilmodelle, die mit ihrem Hauptmodell geladen und entfernt werden
 const MODEL_HIDDEN = new Set(['sam_decoder', 'sam2_decoder']);
@@ -2039,9 +2149,12 @@ function modelRow(m, group = '') {
   name.textContent = modelDisplayName(m, group);
   const meta = document.createElement('div');
   meta.className = 'model-meta';
-  const parts = [`Lizenz ${m.license}`];
-  if (m.size) parts.push(fmtMB(m.size));
-  meta.textContent = parts.join(' · ');
+  const lic = document.createElement('span');
+  lic.className = 'model-license' + (m.nc ? ' nc' : '');
+  lic.textContent = `Lizenz ${m.license}`;
+  if (m.nc) lic.title = 'Nicht-kommerzielle Lizenz: nur für private bzw. nicht-kommerzielle Zwecke. Wird nicht mitgeliefert, sondern bei Bedarf direkt von der Quelle geladen.';
+  meta.append(lic);
+  if (m.size) meta.append(` · ${fmtMB(m.size)}`);
   const peak = state.sys?.modelPeakMB?.[m.id];
   if (peak && peak >= 1000) {
     const req = document.createElement('span');

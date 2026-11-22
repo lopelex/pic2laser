@@ -143,15 +143,31 @@ const MODEL_PEAK_MB = {
   sam2_decoder: 160,
   modnet: 250,
   depth: 450,
+  depth_base: 900,
+  depth_large: 2000,
   isnet: 750,
   birefnet: 6700,
   ben2: 3000,
   lama: 850,
   restoreformer: 1250,
+  codeformer: 1600,
+  faceparse: 350,
 };
+
+/**
+ * Tiefenkarte: Bedarf wächst mit der Pixelzahl. Gemessen (onnxruntime-node, ohne Arena) bei
+ * 420×518 / 616×770 / 812×1022 Pixeln: Small 470/640/1040, Base 900/1230/2000, Large 1970/2480/3630 MB.
+ * [Sockel, Zuwachs je 420×518 Pixel]
+ */
+const DEPTH_PEAK = { depth: [270, 205], depth_base: [510, 395], depth_large: [1380, 600] };
 
 /** Spitzenbedarf eines Aufrufs; skaliert bei bildgrößenabhängigen Modellen mit der Eingabe. */
 function peakMB(id, feeds) {
+  if (DEPTH_PEAK[id]) {
+    const dims = Object.values(feeds || {})[0]?.dims || [1, 3, 518, 420];
+    const [base, per] = DEPTH_PEAK[id];
+    return Math.round(base + per * ((dims[2] * dims[3]) / (518 * 420)));
+  }
   if (id === 'scunet') {
     const dims = Object.values(feeds || {})[0]?.dims || [1, 3, 384, 384];
     return Math.round(2000 * ((dims[2] * dims[3]) / (384 * 384)) + 120);
