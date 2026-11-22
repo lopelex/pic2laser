@@ -2,7 +2,7 @@
 
 Electron-App, die Bilder in Schwarz-Weiß-SVGs (und optional PNG/JPG/BMP) für die Lasergravur mit LightBurn umwandelt.
 
-Aktuelle Version: **1.9.0**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
+Aktuelle Version: **1.10.0**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
 bekannte und behobene Fehler: [BUGS.md](BUGS.md).
 
 ## Starten
@@ -82,6 +82,8 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
 - **Export** als SVG, PNG, JPG und/oder 1-Bit-BMP (Strg+S oder Strg+E)
 - **Herausziehen**: Das Ergebnis lässt sich per Drag & Drop direkt in LightBurn, Explorer oder Finder ziehen
   (in den gewählten Exportformaten). Eine Info im Ergebnisfeld zeigt Formate, Größe in mm und DPI.
+- **An LightBurn senden** (Strg/⌘+L): fügt das Ergebnis direkt ins offene LightBurn-Projekt ein
+  (über die UDP-Schnittstelle von LightBurn, in den gewählten Exportformaten) – ohne Export und Herausziehen.
 - **Abbrechen**: Knopf neben dem Fortschrittsbalken oder Esc stoppt laufende Berechnungen,
   KI-Prozess, Vektorisierung und Modell-Downloads; das letzte fertige Ergebnis bleibt stehen.
 - **Historie**: Jede exportierte Umwandlung wird mit Original, Einstellungen, SVG und PNG gespeichert
@@ -103,6 +105,7 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
 | Strg/⌘+O | Bild öffnen |
 | Strg/⌘+V | Bild aus der Zwischenablage einfügen |
 | Strg/⌘+S, Strg/⌘+E | Exportieren |
+| Strg/⌘+L | An LightBurn senden |
 | Esc | Laufende Berechnung abbrechen |
 | Doppelklick auf Regler | Regler zurücksetzen |
 

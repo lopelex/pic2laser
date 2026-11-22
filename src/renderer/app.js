@@ -855,6 +855,7 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   $('#img-original').src = url;
   document.body.classList.add('has-image');
   $('#btn-export').disabled = false;
+  $('#btn-lightburn').disabled = lightburnBusy;
   $('#btn-save-history').disabled = false;
   syncControls();
   renderHistory();
@@ -2443,9 +2444,7 @@ function scheduleDragPrepare(delay = 250) {
     if (!r) return;
     const s = state.settings;
     try {
-      const files = [];
-      if (s.fmtSvg || (!s.fmtPng && !s.fmtJpg && !s.fmtBmp)) files.push({ ext: 'svg', data: r.svg });
-      files.push(...(await buildRasterFiles(r, { png: s.fmtPng, jpg: s.fmtJpg, bmp: s.fmtBmp })));
+      const files = await handoverFiles(r, s);
       const icon = await dragIcon(r);
       if (r !== state.result) return; // inzwischen neu berechnet
       await window.api.dragPrepare({ baseName: baseName(), files, icon });
@@ -2455,6 +2454,14 @@ function scheduleDragPrepare(delay = 250) {
       console.error(err);
     }
   }, delay);
+}
+
+/** Dateien zum Herausziehen bzw. Senden an LightBurn: gewählte Exportformate, ohne Auswahl das SVG. */
+async function handoverFiles(r, s) {
+  const files = [];
+  if (s.fmtSvg || (!s.fmtPng && !s.fmtJpg && !s.fmtBmp)) files.push({ ext: 'svg', data: r.svg });
+  files.push(...(await buildRasterFiles(r, { png: s.fmtPng, jpg: s.fmtJpg, bmp: s.fmtBmp })));
+  return files;
 }
 
 /** Kleine Info im Ergebnisfeld: herausziehbar, welche Dateien, welche Größe. */
@@ -2659,6 +2666,38 @@ async function exportCurrent() {
     action: () => window.api.showInFolder(written[0]),
   });
   await saveToHistory(true);
+}
+
+/* ---- An LightBurn senden (Strg/Cmd+L) ---- */
+
+let lightburnBusy = false;
+
+async function sendToLightBurn() {
+  const r = state.result;
+  if (!r) return toast('Noch kein Ergebnis vorhanden.', true);
+  if (lightburnBusy) return;
+  if (!resultIsCurrent(r)) {
+    if (!$('#busy').classList.contains('on')) scheduleProcess(0);
+    return toast('Das Ergebnis wird an die geänderten Einstellungen angepasst – bitte danach noch einmal senden.');
+  }
+  const btn = $('#btn-lightburn');
+  lightburnBusy = true;
+  btn.disabled = true;
+  try {
+    const files = await handoverFiles(r, state.settings);
+    const res = await window.api.lightburnSend({ baseName: baseName(), files });
+    if (!res.ok) return toast(res.message, true);
+    const what = files.map((f) => f.ext.toUpperCase()).join(' + ');
+    toast(res.confirmed
+      ? `In LightBurn eingefügt (${what})`
+      : `An LightBurn gesendet (${what}) – ohne Bestätigung, da ein anderes Programm den Antwort-Port 19841 belegt.`);
+    await saveToHistory(true); // wie beim Export in der Historie festhalten
+  } catch (err) {
+    toast(`Senden an LightBurn fehlgeschlagen: ${cleanError(err)}`, true);
+  } finally {
+    lightburnBusy = false;
+    btn.disabled = !state.source;
+  }
 }
 
 async function makeThumb(r) {
@@ -3148,6 +3187,7 @@ function bindView() {
   });
 
   $('#btn-export').addEventListener('click', exportCurrent);
+  $('#btn-lightburn').addEventListener('click', sendToLightBurn);
   $('#btn-save-history').addEventListener('click', () => saveToHistory(false));
 
   window.addEventListener('keydown', (e) => {
@@ -3155,6 +3195,7 @@ function bindView() {
     if (!mod) return;
     if (e.key === 'o') { e.preventDefault(); $('#btn-open').click(); }
     if (e.key === 'e' || e.key === 's') { e.preventDefault(); if (state.result) exportCurrent(); }
+    if (e.key === 'l') { e.preventDefault(); if (state.result) sendToLightBurn(); }
   });
 }
 

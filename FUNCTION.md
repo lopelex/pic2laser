@@ -184,6 +184,12 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   bzw. 8-Bit-Graustufen beim Relief) – alle Dateien mit gleichem Namen in einem Ordner.
 - **Drag & Drop:** Ergebnisbild mit der Maus herausziehen – direkt in LightBurn, Finder oder
   Explorer. Mitgezogen werden die gewählten Exportformate.
+- **An LightBurn senden** (Strg/Cmd+L): fügt das Ergebnis direkt ins offene LightBurn-Projekt ein
+  (Mitte der Arbeitsfläche) – über die UDP-Schnittstelle von LightBurn (`PING`, dann `IMPORT:<pfad>`
+  an `127.0.0.1:19840`, Antwort auf Port 19841). Gesendet werden die gewählten Exportformate wie beim
+  Herausziehen; der Dateiname enthält nur ASCII-Zeichen. Meldungen, wenn LightBurn nicht läuft, gerade
+  ein Dialog offen ist oder der Import fehlschlägt. Ist Port 19841 von einem anderen Programm belegt,
+  wird ohne Bestätigung gesendet. Wird wie der Export in der Historie festgehalten.
 - **Optimiertes Original herausziehen:** Mit gedrückter Strg-Taste (Mac: Cmd) das Bild im
   Originalfeld herausziehen – als PNG so, wie es in die Umwandlung geht: restauriert,
   KI-vergrößert und freigestellt (Hintergrund transparent), ohne Schraffur und Markierungen.
@@ -395,6 +401,7 @@ laufende KI-Jobs (nur wenn der Prozess rechnet) und Downloads ab.
 | `updates/` | geladenes Update bis zur Installation (beim nächsten Start gelöscht) |
 | `prefs.json` | GPU an/aus, Cache an/aus, Modelle, die nur auf der CPU laufen, Zeit der letzten Update-Prüfung |
 | `<temp>/pic2laser-drag/` | vorbereitete Dateien für Drag & Drop |
+| `<temp>/pic2laser-lightburn/` | zuletzt an LightBurn gesendete Dateien (beim nächsten Senden und beim Beenden gelöscht) |
 
 ## Typische Erweiterungen
 
