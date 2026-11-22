@@ -14,7 +14,7 @@ const handlers = {
    * payload: { source, mask (Freistellen), lineMask (nur für die Motivkontur), s: Einstellungen }
    */
   async render({ source, mask, lineMask, textSource, s }) {
-    const { w, h, bits, gray8, alpha } = Processing.process(source, s, mask, textSource);
+    const { w, h, bits, gray8, alpha8, alpha } = Processing.process(source, s, mask, textSource);
     if (textSource) textSource.close();
     // Motivkontur (nur Schwarz-Weiß-Modi)
     const contourMask = lineMask || mask;
@@ -24,13 +24,13 @@ const handlers = {
     source.close();
     if (mask) mask.close();
     if (lineMask) lineMask.close();
-    const r = { w, h, bits, gray8 };
+    const r = { w, h, bits, gray8, alpha8 };
     // trace: Binärbild soll vektorisiert werden (die Bits gehen direkt an Potrace, kein PNG nötig)
-    const out = { w, h, bits, gray8, trace: false, imagePng: null, imageB64: null, sil: null };
+    const out = { w, h, bits, gray8, alpha8: alpha8 || null, trace: false, imagePng: null, imageB64: null, sil: null };
 
     if (!(s.outline && s.outlineOnly)) {
       if (s.mode === 'dither' || s.mode === 'relief') {
-        out.imagePng = await Encoders.canvasBytes(Processing.resultCanvas(r, s.transparent), 'image/png');
+        out.imagePng = await Encoders.canvasBytes(Processing.resultCanvas(r, s.mode === 'relief' ? !!alpha8 : s.transparent), 'image/png');
         out.imageB64 = Encoders.toBase64(out.imagePng); // fürs SVG – teuer bei großen Bildern
       } else {
         out.trace = true;
@@ -51,7 +51,7 @@ const handlers = {
       out.sil = { w: sil.w, h: sil.h, pad: sil.pad, bits: sil.bits };
     }
 
-    const transfer = [out.bits, out.gray8, out.imagePng, out.sil && out.sil.bits]
+    const transfer = [out.bits, out.gray8, out.alpha8, out.imagePng, out.sil && out.sil.bits]
       .filter(Boolean)
       .map((a) => a.buffer);
     return { result: out, transfer };
@@ -80,10 +80,17 @@ const handlers = {
     const gray = new Uint8ClampedArray(n); // Helligkeit: 0 = schwarz
     for (let i = 0; i < n; i++) gray[i] = ((255 - bottom[i]) * (255 - a * top[i])) / 255;
 
-    const out = { w, h, bits: null, gray8: null, trace: false, imagePng: null, imageB64: null, aspectOff };
+    const out = { w, h, bits: null, gray8: null, alpha8: null, trace: false, imagePng: null, imageB64: null, aspectOff };
     if (p.gray) {
       out.gray8 = gray;
-      out.imagePng = await Encoders.canvasBytes(Processing.grayToCanvas(gray, w, h), 'image/png');
+      // Relief mit transparentem Hintergrund: bleibt durchsichtig, außer wo die Historie-Ebene etwas zeichnet
+      if (p.alpha8 && p.alpha8.length === n) {
+        const la = p.top === 'current' ? 1 : a; // Deckkraft der Historie-Ebene
+        const alpha8 = new Uint8ClampedArray(n);
+        for (let i = 0; i < n; i++) alpha8[i] = Math.max(p.alpha8[i], Math.min(255, layer[i] * la * 3));
+        out.alpha8 = alpha8;
+      }
+      out.imagePng = await Encoders.canvasBytes(Processing.grayToCanvas(gray, w, h, out.alpha8), 'image/png');
     } else {
       // Nur bei voller oder keiner Deckkraft zweier Vektor-Ergebnisse bleibt es reines Schwarz-Weiß;
       // sonst entstehen Zwischentöne, die wie beim Foto-Modus gerastert werden
@@ -95,7 +102,7 @@ const handlers = {
       }
     }
     if (out.imagePng) out.imageB64 = Encoders.toBase64(out.imagePng);
-    const transfer = [out.bits, out.gray8, out.imagePng].filter(Boolean).map((x) => x.buffer);
+    const transfer = [out.bits, out.gray8, out.alpha8, out.imagePng].filter(Boolean).map((x) => x.buffer);
     return { result: out, transfer };
   },
 

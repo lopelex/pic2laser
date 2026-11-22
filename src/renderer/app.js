@@ -52,6 +52,7 @@ const DEFAULTS = Object.freeze({
   lineWidthMm: 0.4,
   // Relief
   depthRes: '518',
+  reliefTransparent: false,
   // Umrisslinie
   outline: false,
   outlineOffsetMm: 2,
@@ -1408,7 +1409,7 @@ async function runProcess() {
     }
 
     // 4. Rasterverarbeitung im Worker (blockiert die Oberfläche nicht)
-    const { w, h, bits, gray8, trace, imagePng, imageB64, sil } =
+    const { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil } =
       await Run.track('render', Pipeline.render(source, mask, s, lineMask, s.textBlocks.length && source !== work ? work : null));
     if (stale()) return;
     const widthMm = Math.max(0.1, s.widthMm);
@@ -1452,7 +1453,9 @@ async function runProcess() {
     const pad = outline ? outline.pad : 0;
     const totalW = (w + 2 * pad) * mmPerPx, totalH = (h + 2 * pad) * mmPerPx;
     state.baseResult = {
-      w, h, bits, gray8, svg, widthMm, heightMm, dpi, mode: s.mode, transparent: s.transparent,
+      w, h, bits, gray8, alpha8, svg, widthMm, heightMm, dpi, mode: s.mode,
+      // Relief: eigene Option „Weißen Hintergrund transparent“ (gilt für PNG/SVG)
+      transparent: s.mode === 'relief' ? !!alpha8 : s.transparent,
       mmPerPx, outline, outlineOnly: !!(s.outline && s.outlineOnly), // für Rasterexporte mit Umrisslinie
       totalWmm: totalW, totalHmm: totalH, // inkl. Umrisslinie (SVG-Gesamtgröße)
       settings: settingsSnap,
@@ -2639,6 +2642,7 @@ async function composeMerged(inRun = false) {
       h: base.h,
       bits: !base.gray8 && base.bits ? base.bits.slice() : null, // Kopien: das Basisergebnis bleibt erhalten
       gray8: base.gray8 ? base.gray8.slice() : null,
+      alpha8: base.alpha8 ? base.alpha8.slice() : null, // Relief mit transparentem Hintergrund
       baseEmpty: base.outlineOnly || (!base.bits && !base.gray8),
       layer: { svg: m.svg, mode: m.mode, widthMm: m.widthMm },
       top,
@@ -2668,6 +2672,7 @@ async function composeMerged(inRun = false) {
       ...base,
       bits: res.bits,
       gray8: res.gray8,
+      alpha8: res.alpha8 || null,
       svg: Encoders.svgDocument(doc),
       preview,
       mode: gray ? 'relief' : res.trace ? 'vector' : 'dither',

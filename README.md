@@ -39,7 +39,8 @@ onnxruntime-web (WebAssembly) – etwas langsamer, aber ohne native Abhängigkei
   - *Linien*: KI-Strichzeichnung (Modelle: Feine Linien, Kräftige Konturen, Zarte Skizze, Tusche-Porträt,
     Feine Kanten) oder klassische Kantenerkennung (Canny) → Strichzeichnung als Vektor
   - *Foto*: Dithering mit Floyd-Steinberg, Atkinson, Jarvis, Stucki, Bayer, Schwellwert
-  - *Relief*: KI-Tiefenkarte als Graustufenbild für 3D-Reliefgravur
+  - *Relief*: KI-Tiefenkarte als Graustufenbild für 3D-Reliefgravur, optional mit transparentem
+    weißem/freigestelltem Hintergrund (PNG/SVG)
 - **Freistellen**: KI schnell / präzise / beste Qualität / Porträt, Objekt per Klick auswählen (MobileSAM oder
   genauer mit SAM 2.1) oder nach Farbe (Hintergrund vom Rand + Klickpunkte). Beim Objekt-Anklicken schließen Rechtsklick oder Alt+Klick
   Bereiche aus; ein Klick auf einen vorhandenen Punkt entfernt ihn. Entfernter Hintergrund wird in der
