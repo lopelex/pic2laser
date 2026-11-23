@@ -31,12 +31,9 @@ const DEFAULTS = Object.freeze({
   fmtPes: false, // Stickdatei Brother
   fmtDst: false, // Stickdatei Tajima
   // Stickdatei (PES/DST): Füllstich und Umrisslinie
-  embSpacing: 0.4, // Reihenabstand im Füllstich (mm)
-  embLen: 3.5, // längster Stich im Füllstich (mm)
-  embAngle: 45, // Stichrichtung (Grad)
-  embPull: 0.2, // Zugausgleich je Reihenende (mm)
+  embFabric: 'woven', // Stoffart: Grundwerte der Automatik je Farbe
   embTrimMm: 3, // längere Sprünge mit Fadenschnitt
-  embUnderlay: true, // Unterlage quer zur Stichrichtung
+  embLayers: {}, // je Bild: { [Ebenen-Schlüssel]: { type, angle, spacing, len, pull, underlay, thin } } – von Hand gesetzt
   embPreview: false, // Stiche statt Flächen in der Vorschau
   // Freistellen
   bgRemove: 'none',
@@ -236,10 +233,6 @@ const FORMATTERS = {
   colorSmoothMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
   colorMinAreaMm2: (v) => (Number(v) ? `${Number(v).toFixed(1).replace('.', ',')} mm²` : 'aus'),
   colorOverlapMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
-  embSpacing: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
-  embLen: (v) => `${Number(v).toFixed(1).replace('.', ',')} mm`,
-  embAngle: (v) => `${v}°`,
-  embPull: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
   embTrimMm: (v) => `${Number(v).toFixed(1).replace('.', ',')} mm`,
   sineStrokeMm: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
   outlineOffsetMm: (v) => `${Number(v).toFixed(1)} mm`,
@@ -503,6 +496,9 @@ function bindControls() {
 
 // Mitgelieferte Vorlagen, gegliedert nach Art des Eingangsbilds
 // (nur die Abweichungen von den Standardwerten; Ausgabegröße und Exportformate bleiben erhalten)
+/** Gemeinsame Einstellungen der Stickerei-Vorlagen: Farbflächen auf Brother-Garne, PES-Export. */
+const EMB_LOGO = { mode: 'color', colorCount: 0, colorPalette: 'brother', colorSmoothMm: 0.3, colorSkipBg: true, workRes: 2000, alphaMax: 1.1, fmtPes: true };
+
 const BUILTIN_PRESETS = [
   // ---- Logos, Schrift & Grafik ----
   {
@@ -762,29 +758,60 @@ const BUILTIN_PRESETS = [
   },
   // ---- Farben (Farbflächen je Ebene) ----
   {
-    group: 'Farben & Stickerei', name: 'Farbiges Logo – Farbflächen',
+    group: 'Farben', name: 'Farbiges Logo – Farbflächen',
     desc: 'Erkennt die Farben eines Logos automatisch, je Farbe eine Ebene im SVG; weißer Hintergrund entfällt. Für LightBurn mit mehreren Ebenen oder als Vorlage fürs Sticken.',
     settings: { mode: 'color', colorCount: 0, workRes: 2000 },
   },
   {
-    group: 'Farben & Stickerei', name: 'Stickerei – Logo mit Brother-Garnen',
-    desc: 'Farben rasten auf Brother-Garne ein, 0,3 mm Überlappung gegen Lücken durch Stoffverzug, Flächen unter 2 mm² entfallen. SVG in Ink/Stitch, Hatch oder Wilcom öffnen und Sticharten zuweisen.',
-    settings: { mode: 'color', colorCount: 0, colorPalette: 'brother', colorOverlapMm: 0.3, colorMinAreaMm2: 2, colorSmoothMm: 0.3, workRes: 2000, alphaMax: 1.1 },
-  },
-  {
-    group: 'Farben & Stickerei', name: 'Comic / Illustration – 8 Farben',
+    group: 'Farben', name: 'Comic / Illustration – 8 Farben',
     desc: 'Grafiken mit vielen Farben auf 8 Farbflächen reduziert, Rauschen leicht geglättet.',
     settings: { mode: 'color', colorCount: 8, blur: 0.4, colorSmoothMm: 0.25, colorMinAreaMm2: 1.5, workRes: 2000 },
   },
   {
-    group: 'Farben & Stickerei', name: 'Foto als Farbposter – 6 Farben',
+    group: 'Farben', name: 'Foto als Farbposter – 6 Farben',
     desc: 'Foto stark vereinfacht zu 6 ruhigen Farbflächen (Poster-Effekt). Mit Freistellen bleibt nur das Motiv.',
     settings: { mode: 'color', colorCount: 6, colorSkipBg: false, blur: 1.5, colorSmoothMm: 0.5, colorMinAreaMm2: 4, turdSize: 10, alphaMax: 1.2, optTolerance: 0.4 },
+  },
+  // ---- Stickerei: Stickdatei (PES) mit Stoff, Motivbreite und Brother-Garnen ----
+  {
+    group: 'Stickerei', name: 'Stickerei – Logo auf T-Shirt (Jersey)',
+    desc: 'Brustlogo 90 mm breit für Strick/Jersey: lockerere Füllung, 0,35 mm Zugausgleich, kräftige Unterlage mit Kantenlauf, 0,4 mm Überlappung gegen Lücken durch Verziehen. Brother-Garne, PES-Export. Mit weichem Schnittvlies (Cut-away) sticken.',
+    settings: { ...EMB_LOGO, embFabric: 'knit', widthMm: 90, colorOverlapMm: 0.4, colorMinAreaMm2: 2 },
+  },
+  {
+    group: 'Stickerei', name: 'Stickerei – Brustlogo auf Polo-Shirt (Piqué)',
+    desc: 'Brustlogo 80 mm breit für Piqué: wie Jersey, kleinste Flächen 3 mm² (feine Details versinken in der Waffelstruktur). Brother-Garne, PES-Export.',
+    settings: { ...EMB_LOGO, embFabric: 'pique', widthMm: 80, colorOverlapMm: 0.4, colorMinAreaMm2: 3 },
+  },
+  {
+    group: 'Stickerei', name: 'Stickerei – Logo auf Fleece / Sweatshirt',
+    desc: 'Logo 100 mm breit für Fleece und Sweat (große Motive auf der Vorderseite bis etwa 240 mm): 0,40 mm Zugausgleich, kräftige Unterlage, kleinste Flächen 3 mm². Brother-Garne, PES-Export.',
+    settings: { ...EMB_LOGO, embFabric: 'fleece', widthMm: 100, colorOverlapMm: 0.4, colorMinAreaMm2: 3 },
+  },
+  {
+    group: 'Stickerei', name: 'Stickerei – Handtuch (Frottee)',
+    desc: 'Motiv 100 mm breit für Frottee: dichtere Füllung, kräftige Unterlage, kleinste Flächen 4 mm² und stärker geglättet – feine Details versinken in den Schlaufen. Wasserlösliche Folie obenauf legen. Brother-Garne, PES-Export.',
+    settings: { ...EMB_LOGO, embFabric: 'pile', widthMm: 100, colorOverlapMm: 0.4, colorMinAreaMm2: 4, colorSmoothMm: 0.4 },
+  },
+  {
+    group: 'Stickerei', name: 'Stickerei – Jeans, Canvas, Tasche (Webware)',
+    desc: 'Logo 100 mm breit für feste Webware (Baumwolle, Twill, Jeans, Canvas): Standarddichte 4,5 Linien/mm, 0,20 mm Zugausgleich, 0,3 mm Überlappung. Brother-Garne, PES-Export.',
+    settings: { ...EMB_LOGO, embFabric: 'woven', widthMm: 100, colorOverlapMm: 0.3, colorMinAreaMm2: 2 },
+  },
+  {
+    group: 'Stickerei', name: 'Stickerei – Leder / Kunstleder (Patch)',
+    desc: 'Motiv 70 mm breit für Leder: lockere Füllung und wenig Unterlage gegen Perforation, kleinste Flächen 3 mm², wenig Überlappung (Leder verzieht kaum). Spitze Nadel (70) verwenden. Brother-Garne, PES-Export.',
+    settings: { ...EMB_LOGO, embFabric: 'leather', widthMm: 70, colorOverlapMm: 0.2, colorMinAreaMm2: 3 },
+  },
+  {
+    group: 'Stickerei', name: 'Stickerei – Schriftzug / Silhouette einfarbig',
+    desc: 'Schwarze Fläche aus Logo, Schrift oder Schattenriss als einfarbige Stickdatei, 100 mm breit, für Webware. Die Garnfarbe wählt man an der Maschine; schmale Linien unter 1 mm werden als Kontur gestickt.',
+    settings: { mode: 'vector', alphaMax: 1.1, turdSize: 10, widthMm: 100, fmtPes: true, embFabric: 'woven' },
   },
 ];
 
 // Werte, die zum einzelnen Bild gehören und nicht in Presets gespeichert werden
-const PER_IMAGE_KEYS = ['bgSeeds', 'samPoints', 'colorEdits'];
+const PER_IMAGE_KEYS = ['bgSeeds', 'samPoints', 'colorEdits', 'embLayers'];
 
 function presetSettingsFromCurrent() {
   const out = { ...state.settings };
@@ -792,7 +819,10 @@ function presetSettingsFromCurrent() {
   return out;
 }
 
-/** Wendet ein Preset an. Vorlagen behalten Ausgabegröße und Exportformate bei. */
+/**
+ * Wendet ein Preset an. Vorlagen behalten Ausgabegröße, Exportformate und Stickeinstellungen bei –
+ * außer sie setzen sie selbst (Stickerei-Vorlagen: Breite, PES, Stoff).
+ */
 function applyPreset(key) {
   const [kind, ...rest] = key.split(':');
   const name = rest.join(':');
@@ -809,6 +839,7 @@ function applyPreset(key) {
     bgSeeds: cur.bgSeeds,
     samPoints: cur.samPoints,
     colorEdits: cur.colorEdits,
+    embLayers: cur.embLayers,
   };
   state.activePreset = { key, settings: presetSettingsFromCurrent() };
   state.cancelRetries = 0;
@@ -913,14 +944,68 @@ function bindPresets() {
 /* Bild laden                                                         */
 /* ------------------------------------------------------------------ */
 
-async function loadImage(name, bytes, { historyId = null, settings = null } = {}) {
-  const ext = (name.split('.').pop() || 'png').toLowerCase();
-  const blob = new Blob([bytes]);
-  let bitmap;
+/** Ist das eine SVG-Datei? (Endung oder Inhalt, z. B. beim Einfügen ohne Namen) */
+function isSvgFile(name, bytes) {
+  if (/\.svg$/i.test(name)) return true;
+  const head = new TextDecoder().decode(bytes.subarray(0, 1024)).replace(/^\uFEFF/, '').trimStart();
+  return /^<(\?xml[^>]*\?>\s*)?(<!--[\s\S]*?-->\s*)*(<!DOCTYPE svg[^>]*>\s*)?<svg[\s>]/i.test(head);
+}
+
+const SVG_RASTER_PX = 3000; // längere Seite beim Rastern von SVG-Vorlagen (reicht für alle Arbeitsauflösungen)
+
+/**
+ * SVG als Bild laden: im Browser (ohne Skripte) gerendert und auf SVG_RASTER_PX gerastert,
+ * Transparenz bleibt erhalten. widthMm: Breite aus dem width-Attribut, falls in mm/cm/in angegeben.
+ */
+async function rasterizeSvg(bytes) {
+  const text = new TextDecoder().decode(bytes);
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+  const root = doc.documentElement;
+  if (!root || root.nodeName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) throw new Error('Kein gültiges SVG');
+  const unit = { mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6 };
+  const parseLen = (v) => {
+    const m = /^\s*([\d.]+)\s*(mm|cm|in|pt|pc|px)?\s*$/i.exec(v || '');
+    return m ? { v: Number(m[1]), u: (m[2] || 'px').toLowerCase() } : null;
+  };
+  const vb = (root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  const hasVb = vb.length === 4 && vb[2] > 0 && vb[3] > 0;
+  const wa = parseLen(root.getAttribute('width')), ha = parseLen(root.getAttribute('height'));
+  // Seitenverhältnis: viewBox, sonst width/height, sonst Standardgröße des Browsers
+  let aspect = hasVb ? vb[2] / vb[3] : wa && ha && wa.v > 0 && ha.v > 0 ? wa.v / ha.v : 0;
+  const widthMm = wa && unit[wa.u] && wa.v > 0 ? wa.v * unit[wa.u] : null;
+  if (!aspect) aspect = 2;
+  const W = Math.round(aspect >= 1 ? SVG_RASTER_PX : SVG_RASTER_PX * aspect);
+  const H = Math.round(aspect >= 1 ? SVG_RASTER_PX / aspect : SVG_RASTER_PX);
+  // feste Pixelgröße setzen, damit der Browser in voller Auflösung rendert (nicht 300 × 150)
+  // ohne viewBox: Koordinaten sind CSS-Pixel (96 je Zoll) – Maße in mm/in usw. umrechnen
+  const px = (l) => l.v * (l.u === 'px' ? 1 : (unit[l.u] * 96) / 25.4);
+  if (!hasVb && wa && ha) root.setAttribute('viewBox', `0 0 ${px(wa)} ${px(ha)}`);
+  root.setAttribute('width', W);
+  root.setAttribute('height', H);
+  root.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(doc)], { type: 'image/svg+xml' }));
   try {
-    bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const c = new OffscreenCanvas(W, H);
+    c.getContext('2d').drawImage(img, 0, 0, W, H);
+    return { bitmap: await createImageBitmap(c), widthMm };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function loadImage(name, bytes, { historyId = null, settings = null } = {}) {
+  const svg = isSvgFile(name, bytes);
+  const ext = svg ? 'svg' : (name.split('.').pop() || 'png').toLowerCase();
+  const blob = new Blob([bytes], svg ? { type: 'image/svg+xml' } : {});
+  let bitmap, svgWidthMm = null;
+  try {
+    if (svg) ({ bitmap, widthMm: svgWidthMm } = await rasterizeSvg(bytes));
+    else bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
   } catch {
-    toast('Dieses Bildformat kann nicht gelesen werden.', true);
+    toast(svg ? 'Diese SVG-Datei kann nicht gelesen werden.' : 'Dieses Bildformat kann nicht gelesen werden.', true);
     return;
   }
 
@@ -959,7 +1044,12 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   if (settings) {
     state.settings = withDefaults(settings);
   } else {
-    state.settings = { ...state.settings, bgSeeds: [], samPoints: [], colorEdits: [] }; // Klickpunkte und Farbänderungen gelten nur für ein Bild
+    state.settings = { ...state.settings, bgSeeds: [], samPoints: [], colorEdits: [], embLayers: {} }; // Klickpunkte, Farb- und Stickänderungen gelten nur für ein Bild
+    // SVG mit Maßangabe (mm/cm/in): diese Breite übernehmen
+    if (svgWidthMm && svgWidthMm >= 1 && svgWidthMm <= 2000) {
+      state.settings.widthMm = round1(svgWidthMm);
+      toast(`SVG übernommen – Breite ${String(round1(svgWidthMm)).replace('.', ',')} mm aus der Datei.`);
+    }
   }
   persistSettings();
 
@@ -1797,7 +1887,10 @@ function rasterizePath(d, w, h) {
  */
 function colorSvgLayers(layers, paths) {
   const vis = layers.filter((l) => !l.off);
-  return vis.map((l, i) => ({ d: String(paths[i] || '').trim(), hex: l.hex, label: `${i + 1} ${l.name} (${l.hex})` }));
+  return vis.map((l, i) => ({
+    d: String(paths[i] || '').trim(), hex: l.hex, label: `${i + 1} ${l.name} (${l.hex})`,
+    name: l.name, key: `c${l.from}`, // Schlüssel für die Stickparameter: ursprüngliche Bildfarbe
+  }));
 }
 
 /** Farbebenen (SVG-Pfade) als RGBA-Bild w × h, leere Stellen transparent. */
@@ -1823,33 +1916,58 @@ function embSource({ mode, colors, fillPath, outline, outlineOnly, mmPerPx }) {
   const layers = [];
   if (!outlineOnly) {
     if (colors) {
-      for (const c of colors) if (c.d) layers.push({ d: c.d, hex: c.hex, name: c.label, kind: 'fill', pad: 0 });
+      for (const c of colors) if (c.d) layers.push({ d: c.d, hex: c.hex, name: c.name || c.label, key: c.key || c.hex, kind: 'fill', pad: 0 });
     } else if (fillPath && String(fillPath).trim()) {
-      layers.push({ d: fillPath, hex: '#000000', name: 'Fläche', kind: 'fill', pad: 0 });
+      layers.push({ d: fillPath, hex: '#000000', name: 'Fläche', key: 'fill', kind: 'fill', pad: 0 });
     }
   }
   // Umrisslinie: Pfad im Koordinatensystem des erweiterten Bildes (Bild bei pad/pad)
-  if (outline && outline.d) layers.push({ d: outline.d, hex: '#000000', name: 'Umrisslinie', kind: 'run', pad: outline.pad || 0 });
+  if (outline && outline.d) layers.push({ d: outline.d, hex: '#000000', name: 'Umrisslinie', key: 'outline', kind: 'run', pad: outline.pad || 0 });
   return layers.length ? { layers, mmPerPx } : null;
 }
 
-const embOptions = (s) => ({
-  spacing: s.embSpacing, len: s.embLen, angle: s.embAngle, pull: s.embPull, trimMm: s.embTrimMm, underlay: !!s.embUnderlay,
-});
+/** Polygone (mm) und Formanalyse je Ebene – hängen nur am Ergebnis, einmal gerechnet. */
+function embGeometry(r) {
+  const e = r.emb;
+  if (!e.rings) {
+    e.rings = e.layers.map((l) => Embroidery.scaleRings(
+      Embroidery.pathToRings(l.d, 0.3 / e.mmPerPx), e.mmPerPx, -l.pad * e.mmPerPx, -l.pad * e.mmPerPx,
+    ));
+    e.an = e.layers.map((l, i) => (l.kind === 'fill' ? Embroidery.analyze(e.rings[i]) : null));
+  }
+  return e;
+}
 
-/** Geplante Stiche des Ergebnisses (zwischengespeichert je Stickeinstellungen). */
+/**
+ * Stickparameter je Ebene: Automatik aus Stoff und Form (Winkel abhängig von der Fläche darunter),
+ * darüber die von Hand gesetzten Werte (s.embLayers[key]).
+ * Ergebnis: [{ key, name, hex, kind, auto: {params, why}, manual, params }]
+ */
+function embLayerParams(r, s = state.settings) {
+  const e = embGeometry(r);
+  const manualAll = s.embLayers || {};
+  let prevAngle = null;
+  return e.layers.map((l, i) => {
+    const auto = Embroidery.autoParams(e.an[i], s.embFabric, prevAngle, l.kind);
+    const manual = manualAll[l.key] || {};
+    const params = { ...auto.params, ...manual };
+    if (params.type === 'fill') prevAngle = Number(params.angle);
+    return { key: l.key, name: l.name, hex: l.hex, kind: l.kind, auto, manual, params };
+  });
+}
+
+const embKey = (s) => JSON.stringify([s.embFabric, s.embTrimMm, s.embLayers || {}]);
+
+/** Geplante Stiche des Ergebnisses (zwischengespeichert je Stoff, Schnittlänge und Handeinstellungen). */
 function stitchPattern(r, s = state.settings) {
   if (!r || !r.emb) return null;
-  const opts = embOptions(s);
-  const key = JSON.stringify(opts);
+  const key = embKey(s);
   if (r.embCache && r.embCache.key === key) return r.embCache.pat;
-  const { layers, mmPerPx } = r.emb;
-  if (!r.emb.rings) {
-    r.emb.rings = layers.map((l) => Embroidery.scaleRings(
-      Embroidery.pathToRings(l.d, 0.3 / mmPerPx), mmPerPx, -l.pad * mmPerPx, -l.pad * mmPerPx,
-    ));
-  }
-  const pat = Embroidery.plan(layers.map((l, i) => ({ rings: r.emb.rings[i], hex: l.hex, kind: l.kind, name: l.name })), opts);
+  const e = embGeometry(r);
+  const lp = embLayerParams(r, s);
+  const pat = Embroidery.plan(e.layers.map((l, i) => ({
+    rings: e.rings[i], an: e.an[i], hex: l.hex, kind: l.kind, name: l.name, p: lp[i].params,
+  })), { trimMm: s.embTrimMm });
   pat.widthMm = (pat.bounds[2] - pat.bounds[0]) / 10;
   pat.heightMm = (pat.bounds[3] - pat.bounds[1]) / 10;
   r.embCache = { key, pat };
@@ -1900,17 +2018,22 @@ const fmtMm = (v) => (Math.round(v * 10) / 10).toString().replace('.', ',');
 
 /** Kennzahlen der Stickdatei im Abschnitt „Stickdatei“ (nur wenn die Stiche schon geplant sind). */
 function renderEmbInfo(r = state.result) {
+  renderEmbManualInfo();
   const el = $('#emb-info');
   const s = state.settings;
   if (!r || !embFormats(s)) { el.textContent = ''; return; }
-  const key = JSON.stringify(embOptions(s));
+  const key = embKey(s);
   const pat = r.embCache && r.embCache.key === key ? r.embCache.pat : null;
   if (!pat) {
     el.textContent = r.emb ? 'Stiche werden geplant …' : (embroideryProblem(r, s) || '');
     return;
   }
   const problem = embroideryProblem(r, s);
-  if (problem) { el.textContent = problem; return; }
+  el.textContent = problem || embSummary(pat);
+}
+
+/** Kennzahlen einer Stickdatei als Text (Stiche, Farben, Schnitte, Größe, Rahmen). */
+function embSummary(pat) {
   const st = pat.stats;
   const parts = [
     `${fmtInt(st.stitches)} Stiche`,
@@ -1923,13 +2046,26 @@ function renderEmbInfo(r = state.result) {
   const hoop = fits(100, 100) ? 'passt in den Rahmen 100\u00a0×\u00a0100\u00a0mm'
     : fits(130, 180) ? 'passt in den Rahmen 130\u00a0×\u00a0180\u00a0mm'
       : 'größer als 130\u00a0×\u00a0180\u00a0mm – großer Stickrahmen nötig';
-  el.textContent = `${parts.join(' · ')} – ${hoop}`;
+  return `${parts.join(' · ')} – ${hoop}`;
+}
+
+/** Hinweis neben „Je Farbe einstellen…“: wie viele Farben von Hand angepasst sind. */
+function renderEmbManualInfo() {
+  const n = Object.keys(state.settings.embLayers || {}).length;
+  $('#emb-manual-info').textContent = n ? `${n} ${n === 1 ? 'Farbe' : 'Farben'} von Hand angepasst` : 'Automatik je Farbe';
+  $('#btn-emb-dialog').disabled = !(state.result && state.result.emb);
 }
 
 let embTimer = null;
 
 /** Stickeinstellungen geändert: Stiche neu planen, Vorschau und Herausziehen aktualisieren. */
 function scheduleEmbRefresh() {
+  // Dialog offen: nur dort neu zeichnen, Vorschau und Herausziehen beim Schließen
+  if ($('#emb-dialog').open) {
+    embDlg.dirty = true;
+    scheduleEmbDialog();
+    return;
+  }
   clearTimeout(embTimer);
   embTimer = setTimeout(() => {
     const r = state.result;
@@ -1937,6 +2073,305 @@ function scheduleEmbRefresh() {
     showPreview(r);
     scheduleDragPrepare(0);
   }, 200);
+}
+
+/* ---- Dialog: Stickparameter je Farbe ---- */
+
+const embDlg = { sel: 0, view: null, timer: null, sig: '', dpr: 1 };
+const EMB_TYPES_FILL = [['fill', 'Füllstich'], ['run', 'Kontur – Steppstich'], ['triple', 'Kontur – Dreifachstich'], ['off', 'Nicht sticken']];
+const EMB_TYPES_RUN = [['run', 'Steppstich'], ['triple', 'Dreifachstich'], ['off', 'Nicht sticken']];
+const EMB_UNDERLAYS = [['none', 'Aus'], ['light', 'Leicht'], ['normal', 'Normal'], ['strong', 'Kräftig (mit Kantenlauf)']];
+const EMB_TYPE_NAMES = { fill: 'Füllstich', run: 'Kontur (Steppstich)', triple: 'Kontur (Dreifachstich)', off: 'nicht sticken' };
+// Regler im Dialog: [Parameter, Beschriftung, min, max, Schritt, Format, Hinweis]
+const EMB_SLIDERS = {
+  fill: [
+    ['angle', 'Stichwinkel', 0, 175, 5, (v) => `${Math.round(v)}°`, 'Richtung der Stichreihen (0° = waagrecht)'],
+    ['spacing', 'Reihenabstand', 0.15, 0.6, 0.01, (v) => `${fmtMm2(v)} · ${(1 / Number(v)).toFixed(1).replace('.', ',')}/mm`, 'Tatsächlicher Abstand benachbarter Stichreihen – kleiner = dichter. Üblich 0,20–0,25 mm (PE-Design: 4,5 Linien/mm = 0,22 mm; Ink/Stitch 0,25 mm). Wilcom misst zwischen zwei Hinreihen: dessen 0,40 mm entsprechen hier 0,20 mm.'],
+    ['len', 'Stichlänge', 2, 7, 0.5, (v) => fmtMm1(v), 'Längster Stich im Füllstich, üblich 3–4 mm'],
+    ['pull', 'Zugausgleich', 0, 0.6, 0.05, (v) => (Number(v) ? fmtMm2(v) : 'aus'), 'Reihen werden an beiden Enden so weit verlängert – gleicht das Zusammenziehen des Stoffs aus'],
+    ['thin', 'Schmale Stellen als Kontur', 0, 2, 0.1, (v) => (Number(v) ? `unter ${fmtMm1(v)}` : 'aus'), 'Teilflächen schmaler als dieser Wert werden als Kontur im Steppstich gestickt (Füllstich deckt dort nicht)'],
+  ],
+  run: [['len', 'Stichlänge', 1, 4, 0.5, (v) => fmtMm1(v), 'Länge der Steppstiche – kürzer folgt Rundungen genauer']],
+};
+const fmtMm1 = (v) => `${Number(v).toFixed(1).replace('.', ',')} mm`;
+const fmtMm2 = (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`;
+const escHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+function openEmbDialog() {
+  const r = state.result;
+  if (!r || !r.emb) return toast(embroideryProblem(r, state.settings) || 'Kein Ergebnis zum Sticken.', true);
+  embDlg.sel = Math.max(0, Math.min(embDlg.sel, r.emb.layers.length - 1));
+  embDlg.view = null; // beim ersten Zeichnen einpassen
+  embDlg.sig = '';
+  $('#emb-dialog').showModal();
+  renderEmbDialog();
+}
+
+/** Von Hand gesetzte Werte einer Ebene ändern (undefined = zurück zur Automatik). */
+function setEmbManual(key, patch) {
+  const all = { ...(state.settings.embLayers || {}) };
+  const cur = { ...(all[key] || {}) };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) delete cur[k];
+    else cur[k] = v;
+  }
+  if (Object.keys(cur).length) all[key] = cur;
+  else delete all[key];
+  setSetting('embLayers', all);
+}
+
+function embLayerSummary(lp, pat, i) {
+  const p = lp.params;
+  let t = EMB_TYPE_NAMES[p.type] || p.type;
+  if (p.type === 'fill') t += ` ${Math.round(p.angle)}° · ${fmtMm2(p.spacing)}`;
+  if (pat && p.type !== 'off' && pat.layers && pat.layers[i]) t += ` · ${fmtInt(pat.layers[i].stitches)} Stiche`;
+  return t;
+}
+
+/** Liste, Einstellungen der gewählten Farbe, Stichvorschau. */
+function renderEmbDialog() {
+  const r = state.result;
+  if (!r || !r.emb) { $('#emb-dialog').close(); return; }
+  const lp = embLayerParams(r);
+  embDlg.sel = Math.min(embDlg.sel, lp.length - 1);
+  const key = embKey(state.settings);
+  const pat = r.embCache && r.embCache.key === key ? r.embCache.pat : null;
+  renderEmbLayerList(lp, pat);
+  renderEmbEdit(lp);
+  scheduleEmbDialog(0);
+}
+
+function renderEmbLayerList(lp, pat) {
+  const list = $('#emb-layers');
+  list.replaceChildren(...lp.map((l, i) => {
+    const row = document.createElement('div');
+    row.className = 'emb-layer';
+    row.classList.toggle('sel', i === embDlg.sel);
+    row.classList.toggle('off', l.params.type === 'off');
+    row.dataset.i = i;
+    const manual = Object.keys(l.manual).length;
+    row.innerHTML = `<input type="checkbox" title="Diese Farbe sticken" ${l.params.type !== 'off' ? 'checked' : ''} />`
+      + `<span class="emb-swatch" style="background:${escHtml(l.hex)}"></span>`
+      + `<span class="emb-layer-name">${i + 1} ${escHtml(l.name)}${manual ? '<span class="emb-badge">● von Hand</span>' : ''}</span>`
+      + `<span class="emb-layer-sum">${escHtml(embLayerSummary(l, pat, i))}</span>`;
+    row.title = 'Farbe auswählen – rechts einstellen';
+    return row;
+  }));
+}
+
+/** Einstellungen der gewählten Farbe; gleiche Ebene und Stichart: Werte nur aktualisieren (Regler nicht neu bauen). */
+function renderEmbEdit(lp) {
+  const box = $('#emb-edit');
+  const l = lp[embDlg.sel];
+  if (!l) { box.replaceChildren(); return; }
+  const p = l.params;
+  const group = p.type === 'fill' ? 'fill' : p.type === 'off' ? 'off' : 'run';
+  const sig = `${embDlg.sel}|${l.key}|${group}|${l.kind}`;
+  const why = `<b>Automatik:</b><ul>${l.auto.why.map((w) => `<li>${escHtml(w)}</li>`).join('')}</ul>`;
+  if (sig !== embDlg.sig) {
+    embDlg.sig = sig;
+    const types = l.kind === 'run' ? EMB_TYPES_RUN : EMB_TYPES_FILL;
+    let html = `<div class="emb-edit-head"><span class="emb-swatch" style="background:${escHtml(l.hex)}"></span><b>${embDlg.sel + 1} ${escHtml(l.name)}</b></div>`
+      + `<div class="emb-why">${why}</div>`
+      + `<label class="field"><span>Stichart <i data-m="type"></i></span><select data-p="type">${types.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`;
+    if (group === 'fill') {
+      html += EMB_SLIDERS.fill.slice(0, 4).map(embSliderHtml).join('');
+      html += `<label class="field" title="Lockere Stichlage unter dem Deckstich: hält den Stoff, gibt dem Deckstich Halt. Schmale Teilflächen bekommen automatisch weniger."><span>Unterlage <i data-m="underlay"></i></span><select data-p="underlay">${EMB_UNDERLAYS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`;
+      html += embSliderHtml(EMB_SLIDERS.fill[4]);
+    } else if (group === 'run') {
+      html += EMB_SLIDERS.run.map(embSliderHtml).join('');
+    }
+    html += `<div class="emb-edit-actions">
+        <button class="btn btn-small" id="emb-auto-one" title="Alle Handeinstellungen dieser Farbe verwerfen">Automatik für diese Farbe</button>
+        <button class="btn btn-small" id="emb-copy-all" title="Die von Hand gesetzten Werte dieser Farbe auf alle anderen Farben übertragen">Auf alle Farben übertragen</button>
+      </div>
+      <p class="hint">Doppelklick auf einen Regler = zurück zur Automatik.</p>`;
+    box.innerHTML = html;
+  } else {
+    box.querySelector('.emb-why').innerHTML = why;
+  }
+  // Werte und Kennzeichnung „von Hand“
+  for (const el of box.querySelectorAll('[data-p]')) {
+    const k = el.dataset.p;
+    const v = p[k];
+    if (document.activeElement !== el && v !== undefined) el.value = v;
+    const out = box.querySelector(`output[data-o="${k}"]`);
+    if (out) {
+      const def = (group === 'fill' ? EMB_SLIDERS.fill : EMB_SLIDERS.run).find((d) => d[0] === k);
+      out.textContent = def ? def[5](el.value) : el.value;
+      out.classList.toggle('manual', k in l.manual);
+    }
+    const mark = box.querySelector(`i[data-m="${k}"]`);
+    if (mark) mark.className = k in l.manual ? 'manual' : '';
+  }
+  $('#emb-auto-one').disabled = !Object.keys(l.manual).length;
+  $('#emb-copy-all').disabled = !Object.keys(l.manual).length || lp.length < 2;
+}
+
+function embSliderHtml([k, label, min, max, step, , title]) {
+  return `<label class="slider" title="${escHtml(title)}"><span>${label} <output data-o="${k}"></output></span>`
+    + `<input type="range" data-p="${k}" min="${min}" max="${max}" step="${step}" /></label>`;
+}
+
+/** Stiche neu planen und zeichnen (nach kurzer Pause, damit Regler flüssig bleiben). */
+function scheduleEmbDialog(delay = 120) {
+  clearTimeout(embDlg.timer);
+  $('#emb-busy').hidden = false;
+  embDlg.timer = setTimeout(() => {
+    const r = state.result;
+    if (!$('#emb-dialog').open || !r || !r.emb) return;
+    const pat = stitchPattern(r);
+    $('#emb-busy').hidden = true;
+    embDlg.pat = pat;
+    const lp = embLayerParams(r);
+    renderEmbLayerList(lp, pat);
+    renderEmbEdit(lp);
+    drawEmbCanvas();
+    const sel = lp[embDlg.sel];
+    const selText = sel && pat.layers && pat.layers[embDlg.sel]
+      ? ` · gewählt: ${embDlg.sel + 1} ${sel.name} – ${fmtInt(pat.layers[embDlg.sel].stitches)} Stiche` : '';
+    $('#emb-stats').textContent = pat.stats.stitches ? embSummary(pat) + selText : 'Keine Stiche – alle Farben ausgeschaltet oder zu klein.';
+    renderEmbManualInfo();
+  }, delay);
+}
+
+function fitEmbView() {
+  const pat = embDlg.pat;
+  const view = $('#emb-view');
+  const W = view.clientWidth, H = view.clientHeight;
+  if (!pat || !W || !H) return;
+  const [x0, y0, x1, y1] = pat.bounds;
+  const scale = Math.min(W / Math.max(1, x1 - x0), H / Math.max(1, y1 - y0)) * 0.92;
+  embDlg.view = { scale, ox: W / 2 - ((x0 + x1) / 2) * scale, oy: H / 2 - ((y0 + y1) / 2) * scale };
+}
+
+function drawEmbCanvas() {
+  const view = $('#emb-view');
+  const canvas = $('#emb-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = view.clientWidth, H = view.clientHeight;
+  if (!W || !H) return;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const pat = embDlg.pat;
+  if (!pat || !pat.stats.stitches) return;
+  if (!embDlg.view) fitEmbView();
+  const v = embDlg.view;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  Embroidery.draw(ctx, pat, v.scale, v.ox, v.oy, $('#emb-dim').checked ? embDlg.sel : -1);
+}
+
+function bindEmbDialog() {
+  $('#btn-emb-dialog').addEventListener('click', openEmbDialog);
+  $('#emb-dialog').addEventListener('close', () => {
+    clearTimeout(embDlg.timer);
+    if (embDlg.dirty) {
+      embDlg.dirty = false;
+      scheduleEmbRefresh();
+    }
+  });
+  $('#emb-layers').addEventListener('click', (e) => {
+    const row = e.target.closest('.emb-layer');
+    if (!row) return;
+    const i = Number(row.dataset.i);
+    const r = state.result;
+    if (e.target.matches('input[type=checkbox]')) {
+      const l = embLayerParams(r)[i];
+      const on = e.target.checked;
+      // einschalten: zurück zur automatischen Stichart (bzw. Füllstich, falls die Automatik „aus“ hätte)
+      setEmbManual(l.key, { type: on ? (l.auto.params.type !== 'off' ? undefined : 'fill') : 'off' });
+    }
+    embDlg.sel = i;
+    renderEmbDialog();
+  });
+  const edit = $('#emb-edit');
+  const onInput = (e) => {
+    const el = e.target.closest('[data-p]');
+    if (!el) return;
+    const l = embLayerParams(state.result)[embDlg.sel];
+    const k = el.dataset.p;
+    const v = el.tagName === 'SELECT' ? el.value : Number(el.value);
+    setEmbManual(l.key, { [k]: v });
+    if (el.tagName === 'SELECT') renderEmbDialog();
+    else renderEmbEdit(embLayerParams(state.result)); // Anzeige sofort, Stiche nach kurzer Pause
+  };
+  edit.addEventListener('input', onInput);
+  edit.addEventListener('dblclick', (e) => {
+    const el = e.target.closest('.slider, .field');
+    const inp = el && el.querySelector('[data-p]');
+    if (!inp) return;
+    const l = embLayerParams(state.result)[embDlg.sel];
+    setEmbManual(l.key, { [inp.dataset.p]: undefined });
+    renderEmbDialog();
+  });
+  edit.addEventListener('click', (e) => {
+    const lp = embLayerParams(state.result);
+    const l = lp[embDlg.sel];
+    if (e.target.id === 'emb-auto-one') {
+      const all = { ...(state.settings.embLayers || {}) };
+      delete all[l.key];
+      setSetting('embLayers', all);
+      renderEmbDialog();
+    } else if (e.target.id === 'emb-copy-all') {
+      const all = { ...(state.settings.embLayers || {}) };
+      for (const o of lp) {
+        if (o.key === l.key) continue;
+        // nur passende Werte übertragen (Umrisslinie kennt keinen Füllstich)
+        const patch = { ...l.manual };
+        if (o.kind === 'run') for (const k of Object.keys(patch)) if (k !== 'len' && !(k === 'type' && patch.type !== 'fill')) delete patch[k];
+        if (Object.keys(patch).length) all[o.key] = { ...(all[o.key] || {}), ...patch };
+      }
+      setSetting('embLayers', all);
+      renderEmbDialog();
+      toast('Einstellungen auf alle Farben übertragen.');
+    }
+  });
+  $('#emb-reset-all').addEventListener('click', () => {
+    setSetting('embLayers', {});
+    renderEmbDialog();
+  });
+  $('#emb-dim').addEventListener('change', drawEmbCanvas);
+  $('#emb-fit').addEventListener('click', () => { embDlg.view = null; drawEmbCanvas(); });
+  // Zoom und Verschieben
+  const view = $('#emb-view');
+  view.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (!embDlg.view) return;
+    const rect = view.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const f = Math.exp(-e.deltaY * 0.0015);
+    const v = embDlg.view;
+    const scale = Math.min(60, Math.max(0.02, v.scale * f));
+    const k = scale / v.scale;
+    embDlg.view = { scale, ox: mx - (mx - v.ox) * k, oy: my - (my - v.oy) * k };
+    drawEmbCanvas();
+  }, { passive: false });
+  let drag = null;
+  view.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('.emb-view-tools') || !embDlg.view) return;
+    drag = { x: e.clientX, y: e.clientY, ox: embDlg.view.ox, oy: embDlg.view.oy };
+    view.setPointerCapture(e.pointerId);
+    view.classList.add('dragging');
+  });
+  view.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    embDlg.view = { ...embDlg.view, ox: drag.ox + e.clientX - drag.x, oy: drag.oy + e.clientY - drag.y };
+    drawEmbCanvas();
+  });
+  const end = () => { drag = null; view.classList.remove('dragging'); };
+  view.addEventListener('pointerup', end);
+  view.addEventListener('pointercancel', end);
+  view.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.emb-view-tools')) return;
+    embDlg.view = null;
+    drawEmbCanvas();
+  });
+  new ResizeObserver(() => { if ($('#emb-dialog').open) drawEmbCanvas(); }).observe(view);
 }
 
 function showResult(blob, pixelated) {
@@ -4068,6 +4503,7 @@ function bindUpdates() {
 bindInfoToggles();
 bindModelsDialog();
 bindDialogs();
+bindEmbDialog();
 bindCameraDialog();
 bindControls();
 bindPresets();
