@@ -5,6 +5,23 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.13.0 – 23.11.2026
+
+### Neu
+- **Modus „Farben“:** Zerlegt Logos, Grafiken und Fotos in wenige Farbflächen – automatisch erkannt oder
+  2–16 Farben, wahlweise in Bildfarben oder auf Brother-Garne eingerastet. Je Farbe eine eigene Ebene im SVG
+  (LightBurn legt je Farbe eine Ebene an, Stickprogramme übernehmen Farben und Reihenfolge). Kantenglättung
+  und JPEG-Säume werden nicht als eigene Farben ausgegeben, der Hintergrund am Bildrand entfällt auf Wunsch.
+  In der Ebenenliste lassen sich Farben ausblenden, umfärben und zusammenführen. PNG/JPG/BMP in Farbe.
+- **Stickdateien PES und DST:** In den Modi Fläche, Linien und Farben direkt eine Datei für die Stickmaschine
+  – Flächen als Füllstich mit Unterlage und Zugausgleich, die Umrisslinie als Steppstich. Wege innerhalb
+  einer Fläche werden mitgestickt statt abgeschnitten. Einstellbar sind Reihenabstand, Stichlänge,
+  Stichwinkel, Zugausgleich und ab wann der Faden geschnitten wird. „Stiche in der Vorschau zeigen“
+  zeigt die geplanten Stiche in Fadenfarbe, dazu Stichzahl, Fadenschnitte und der passende Stickrahmen.
+  PES speichert die Brother-Garnfarben, DST ist ohne Farben.
+- **Vier neue Presets** in der Gruppe „Farben & Stickerei“: Farbiges Logo, Stickerei mit Brother-Garnen,
+  Comic / Illustration (8 Farben) und Foto als Farbposter (6 Farben).
+
 ## 1.12.0 – 23.11.2026
 
 ### Neu
