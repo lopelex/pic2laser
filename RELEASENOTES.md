@@ -5,6 +5,13 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.12.0 – 23.11.2026
+
+### Neu
+- **Kamera-Aufnahme:** „Kamera…“ (Strg/Cmd+K) öffnet einen Dialog mit Live-Vorschau der Webcam. „Aufnehmen“
+  (oder Leertaste) übernimmt das Foto in voller Kameraauflösung verlustfrei als Originalbild. Bei mehreren
+  Kameras lässt sich die Kamera wählen; die Auswahl bleibt gespeichert.
+
 ## 1.11.0 – 23.11.2026
 
 ### Neu
