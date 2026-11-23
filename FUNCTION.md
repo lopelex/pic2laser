@@ -270,8 +270,8 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
     - Stichwinkel aus 30/45/60/120/135/150°: die wenigsten Blöcke (= Wege und Sprünge), Diagonalen
       bevorzugt, mindestens 45° Unterschied zur Fläche darunter, möglichst 90° (gleiche Winkel
       benachbarter Flächen verzahnen und öffnen Lücken).
-    - Teilflächen schmaler als 1 mm werden als Kontur im Steppstich gestickt (Satinstich bräuchte
-      mindestens 1,2–1,5 mm, den gibt es noch nicht); besteht eine Farbe fast
+    - Teilflächen schmaler als 0,35 mm werden als Kontur im Steppstich gestickt (zwei Linien am Rand
+      decken nur, solange die Fläche kaum breiter als der Faden ist; breitere deckt der Füllstich); besteht eine Farbe fast
       nur aus solchen Linien, wird die ganze Farbe Kontur.
     - Unterlage je Teilfläche höchstens: unter 1,5 mm aus, unter 3 mm leicht, unter 5 mm normal.
       Leicht = Reihen alle max(2 mm, 8 × Abstand), normal = max(1 mm, 5 × Abstand), kräftig =

@@ -820,7 +820,12 @@ const Embroidery = (() => {
   };
 
   const ANGLES = [45, 135, 30, 60, 120, 150];
-  const THIN_MM = 1; // schmaler als das deckt Füllstich nicht (Satin bräuchte mind. 1,2–1,5 mm) – als Kontur (Steppstich)
+    // Teilflächen schmaler als das (im Mittel) als Kontur sticken: zwei Steppstichlinien am Rand decken nur,
+  // solange die Fläche kaum breiter als der Faden (ca. 0,4 mm) ist – breitere deckt der Füllstich besser
+  // (sonst bliebe innen eine Lücke, z. B. das Weiß in kleinen Augen). Gemessen an einem Comic-Logo:
+  // 1 mm → Augenweiß fehlt, 0,5 mm → 1,3 % Lücken (Konturbänder wechselnder Breite), 0,35 mm → 0,4 %
+  // (nur Kantenglättung), 0 (alles Füllstich) → ebenso 0,4 %, aber 30 % mehr Stiche und 3× so viele Sprünge.
+  const THIN_MM = 0.35;
   const angDiff = (a, b) => { const d = Math.abs(a - b) % 180; return Math.min(d, 180 - d); };
 
   /** Punkt in Polygon (gerade-ungerade), Polygon als flaches Array. */
