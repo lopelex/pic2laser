@@ -9,7 +9,7 @@ const Processing = (() => {
   /** Zielgröße des Arbeitsbildes in Pixeln. */
   function targetSize(srcW, srcH, s) {
     let w;
-    if (s.mode === 'dither' || s.mode === 'relief') {
+    if (s.mode === 'dither' || s.mode === 'relief' || s.mode === 'sine') {
       w = Math.round((s.widthMm / 25.4) * s.dpi);
     } else {
       const longSide = Math.max(srcW, srcH);
@@ -470,6 +470,9 @@ const Processing = (() => {
       alpha = maskAlpha(maskCanvas, w, h);
       for (let i = 0; i < gray.length; i++) gray[i] = gray[i] * alpha[i] + 255 * (1 - alpha[i]);
     }
+
+    // Wellen: Graustufen werden im Worker zu Sinuswellen (Sine, WebAssembly)
+    if (s.mode === 'sine') return { w, h, bits: null, gray8: Uint8ClampedArray.from(gray), alpha8: null, alpha };
 
     // Relief: Graustufen bleiben erhalten (Laserleistung = Tiefe)
     if (s.mode === 'relief') {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+        content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'" />
   <title>Pic2Laser</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -74,6 +74,7 @@
           <button data-value="vector" class="active" title="Flächen als Vektor (Logos, Schrift, Silhouetten)">Fläche</button>
           <button data-value="edges" title="Kanten nachzeichnen – Linienzeichnung als Vektor">Linien</button>
           <button data-value="dither" title="Dithering für Fotos">Foto</button>
+          <button data-value="sine" title="Sinuswellen-Schattierung: dunkle Stellen als dichte Wellen (Vektorlinien)">Wellen</button>
           <button data-value="relief" title="3D-Relief aus KI-Tiefenkarte (Graustufen)">Relief</button>
         </div>
         <p class="hint info" id="mode-hint"></p>
@@ -284,6 +285,44 @@
         </div>
       </section>
 
+      <section class="group" data-mode="sine">
+        <h3>Wellen</h3>
+        <label class="field">
+          <span>Richtung</span>
+          <select data-key="sineDirection">
+            <option value="h">Waagrecht</option>
+            <option value="v">Senkrecht</option>
+          </select>
+        </label>
+        <label class="slider" title="Abstand der Wellen zueinander – weniger = mehr Zeilen und feinere Auflösung, aber längere Gravur">
+          <span>Linienabstand <output data-for="sineSpacingMm"></output></span>
+          <input type="range" data-key="sineSpacingMm" min="0.3" max="5" step="0.1" />
+        </label>
+        <label class="slider" title="Höhe der Wellen in Prozent des Linienabstands – 100 % = benachbarte Wellen berühren sich">
+          <span>Wellenhöhe <output data-for="sineAmplitude"></output></span>
+          <input type="range" data-key="sineAmplitude" min="0.05" max="0.6" step="0.01" />
+        </label>
+        <label class="slider" title="Wellen je mm an den dunkelsten Stellen">
+          <span>Wellendichte dunkel <output data-for="sineDensity"></output></span>
+          <input type="range" data-key="sineDensity" min="0.2" max="5" step="0.1" />
+        </label>
+        <label class="slider" title="Wellen je mm an den hellsten Stellen – 0 = gerade Linie">
+          <span>Wellendichte hell <output data-for="sineMinDensity"></output></span>
+          <input type="range" data-key="sineMinDensity" min="0" max="2" step="0.1" />
+        </label>
+        <label class="slider" title="Strichbreite für Vorschau und Rasterexporte (PNG/JPG/BMP). Im SVG bestimmt LightBurn die Breite über den Laserpunkt.">
+          <span>Strichbreite <output data-for="sineStrokeMm"></output></span>
+          <input type="range" data-key="sineStrokeMm" min="0.05" max="1" step="0.01" />
+        </label>
+        <label class="field">
+          <span>Auflösung (DPI)</span>
+          <input type="number" data-key="dpi" min="50" max="1200" step="1" />
+        </label>
+        <label class="check" title="Hellste und dunkelste Stelle des Bildes nutzen die volle Wellendichte"><input type="checkbox" data-key="sineNormalize" /> Kontrast automatisch strecken</label>
+        <label class="check" title="Rein weiße Flächen (z. B. freigestellter Hintergrund) bekommen keine Linie"><input type="checkbox" data-key="sineSkipWhite" /> Weiße Flächen auslassen</label>
+        <p class="hint info">Jede Zeile des Bildes wird zu einer Sinuswelle, deren Dichte der Helligkeit folgt (Verfahren nach img2laser). Das SVG enthält offene Linien – in LightBurn die Ebene auf <b>Linie</b> stellen. Kontrast und Gamma unter „Bildanpassung“ wirken direkt auf die Wellendichte; mit Freistellen und „Weiße Flächen auslassen“ bleibt der Hintergrund leer.</p>
+      </section>
+
       <section class="group" data-mode="relief">
         <h3>Relief (3D)</h3>
         <label class="field">
@@ -426,7 +465,7 @@
         </div>
       </section>
 
-      <section class="group" data-mode="vector edges dither">
+      <section class="group" data-mode="vector edges dither sine">
         <h3>Gesichter</h3>
         <label class="check"><input type="checkbox" data-key="faceBoost" /> Gesichtszüge hervorheben</label>
         <div data-show="faceBoost">
