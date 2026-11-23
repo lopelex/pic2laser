@@ -5,6 +5,26 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.17.1 – 23.11.2026
+
+### Behoben
+- **PES bei sehr großen Füllflächen:** Mehr als 65.535 Stiche ohne Sprung (etwa ab 210 × 210 mm
+  Füllung) ließen die Stichzahl im PES-Teil überlaufen – PE-Design und andere Programme, die diesen Teil
+  lesen, bekamen verschobene Daten. Lange Stichfolgen werden jetzt auf mehrere Stichgruppen verteilt.
+  Der PEC-Teil für die Maschine war nicht betroffen.
+- **PES: Fadenschnitt am falschen Sprung:** Begann eine neue Farbe genau am Endpunkt der vorigen, wurde
+  der Fadenschnitt auf einen späteren kurzen Sprung übertragen.
+- **Ungültige Koordinaten:** PES, DST und EXP brechen bei ungültigen Koordinaten mit einer Fehlermeldung ab,
+  statt still eine abgeschnittene Datei zu schreiben (DST/EXP) oder hängen zu bleiben (PES).
+- **Punkt im Dateinamen:** „Version 1.2 Entwurf“ wurde als „Version 1.*“ gespeichert. Jetzt wird nur eine
+  bekannte Endung (svg, png, jpg, bmp, pes, dst, exp, inf) ersetzt.
+
+### Intern
+- Prüfung aller Stickformate gegen pyembroidery und im laufenden Programm (alle 27 Stick-Vorlagen, siehe
+  [BUGS.md](BUGS.md)); drei neue Tests für die behobenen Fehler.
+
+---
+
 ## 1.17.0 – 23.11.2026
 
 ### Neu

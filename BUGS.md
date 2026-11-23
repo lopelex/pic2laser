@@ -202,6 +202,50 @@ während eine ältere Vorbereitung läuft, stehen kurz die alten Formate beim ne
 - Transparenter Hintergrund bleibt mit „Invertieren“ weiß (auch in Schriftbereichen).
 - Weichzeichnen und Farbmaske ohne helleren Rand.
 
+## Prüfung der Stickdateien (Version 1.17.0)
+
+Prüfung vom 23.11.2026 in drei Teilen: DST/EXP/INF gegen die Formate, PES/PEC gegen die Formate, und der
+ganze Export im laufenden Programm (alle 27 Stick-Vorlagen und 6 Sonderfälle, jede Datei mit pyembroidery
+zurückgelesen: Stichzahl, jede Stichposition, Farben, Größe und Fadenschnitte stimmen mit dem Stichplan
+überein; längster Schritt 12,1 mm bei DST, 12,7 mm bei EXP). INF ist Byte für Byte gleich mit pyembroidery.
+
+### S1. PES: Stichzahl je Stichgruppe läuft über 65.535 – ❗ wichtig – ✅ behoben (1.17.1)
+**Ort:** `src/renderer/embroidery.js`, `toPes` (`CSewSeg`-Abschnitte)
+
+Eine Stichgruppe endet nur an einem Sprung oder Farbwechsel; eine große zusammenhängende Füllung (etwa ab
+210 × 210 mm) hat mehr als 65.535 Stiche, die Zahl wurde als 16 Bit geschrieben und lief über. Programme,
+die den PES-Teil lesen, fanden danach verschobene Daten. Jetzt mehrere Gruppen, jede beginnt am letzten
+Punkt der vorigen.
+
+### S2. PEC: Fadenschnitt wirkt auf einen späteren Sprung – Kleinigkeit – ✅ behoben (1.17.1)
+Folgte auf „Schnitt, Farbwechsel“ direkt ein Stich (neue Farbe beginnt am selben Punkt), blieb der Schnitt
+gemerkt und wurde dem nächsten kurzen Sprung angehängt.
+
+### S3. Ungültige Koordinaten (NaN) – Kleinigkeit – ✅ behoben (1.17.1)
+DST/EXP schrieben ab der ersten NaN-Koordinate nichts mehr, PES blieb in der Vorschaugrafik hängen. Aus der
+App nicht auszulösen; jetzt bricht jedes Format mit einer Fehlermeldung ab.
+
+### S4. Punkt im eingegebenen Dateinamen schneidet den Namen ab – Kleinigkeit – ✅ behoben (1.17.1)
+**Ort:** `src/main/main.js`, `export-files`. Ohne Endung eingegeben (vor allem unter Linux) wurde aus
+„Version 1.2 Entwurf“ „Version 1.*“. Jetzt wird nur eine bekannte Endung ersetzt.
+
+### S5. Breite in Farben-Vorlagen meint die Bildbreite – offen
+Bei „10 Farben“ (90 mm), „16 Farben“ (100 mm), „Stencil“ (100 mm) und „Logos“ (100 mm) gilt die Breite für
+das ganze Bild mit Hintergrund und Rand; das Motiv wird kleiner gestickt (z. B. 54,6 mm statt 90 mm). Die
+Ergebnis-Info zeigt die echte Größe.
+
+### Weitere Hinweise (nicht behoben, geringe Bedeutung)
+- **DST:** Ein Sprung über 24,2 mm ohne Schnitt wird zu 3 und mehr Sprung-Datensätzen; Maschinen mit
+  „Jump Count For Trim“ = 3 schneiden dort. Der Stichplan schneidet vor Sprüngen über der Schnittlänge,
+  das tritt nur mit sehr großer Schnittlänge auf.
+- **DST-Kopf:** `ST` zählt auch die Sprünge eines Schnitts (pyembroidery nicht); Maschinen werten das Feld
+  nicht aus. `+Y`/`-Y` nach Tajima (pyembroidery vertauscht sie).
+- **PES:** leeres Muster und mehr als 256 Farbblöcke sind nicht abgefangen (die App lässt beides nicht zu).
+- **Export:** Schlägt eine spätere Datei fehl (Platte voll), bleiben die schon geschriebenen liegen. Der
+  Speichern-Dialog öffnet immer in „Bilder“ und nennt nur das erste Format.
+- **Nicht geprüft:** echte Maschinen, PE-Design, DesignShop 12 (EXP-Schnittcode `80 80 07 00` wie
+  pyembroidery) – dafür die Prüfdateien in `test/fixtures/` und die Checkliste.
+
 ## Geprüft, kein Problem
 
 - **Verarbeitungs-Worker:** Nach `Pipeline.cancel()` mit `worker = null` erzeugt `call()` ihn

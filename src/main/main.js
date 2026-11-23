@@ -285,7 +285,10 @@ ipcMain.handle('export-files', async (_e, { baseName, files }) => {
   if (res.canceled || !res.filePath) return null;
 
   const parsed = path.parse(res.filePath);
-  const targets = files.map((f) => ({ f, target: path.join(parsed.dir, `${parsed.name}.${exportExt(f.ext)}`) }));
+  // Nur eine bekannte Endung abschneiden: „Version 1.2 Entwurf“ bleibt vollständig
+  const known = EXPORT_EXTS.includes(parsed.ext.slice(1).toLowerCase());
+  const stem = known ? parsed.name : parsed.base;
+  const targets = files.map((f) => ({ f, target: path.join(parsed.dir, `${stem}.${exportExt(f.ext)}`) }));
   // Der Dialog fragt nur für die erste Datei nach – vorhandene Begleitdateien (z. B. foo.png) nicht stillschweigend ersetzen
   const existing = [];
   // erste Datei hat der Dialog schon bestätigt – außer der Name wurde ohne/mit anderer Endung eingegeben
