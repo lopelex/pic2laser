@@ -21,7 +21,16 @@ const handlers = {
     let strokePath = null;
     if (s.mode === 'sine') {
       const mmPerPx = s.widthMm / w;
-      strokePath = Sine.paths(gray8, w, h, s, mmPerPx);
+      // Freigestellter Hintergrund bleibt leer (sonst zeichnete Weiß dort gerade Linien). Ohne „Weiße
+      // Flächen auslassen“ soll Weiß im Motiv aber Linien behalten: Motiv höchstens 253 (unter der
+      // Weiß-Schwelle 253,5 der Wellen), Hintergrund 255, dann nur ≥ 253,5 auslassen.
+      let src = gray8, ss = s;
+      if (alpha && !s.sineSkipWhite) {
+        src = new Uint8Array(gray8.length);
+        for (let i = 0; i < src.length; i++) src[i] = alpha[i] >= 0.5 ? Math.min(gray8[i], 253) : 255;
+        ss = { ...s, sineSkipWhite: true };
+      }
+      strokePath = Sine.paths(src, w, h, ss, mmPerPx);
       bits = Sine.rasterize(strokePath, w, h, s.sineStrokeMm / mmPerPx);
       gray8 = null;
     }

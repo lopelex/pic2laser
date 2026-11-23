@@ -27,6 +27,9 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
   Stichlänge 4 mm, Zugausgleich je Stoff (Baumwolle 0,20, T-Shirt 0,35, Fleece 0,40 mm).
 
 ### Behoben
+- **Wellen mit Freistellen:** Der freigestellte Hintergrund wurde mit geraden Linien gefüllt, als wäre nicht
+  freigestellt worden. Er bleibt jetzt leer; „Weiße Flächen auslassen“ gilt nur noch zusätzlich für weiße
+  Stellen im Motiv.
 - **Kleine helle Flächen fehlten beim Sticken** (z. B. das Weiß in kleinen Augen): Schmale Stellen werden erst
   unter 0,35 mm als Kontur gestickt, breitere mit Füllstich.
 

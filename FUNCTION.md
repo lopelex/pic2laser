@@ -64,8 +64,9 @@ Alle KI-Funktionen laufen lokal und offline.
   100 % = Nachbarwellen berühren sich), Wellendichte dunkel und hell (Wellen je mm; hell 0 = gerade Linie),
   Strichbreite (Vorschau und Rasterexporte; im SVG zählt in LightBurn der Laserpunkt), Auflösung in DPI.
   „Kontrast automatisch strecken“ nutzt für hellste und dunkelste Stelle die volle Dichte, „Weiße Flächen
-  auslassen“ setzt den Laser über rein weißen Flächen (z. B. freigestelltem Hintergrund) ab; Lücken und
-  Linienstücke unter 0,8 mm werden dabei ignoriert. Das SVG enthält offene Linien (`fill="none"`) – in
+  auslassen“ setzt den Laser auch über rein weißen Stellen im Motiv ab; Lücken und Linienstücke unter
+  0,8 mm werden dabei ignoriert. Freigestellter Hintergrund bleibt immer leer (Motiv intern höchstens
+  Grauwert 253, Hintergrund 255, ausgelassen wird nur ≥ 253,5). Das SVG enthält offene Linien (`fill="none"`) – in
   LightBurn als **Linie** gravieren. Verfahren nach img2laser (Kyle Larsen, MIT), gerechnet in Rust/WebAssembly.
 - **Farben:** *Anzahl Farben* (2–16 oder **Auto**: erhöht die Anzahl, bis fast jedes Pixel durch eine Farbe
   oder eine Mischung zweier Farben erklärt ist – höchstens 10), *Farbpalette* (Bildfarben oder
