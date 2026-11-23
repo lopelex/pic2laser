@@ -2161,6 +2161,8 @@ function embroideryFiles(r, s) {
   if (s.fmtPes) files.push({ ext: 'pes', data: Embroidery.toPes(pat, baseName()) });
   if (s.fmtDst) files.push({ ext: 'dst', data: Embroidery.toDst(pat, baseName()) });
   if (s.fmtExp) files.push({ ext: 'exp', data: Embroidery.toExp(pat) });
+  // Farben zu EXP (und DST mit gleichem Namen) für Melco DesignShop 12
+  if (s.fmtExp) files.push({ ext: 'inf', data: Embroidery.toInf(pat) });
   return files;
 }
 
@@ -3501,7 +3503,7 @@ function scheduleDragPrepare(delay = 250) {
   if (state.result && state.result.emb) {
     if (fs0.fmtPes) exts.push('pes');
     if (fs0.fmtDst) exts.push('dst');
-    if (fs0.fmtExp) exts.push('exp');
+    if (fs0.fmtExp) exts.push('exp', 'inf');
   }
   renderResultInfo(exts);
   dragTimer = setTimeout(async () => {

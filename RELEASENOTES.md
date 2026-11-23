@@ -5,6 +5,16 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.17.0 – 23.11.2026
+
+### Neu
+- **Farben für Melco DesignShop 12:** Zu „EXP (Sticken, Melco)“ entsteht jetzt eine INF-Datei mit gleichem
+  Namen – je Farbblock die genaue Farbe, der Name und die Nadel. DesignShop 12 liest sie zu EXP und DST und
+  zeigt die richtigen Farben statt Standardfarben; als OFM gespeichert sieht auch Melco OS die Farben.
+  `npm test` liest die INF mit eigenem Leser und pyembroidery zurück.
+
+---
+
 ## 1.16.0 – 23.11.2026
 
 ### Neu

@@ -15,6 +15,7 @@
  *  - PES (Brother, Version 1): PES-Teil für PE-Design u. a., PEC-Teil für die Stickmaschine
  *  - DST (Tajima): Industriestandard, ohne Farbinformation (Farben an der Maschine zuordnen)
  *  - EXP (Melco): Stichformat von Melco (DesignShop, Melco-Maschinen), ebenfalls ohne Farben
+ *  - INF: Farben zu EXP/DST (gleicher Dateiname), liest z. B. Melco DesignShop ab Version 12
  * Koordinaten in den Dateien: 0,1 mm, Mitte des Motivs = Nullpunkt.
  */
 const Embroidery = (() => {
@@ -1303,6 +1304,25 @@ const Embroidery = (() => {
     return new Uint8Array(out).buffer;
   }
 
+  /* ---- INF (Farben zu EXP/DST) ---- */
+
+  /**
+   * INF: Farbliste zu einer Stichdatei gleichen Namens (Bernina/Melco). Alle Zahlen big-endian:
+   * 1, 8, Länge des Rests (32 Bit), Zahl der Farben (32 Bit), dann je Farbblock: Satzlänge (16 Bit),
+   * Nummer ab 0 (16 Bit), R, G, B, Nadel ab 1 (16 Bit), Name und Garnkarte als Text mit 0-Byte am Ende.
+   */
+  function toInf(pat) {
+    const enc = (s) => [...asciiName(s, 60)].map((ch) => ch.charCodeAt(0));
+    const recs = pat.threads.map((t, i) => {
+      const name = enc(t.name || t.hex), chart = enc('RGB');
+      const len = 2 + 2 + 3 + 2 + name.length + 1 + chart.length + 1;
+      return [len >> 8, len & 255, i >> 8, i & 255, ...t.rgb, (i + 1) >> 8, (i + 1) & 255, ...name, 0, ...chart, 0];
+    });
+    const body = recs.flat();
+    const u32 = (v) => [(v >>> 24) & 255, (v >> 16) & 255, (v >> 8) & 255, v & 255];
+    return new Uint8Array([...u32(1), ...u32(8), ...u32(4 + body.length), ...u32(recs.length), ...body]).buffer;
+  }
+
   /* ---- PES / PEC (Brother) ---- */
 
   // Brother-Standardfarben (PEC-Palette, Index 1–64)
@@ -1588,7 +1608,7 @@ const Embroidery = (() => {
   }
 
   return {
-    pathToRings, scaleRings, plan, analyze, autoParams, FABRICS, UNDERLAY_NAMES, THIN_MM, toDst, toExp, toPes, draw, pecIndices,
+    pathToRings, scaleRings, plan, analyze, autoParams, FABRICS, UNDERLAY_NAMES, THIN_MM, toDst, toExp, toInf, toPes, draw, pecIndices,
     CMD: { STITCH, JUMP, TRIM, COLOR, END },
   };
 })();

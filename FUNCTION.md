@@ -280,6 +280,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
     Für **Melco DesignShop** (Datei → Öffnen, kommt als Stichdatei ohne bearbeitbare Objekte an) und
     Melco-Maschinen; ein Hinweis im Abschnitt „Stickdatei“ verweist darauf. Das eigene DesignShop-Format
     OFM ist nicht offengelegt und wird nicht geschrieben.
+  - **INF** (immer zusammen mit EXP, gleicher Dateiname): Farbliste je Farbblock mit genauer Farbe (RGB),
+    Name (ASCII, Umlaute umschrieben), Nadel 1, 2, … und Garnkarte „RGB“. Melco DesignShop ab Version 12
+    liest sie zu EXP und DST mit gleichem Namen und zeigt die Farben statt Standardfarben.
   - Abschnitt „Stickdatei“ (nur mit PES/DST/EXP): **Stoff**, Faden schneiden ab, „Je Farbe einstellen…“;
     Anzeige von Stichzahl, Farben, Fadenschnitten, Größe und passendem Rahmen (100 × 100 / 130 × 180 mm).
     „Stiche in der Vorschau zeigen“ zeichnet die geplanten Stiche in Fadenfarbe. Diese Einstellungen

@@ -86,7 +86,7 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
 - **Ausgabegröße in mm**: SVGs enthalten `width/height` in mm, Rasterbilder die DPI –
   LightBurn importiert alles direkt in der richtigen Größe.
 - **Export** als SVG, PNG, JPG und/oder 1-Bit-BMP (Strg+S oder Strg+E)
-- **Stickdateien** PES (Brother), DST (Tajima) und EXP (Melco, z. B. für Melco DesignShop) direkt für die Stickmaschine: Flächen als Füllstich mit
+- **Stickdateien** PES (Brother), DST (Tajima) und EXP (Melco, z. B. für Melco DesignShop, mit INF-Datei für die Farben) direkt für die Stickmaschine: Flächen als Füllstich mit
   Unterlage und Zugausgleich, Umrisslinie als Steppstich, Wege innerhalb der Flächen statt Fadenschnitten;
   Stickparameter je Farbe automatisch aus Stoff und Form (Winkel, Unterlage, schmale Stellen als Kontur),
   im Dialog „Je Farbe einstellen…“ mit Stichvorschau von Hand anpassbar; Stichzahl und passender Stickrahmen

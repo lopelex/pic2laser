@@ -28,5 +28,9 @@ for path in sys.argv[1:]:
     for x, y, cmd in pattern.stitches:
         c = cmd & pe.COMMAND_MASK
         ops.append({'c': NAMES.get(c, f'CMD{c}'), 'x': round(x), 'y': round(y)})
-    out[path] = {'ops': ops, 'threads': len(pattern.threadlist)}
+    out[path] = {
+        'ops': ops,
+        'threads': len(pattern.threadlist),
+        'colors': [[t.get_red(), t.get_green(), t.get_blue(), t.description or ''] for t in pattern.threadlist],
+    }
 json.dump(out, sys.stdout)
