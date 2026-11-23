@@ -270,7 +270,7 @@ ipcMain.handle('open-image', async () => {
 });
 
 /**
- * files: [{ ext: 'svg'|'png'|'jpg'|'bmp', data: string|ArrayBuffer }]
+ * files: [{ ext: 'svg'|'png'|'jpg'|'bmp'|'pes'|'dst', data: string|ArrayBuffer }]
  * Der Benutzer wählt einmal Ordner + Basisnamen, alle Formate werden daneben gespeichert.
  */
 ipcMain.handle('export-files', async (_e, { baseName, files }) => {
@@ -386,7 +386,7 @@ ipcMain.handle('lightburn-send', async (_e, { baseName, files }) => {
   }
 });
 
-const EXPORT_EXTS = ['svg', 'png', 'jpg', 'bmp'];
+const EXPORT_EXTS = ['svg', 'png', 'jpg', 'bmp', 'pes', 'dst'];
 /** Nur bekannte Ausgabeformate (verhindert Pfadangaben in der Endung). */
 function exportExt(ext) {
   if (!EXPORT_EXTS.includes(ext)) throw new Error(`Unbekanntes Format: ${ext}`);

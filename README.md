@@ -86,6 +86,9 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
 - **Ausgabegröße in mm**: SVGs enthalten `width/height` in mm, Rasterbilder die DPI –
   LightBurn importiert alles direkt in der richtigen Größe.
 - **Export** als SVG, PNG, JPG und/oder 1-Bit-BMP (Strg+S oder Strg+E)
+- **Stickdateien** PES (Brother) und DST (Tajima) direkt für die Stickmaschine: Flächen als Füllstich mit
+  Unterlage und Zugausgleich, Umrisslinie als Steppstich, Wege innerhalb der Flächen statt Fadenschnitten;
+  Stichvorschau in Fadenfarben, Stichzahl und passender Stickrahmen
 - **Herausziehen**: Das Ergebnis lässt sich per Drag & Drop direkt in LightBurn, Explorer oder Finder ziehen
   (in den gewählten Exportformaten). Eine Info im Ergebnisfeld zeigt Formate, Größe in mm und DPI.
 - **An LightBurn senden** (Strg/⌘+L): fügt das Ergebnis direkt ins offene LightBurn-Projekt ein
@@ -194,6 +197,7 @@ Pic2Laser selbst ist Open Source (GPL-2.0-or-later, siehe [Lizenz](#lizenz)). F�
 - `src/renderer/sine.js` – Modus Wellen: lädt das WebAssembly-Modul und rechnet Einstellungen in Pixel um
 - `wasm/sine/` – Rust-Quelltext der Sinuswellen (→ `src/renderer/wasm/sine-wasm.js`, eingebettet als Base64)
 - `src/renderer/encoders.js` – SVG-, PNG-, JPG- und BMP-Ausgabe mit DPI-Angaben
+- `src/renderer/embroidery.js` – Stickdateien: Füll- und Steppstich aus den Vektorpfaden, PES- und DST-Ausgabe
 - `src/renderer/app.js` – Oberfläche, Presets, Vorschau, Zoom, Export, Historie
 - `src/renderer/index.html`, `styles.css` – Oberfläche
 - `models/` – mitgelieferte ONNX-Modelle

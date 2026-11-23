@@ -651,3 +651,7 @@ body.ctrl-drag #img-original:active { cursor: grabbing !important; }
 .color-row select { padding: 1px 2px; font-size: 12px; width: 34px; }
 .color-row .btn.icon { padding: 0 6px; }
 .color-row.off .name, .color-row.off .pct { opacity: .5; text-decoration: line-through; }
+
+/* ---------- Stickdatei ---------- */
+.emb-info { color: #c9cdd5; font-variant-numeric: tabular-nums; line-height: 1.45; }
+.emb-info:empty { display: none; }

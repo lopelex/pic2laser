@@ -28,6 +28,16 @@ const DEFAULTS = Object.freeze({
   fmtPng: false,
   fmtJpg: false,
   fmtBmp: false,
+  fmtPes: false, // Stickdatei Brother
+  fmtDst: false, // Stickdatei Tajima
+  // Stickdatei (PES/DST): Füllstich und Umrisslinie
+  embSpacing: 0.4, // Reihenabstand im Füllstich (mm)
+  embLen: 3.5, // längster Stich im Füllstich (mm)
+  embAngle: 45, // Stichrichtung (Grad)
+  embPull: 0.2, // Zugausgleich je Reihenende (mm)
+  embTrimMm: 3, // längere Sprünge mit Fadenschnitt
+  embUnderlay: true, // Unterlage quer zur Stichrichtung
+  embPreview: false, // Stiche statt Flächen in der Vorschau
   // Freistellen
   bgRemove: 'none',
   maskThreshold: 0.5,
@@ -174,6 +184,12 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
  * Standardwerte ergänzen. Ältere Einstellungen/Presets ohne Hauptschalter für die Restaurierung:
  * eingeschaltet, sobald eine Restaurierungsoption aktiv ist.
  */
+/** Exportformate und Stickeinstellungen: ändern das berechnete Ergebnis nicht, bleiben bei Vorlagen erhalten. */
+const isOutputKey = (k) => k.startsWith('fmt') || k.startsWith('emb');
+const outputPrefs = (s) => Object.fromEntries(Object.keys(DEFAULTS).filter(isOutputKey).map((k) => [k, s[k]]));
+const laserFormats = (s) => s.fmtSvg || s.fmtPng || s.fmtJpg || s.fmtBmp;
+const embFormats = (s) => s.fmtPes || s.fmtDst;
+
 function withDefaults(settings = {}) {
   const restoreOn = settings.restoreOn ?? !!(settings.restoreDenoise || settings.restoreScratches || settings.restoreFaces);
   return { ...DEFAULTS, ...settings, restoreOn };
@@ -220,6 +236,11 @@ const FORMATTERS = {
   colorSmoothMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
   colorMinAreaMm2: (v) => (Number(v) ? `${Number(v).toFixed(1).replace('.', ',')} mm²` : 'aus'),
   colorOverlapMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
+  embSpacing: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
+  embLen: (v) => `${Number(v).toFixed(1).replace('.', ',')} mm`,
+  embAngle: (v) => `${v}°`,
+  embPull: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
+  embTrimMm: (v) => `${Number(v).toFixed(1).replace('.', ',')} mm`,
   sineStrokeMm: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
   outlineOffsetMm: (v) => `${Number(v).toFixed(1)} mm`,
   shapeTolMm: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
@@ -261,6 +282,7 @@ function syncControls() {
   }
   for (const btn of $$('#mode button')) btn.classList.toggle('active', btn.dataset.value === s.mode);
   for (const g of $$('[data-mode]')) g.hidden = !g.dataset.mode.split(' ').includes(s.mode);
+  if (!embFormats(s)) $('#emb-group').hidden = true; // Stickeinstellungen nur mit PES/DST
   for (const el of $$('[data-algo]')) el.hidden = s.ditherAlgo !== el.dataset.algo;
   for (const el of $$('[data-bg]')) el.hidden = !el.dataset.bg.split(' ').includes(s.bgRemove);
   for (const el of $$('[data-edge]')) el.hidden = el.dataset.edge !== s.edgeMethod;
@@ -354,7 +376,9 @@ function setSetting(key, value) {
   syncControls();
   if (key === 'bgSeeds' || key === 'samPoints' || key === 'bgRemove') renderMarkers();
   updatePresetHint();
-  if (!key.startsWith('fmt')) {
+  if (key.startsWith('emb') || key === 'fmtPes' || key === 'fmtDst') {
+    scheduleEmbRefresh(); // Stiche neu planen (Vorschau, Herausziehen) – ohne neue Berechnung
+  } else if (!key.startsWith('fmt')) {
     state.cancelRetries = 0; // neue Eingabe: wieder Neustarts erlauben
     dragReady = false; // bis zum neuen Ergebnis nicht das veraltete herausziehen
     scheduleProcess();
@@ -460,7 +484,8 @@ function bindControls() {
   });
 
   $('#btn-reset').addEventListener('click', () => {
-    const keep = { fmtSvg: state.settings.fmtSvg, fmtPng: state.settings.fmtPng, fmtJpg: state.settings.fmtJpg, fmtBmp: state.settings.fmtBmp };
+    const keep = outputPrefs(state.settings);
+    for (const k of Object.keys(keep)) if (k.startsWith('emb')) delete keep[k]; // Stickeinstellungen zurücksetzen
     state.settings = { ...DEFAULTS, ...keep, bgSeeds: [], samPoints: [], colorEdits: [] };
     state.activePreset = null;
     state.cancelRetries = 0;
@@ -777,7 +802,7 @@ function applyPreset(key) {
   if (!preset) return;
   const cur = state.settings;
   const keep = kind === 'builtin'
-    ? { widthMm: cur.widthMm, fmtSvg: cur.fmtSvg, fmtPng: cur.fmtPng, fmtJpg: cur.fmtJpg, fmtBmp: cur.fmtBmp }
+    ? { widthMm: cur.widthMm, ...outputPrefs(cur) }
     : {};
   state.settings = {
     ...withDefaults({ ...keep, ...preset.settings }),
@@ -1110,8 +1135,8 @@ const isCancelled = (err) => !!err && (err.cancelled || /cancelled$/.test(String
 
 let processTimer = null;
 
-/** Kennung der Einstellungen ohne Exportformate (die ändern das Ergebnis nicht). */
-const resultSig = (s) => JSON.stringify(Object.keys(s).filter((k) => !k.startsWith('fmt')).sort().map((k) => [k, s[k]]));
+/** Kennung der Einstellungen ohne Exportformate und Stickeinstellungen (die ändern das Ergebnis nicht). */
+const resultSig = (s) => JSON.stringify(Object.keys(s).filter((k) => !isOutputKey(k)).sort().map((k) => [k, s[k]]));
 
 /** Passt das angezeigte Ergebnis noch zu den aktuellen Einstellungen? */
 const resultIsCurrent = (r) => !!r && !!r.settings && resultSig(r.settings) === resultSig(state.settings) && !state.mergePending;
@@ -1672,6 +1697,7 @@ async function runProcess() {
     state.baseResult = {
       w, h, bits, gray8, alpha8, rgba8, svg, widthMm, heightMm, dpi, mode: s.mode,
       colorLayers: colorLayers || null, // Modus Farben: Ebenen für die Farbliste
+      emb: embSource({ mode: s.mode, colors, fillPath, outline, outlineOnly: !!(s.outline && s.outlineOnly), mmPerPx }),
       // Relief: eigene Option „Weißen Hintergrund transparent“ (gilt für PNG/SVG)
       transparent: s.mode === 'relief' ? !!alpha8 : s.transparent,
       mmPerPx, outline, outlineOnly: !!(s.outline && s.outlineOnly), // für Rasterexporte mit Umrisslinie
@@ -1784,6 +1810,133 @@ function rasterizeColors(colors, w, h) {
     ctx.fill(new Path2D(c.d), 'evenodd');
   }
   return ctx.getImageData(0, 0, w, h).data;
+}
+
+/* ---- Stickdateien (PES/DST) ---- */
+
+/**
+ * Vektordaten fürs Sticken: Farbflächen bzw. die Fläche (schwarz) als Füllstich, die Umrisslinie
+ * als Steppstich. Nur Modi mit Vektorflächen (Fläche, Linien, Farben).
+ */
+function embSource({ mode, colors, fillPath, outline, outlineOnly, mmPerPx }) {
+  if (!['vector', 'edges', 'color'].includes(mode)) return null;
+  const layers = [];
+  if (!outlineOnly) {
+    if (colors) {
+      for (const c of colors) if (c.d) layers.push({ d: c.d, hex: c.hex, name: c.label, kind: 'fill', pad: 0 });
+    } else if (fillPath && String(fillPath).trim()) {
+      layers.push({ d: fillPath, hex: '#000000', name: 'Fläche', kind: 'fill', pad: 0 });
+    }
+  }
+  // Umrisslinie: Pfad im Koordinatensystem des erweiterten Bildes (Bild bei pad/pad)
+  if (outline && outline.d) layers.push({ d: outline.d, hex: '#000000', name: 'Umrisslinie', kind: 'run', pad: outline.pad || 0 });
+  return layers.length ? { layers, mmPerPx } : null;
+}
+
+const embOptions = (s) => ({
+  spacing: s.embSpacing, len: s.embLen, angle: s.embAngle, pull: s.embPull, trimMm: s.embTrimMm, underlay: !!s.embUnderlay,
+});
+
+/** Geplante Stiche des Ergebnisses (zwischengespeichert je Stickeinstellungen). */
+function stitchPattern(r, s = state.settings) {
+  if (!r || !r.emb) return null;
+  const opts = embOptions(s);
+  const key = JSON.stringify(opts);
+  if (r.embCache && r.embCache.key === key) return r.embCache.pat;
+  const { layers, mmPerPx } = r.emb;
+  if (!r.emb.rings) {
+    r.emb.rings = layers.map((l) => Embroidery.scaleRings(
+      Embroidery.pathToRings(l.d, 0.3 / mmPerPx), mmPerPx, -l.pad * mmPerPx, -l.pad * mmPerPx,
+    ));
+  }
+  const pat = Embroidery.plan(layers.map((l, i) => ({ rings: r.emb.rings[i], hex: l.hex, kind: l.kind, name: l.name })), opts);
+  pat.widthMm = (pat.bounds[2] - pat.bounds[0]) / 10;
+  pat.heightMm = (pat.bounds[3] - pat.bounds[1]) / 10;
+  r.embCache = { key, pat };
+  return pat;
+}
+
+const EMB_MAX_MM = 400; // größere Motive passen in keinen Stickrahmen (und sprengen PES-Sprünge)
+
+/** PES/DST-Dateien des Ergebnisses (leer, wenn nicht gewählt oder nichts zu sticken). */
+function embroideryFiles(r, s) {
+  if (!embFormats(s) || !r.emb) return [];
+  const pat = stitchPattern(r, s);
+  if (!pat || !pat.stats.stitches || Math.max(pat.widthMm, pat.heightMm) > EMB_MAX_MM) return [];
+  const files = [];
+  if (s.fmtPes) files.push({ ext: 'pes', data: Embroidery.toPes(pat, baseName()) });
+  if (s.fmtDst) files.push({ ext: 'dst', data: Embroidery.toDst(pat, baseName()) });
+  return files;
+}
+
+/** Hinweis, warum keine Stickdatei entsteht (oder null). */
+function embroideryProblem(r, s) {
+  if (!embFormats(s)) return null;
+  if (!r.emb) {
+    return ['vector', 'edges', 'color'].includes(r.mode) || r.merge
+      ? 'Keine Stickdatei – das Ergebnis ist leer.'
+      : 'PES/DST gibt es nur in den Modi Fläche, Linien und Farben.';
+  }
+  const pat = stitchPattern(r, s);
+  if (!pat || !pat.stats.stitches) return 'Keine Stickdatei – die Flächen sind zu klein für Stiche.';
+  if (Math.max(pat.widthMm, pat.heightMm) > EMB_MAX_MM) return `Keine Stickdatei – das Motiv ist größer als ${EMB_MAX_MM} mm. Breite unter „Ausgabegröße“ verringern.`;
+  return null;
+}
+
+/** Stiche als Vorschaubild (Fadenfarben, gleicher Maßstab wie das Ergebnis, höchstens 2400 px). */
+async function stitchPreviewBlob(r, s) {
+  const pat = stitchPattern(r, s);
+  if (!pat || !pat.stats.stitches) return null;
+  const [x0, y0, x1, y1] = pat.bounds;
+  const margin = 12;
+  const scale = Math.min(0.1 / r.emb.mmPerPx, 2400 / Math.max(1, x1 - x0), 2400 / Math.max(1, y1 - y0)); // px je 0,1 mm
+  const c = new OffscreenCanvas(Math.ceil((x1 - x0) * scale) + 2 * margin, Math.ceil((y1 - y0) * scale) + 2 * margin);
+  Embroidery.draw(c.getContext('2d'), pat, scale, margin - x0 * scale, margin - y0 * scale);
+  return c.convertToBlob({ type: 'image/png' });
+}
+
+const fmtInt = (v) => Math.round(v).toLocaleString('de-DE');
+const fmtMm = (v) => (Math.round(v * 10) / 10).toString().replace('.', ',');
+
+/** Kennzahlen der Stickdatei im Abschnitt „Stickdatei“ (nur wenn die Stiche schon geplant sind). */
+function renderEmbInfo(r = state.result) {
+  const el = $('#emb-info');
+  const s = state.settings;
+  if (!r || !embFormats(s)) { el.textContent = ''; return; }
+  const key = JSON.stringify(embOptions(s));
+  const pat = r.embCache && r.embCache.key === key ? r.embCache.pat : null;
+  if (!pat) {
+    el.textContent = r.emb ? 'Stiche werden geplant …' : (embroideryProblem(r, s) || '');
+    return;
+  }
+  const problem = embroideryProblem(r, s);
+  if (problem) { el.textContent = problem; return; }
+  const st = pat.stats;
+  const parts = [
+    `${fmtInt(st.stitches)} Stiche`,
+    `${st.colors} ${st.colors === 1 ? 'Farbe' : 'Farben'}`,
+    `${fmtInt(st.trims)} ${st.trims === 1 ? 'Fadenschnitt' : 'Fadenschnitte'}`,
+    `${fmtMm(pat.widthMm)} × ${fmtMm(pat.heightMm)} mm`,
+  ].map((t) => t.replace(/ /g, '\u00a0')); // Zahl und Einheit nicht trennen
+  // übliche Rahmen bis 130 × 180 mm (in beiden Lagen)
+  const fits = (a, b) => (pat.widthMm <= a && pat.heightMm <= b) || (pat.widthMm <= b && pat.heightMm <= a);
+  const hoop = fits(100, 100) ? 'passt in den Rahmen 100\u00a0×\u00a0100\u00a0mm'
+    : fits(130, 180) ? 'passt in den Rahmen 130\u00a0×\u00a0180\u00a0mm'
+      : 'größer als 130\u00a0×\u00a0180\u00a0mm – großer Stickrahmen nötig';
+  el.textContent = `${parts.join(' · ')} – ${hoop}`;
+}
+
+let embTimer = null;
+
+/** Stickeinstellungen geändert: Stiche neu planen, Vorschau und Herausziehen aktualisieren. */
+function scheduleEmbRefresh() {
+  clearTimeout(embTimer);
+  embTimer = setTimeout(() => {
+    const r = state.result;
+    if (!r) return;
+    showPreview(r);
+    scheduleDragPrepare(0);
+  }, 200);
 }
 
 function showResult(blob, pixelated) {
@@ -2723,17 +2876,23 @@ function scheduleDragPrepare(delay = 250) {
   // Info sofort mit den gewählten Formaten aktualisieren (Dateien folgen im Hintergrund)
   const fs0 = state.settings;
   const exts = [];
-  if (fs0.fmtSvg || (!fs0.fmtPng && !fs0.fmtJpg && !fs0.fmtBmp)) exts.push('svg');
+  const embOnly = !laserFormats(fs0) && embFormats(fs0) && state.result && state.result.emb;
+  if (fs0.fmtSvg || (!laserFormats(fs0) && !embOnly)) exts.push('svg');
   if (fs0.fmtPng) exts.push('png');
   if (fs0.fmtJpg) exts.push('jpg');
   if (fs0.fmtBmp) exts.push('bmp');
+  if (state.result && state.result.emb) {
+    if (fs0.fmtPes) exts.push('pes');
+    if (fs0.fmtDst) exts.push('dst');
+  }
   renderResultInfo(exts);
   dragTimer = setTimeout(async () => {
     const r = state.result;
     if (!r) return;
     const s = state.settings;
     try {
-      const files = await handoverFiles(r, s);
+      const files = await handoverFiles(r, s, true);
+      if (r === state.result) renderEmbInfo(r); // Stiche sind jetzt geplant
       const icon = await dragIcon(r);
       if (r !== state.result) return; // inzwischen neu berechnet
       await window.api.dragPrepare({ baseName: baseName(), files, icon });
@@ -2745,11 +2904,16 @@ function scheduleDragPrepare(delay = 250) {
   }, delay);
 }
 
-/** Dateien zum Herausziehen bzw. Senden an LightBurn: gewählte Exportformate, ohne Auswahl das SVG. */
-async function handoverFiles(r, s) {
+/**
+ * Dateien zum Herausziehen bzw. Senden an LightBurn: gewählte Exportformate, ohne Auswahl das SVG.
+ * embroidery: auch PES/DST (nur beim Herausziehen – LightBurn kann damit nichts anfangen).
+ */
+async function handoverFiles(r, s, embroidery = false) {
   const files = [];
-  if (s.fmtSvg || (!s.fmtPng && !s.fmtJpg && !s.fmtBmp)) files.push({ ext: 'svg', data: r.svg });
+  const emb = embroidery ? embroideryFiles(r, s) : [];
+  if (s.fmtSvg || (!laserFormats(s) && !emb.length)) files.push({ ext: 'svg', data: r.svg });
   files.push(...(await buildRasterFiles(r, { png: s.fmtPng, jpg: s.fmtJpg, bmp: s.fmtBmp })));
+  files.push(...emb);
   return files;
 }
 
@@ -2760,7 +2924,7 @@ function renderResultInfo(exts) {
   if (!r || !exts || !exts.length) { el.hidden = true; return; }
   const mm = (v) => (Math.round(v * 10) / 10).toString().replace('.', ',');
   const size = `${mm(r.totalWmm ?? r.widthMm)} × ${mm(r.totalHmm ?? r.heightMm)} mm`;
-  const raster = exts.some((e) => e !== 'svg') ? ` · ${Math.round(r.dpi)} DPI` : '';
+  const raster = exts.some((e) => e === 'png' || e === 'jpg' || e === 'bmp') ? ` · ${Math.round(r.dpi)} DPI` : '';
   el.textContent = `⤴ Herausziehen: ${exts.map((e) => e.toUpperCase()).join(' + ')} · ${size}${raster}`;
   el.title = 'Ergebnis mit der Maus herausziehen, z. B. direkt in LightBurn, den Finder oder Explorer. Formate unter „Exportformate“.';
   el.hidden = false;
@@ -2929,7 +3093,7 @@ async function exportCurrent() {
   const r = state.result;
   if (!r) return toast('Noch kein Ergebnis vorhanden.', true);
   const s = state.settings;
-  if (!s.fmtSvg && !s.fmtPng && !s.fmtJpg && !s.fmtBmp) {
+  if (!laserFormats(s) && !embFormats(s)) {
     return toast('Bitte mindestens ein Exportformat auswählen.', true);
   }
   // Einstellungen geändert, Ergebnis noch nicht neu berechnet → nicht das alte Ergebnis exportieren
@@ -2938,19 +3102,23 @@ async function exportCurrent() {
     if (!$('#busy').classList.contains('on')) scheduleProcess(0);
     return toast('Das Ergebnis wird an die geänderten Einstellungen angepasst – bitte danach noch einmal exportieren.');
   }
+  // PES/DST nicht möglich (falscher Modus, leer, zu groß): melden, die übrigen Formate trotzdem speichern
+  const embProblem = embroideryProblem(r, s);
+  if (embProblem && !laserFormats(s)) return toast(embProblem, true);
 
   let written;
   try {
     const files = [];
     if (s.fmtSvg) files.push({ ext: 'svg', data: r.svg });
     files.push(...(await buildRasterFiles(r, { png: s.fmtPng, jpg: s.fmtJpg, bmp: s.fmtBmp })));
+    files.push(...embroideryFiles(r, s));
     written = await window.api.exportFiles({ baseName: baseName(), files });
   } catch (err) {
     return toast(`Export fehlgeschlagen: ${cleanError(err)}`, true);
   }
   if (!written) return;
 
-  toast(`${written.length} Datei(en) gespeichert`, false, {
+  toast(`${written.length} Datei(en) gespeichert${embProblem ? ` · ${embProblem}` : ''}`, !!embProblem, {
     label: 'Im Ordner zeigen',
     action: () => window.api.showInFolder(written[0]),
   });
@@ -3014,7 +3182,7 @@ async function saveToHistory(silent = false) {
       originalName: src.name,
       original: needsOriginal ? { ext: src.ext, data: src.bytes } : null,
       // Einstellungen, mit denen dieses Ergebnis berechnet wurde (nicht die eventuell schon geänderten)
-      settings: { ...(r.settings || state.settings), fmtSvg: state.settings.fmtSvg, fmtPng: state.settings.fmtPng, fmtJpg: state.settings.fmtJpg, fmtBmp: state.settings.fmtBmp },
+      settings: { ...(r.settings || state.settings), ...outputPrefs(state.settings) },
       merge: r.merge || null, // mit welchem Eintrag dieses Ergebnis vereinigt wurde
       svg: r.svg,
       raster: rasterFiles[0],
@@ -3178,7 +3346,28 @@ function publishResult(r, rev = mergeRev) {
   state.result = r;
   if (rev === mergeRev) state.mergePending = false;
   scheduleDragPrepare();
+  showPreview(r);
+}
+
+/** Vorschau des Ergebnisses: Flächen bzw. mit „Stiche in der Vorschau zeigen“ die geplanten Stiche. */
+async function showPreview(r) {
+  const s = state.settings;
+  if (s.embPreview && embFormats(s) && r.emb) {
+    try {
+      const blob = await stitchPreviewBlob(r, s);
+      if (r !== state.result) return;
+      if (blob) {
+        showResult(blob, false);
+        renderEmbInfo(r);
+        return;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  if (r !== state.result) return;
   showResult(r.preview.blob, r.preview.pixelated);
+  renderEmbInfo(r);
 }
 
 /**
@@ -3256,6 +3445,8 @@ async function composeMerged(inRun = false) {
       svg: Encoders.svgDocument(doc),
       preview,
       mode: gray ? 'relief' : res.trace ? 'vector' : 'dither',
+      emb: embSource({ mode: res.trace ? 'vector' : 'dither', fillPath, outline: base.outline, outlineOnly: false, mmPerPx: base.mmPerPx }),
+      embCache: null,
       outlineOnly: false, // die vereinigte Ebene ist Inhalt, nicht nur die Umrisslinie
       merge: { id: m.id, name: m.name, top, opacity },
     }, rev);

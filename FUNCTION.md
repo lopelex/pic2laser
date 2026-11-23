@@ -220,12 +220,38 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   Name „Nr. Farbname (#rrggbb)“) mit gefülltem Pfad in der Farbe, Reihenfolge von unten nach oben.
   LightBurn legt je Farbe eine Ebene an; Stickprogramme (Ink/Stitch, Hatch, Wilcom, Embrilliance
   StitchArtist) übernehmen Farben und Reihenfolge – dort werden die Sticharten zugewiesen.
+- **Stickdateien PES und DST** (Exportformate „PES (Sticken)“, „DST (Sticken)“; Modi Fläche, Linien und
+  Farben, auch mit Umrisslinie und beim Vereinigen zweier Vektor-Ergebnisse):
+  - Flächen als **Füllstich (Tatami)**: Reihen im Stichwinkel, Einstiche je Reihe um ¼ der Stichlänge
+    versetzt, Reihenenden um den Zugausgleich verlängert. Darunter eine **Unterlage** quer zur
+    Stichrichtung (Reihenabstand 4 × Deckstich, mind. 1,2 mm; 0,4 mm vom Rand eingezogen).
+    Die Fläche wird in Blöcke zerlegt, die sich in einem Zug hin und her sticken lassen; je
+    zusammenhängender Fläche erst die Unterlage, dann der Deckstich, Blöcke nach kürzestem Weg.
+  - **Wege** zwischen Blöcken werden innerhalb der Fläche mitgestickt (Wegsuche A* auf einem Raster der
+    Stichreihen, schon gestickte Stellen werden gemieden – die Wege liegen unter dem späteren Deckstich).
+    Gibt es keinen Weg (getrennte Flächen) oder wäre er ein großer Umweg: Sprung, ab „Faden schneiden ab“
+    mit Vernähen (je zwei kurze Rückstiche) und Fadenschnitt.
+  - Umrisslinie als **Steppstich** (2,5 mm) in Schwarz, nach den Flächen. Gleiche Farbe hintereinander
+    (schwarze Fläche + Umrisslinie) ohne Farbwechsel.
+  - Reihenfolge der Farben wie in der Ebenenliste; Motiv in der Datei zentriert, Einheit 0,1 mm.
+  - **PES** Version 1 mit PES-Teil (Stichgruppen und Farbnummern für PE-Design u. a.) und PEC-Teil für die
+    Maschine (Brother-Farbnummern 1–64, Stiche, Sprünge mit Schnitt-Kennung, Vorschaubilder 48 × 38).
+    Jede Farbe bekommt das nächstliegende noch freie Brother-Garn (Farbabstand „redmean“).
+  - **DST** (Tajima): ohne Farben (Farbwechsel als Stopp), Fadenschnitt als drei Sprünge ohne Bewegung.
+  - Abschnitt „Stickdatei“ (nur mit PES/DST): Reihenabstand, Stichlänge, Stichwinkel, Zugausgleich,
+    Faden schneiden ab, Unterlage; Anzeige von Stichzahl, Farben, Fadenschnitten, Größe und passendem
+    Rahmen (100 × 100 / 130 × 180 mm). „Stiche in der Vorschau zeigen“ zeichnet die geplanten Stiche in
+    Fadenfarbe. Diese Einstellungen ändern nur die Stickdatei (keine Neuberechnung) und bleiben wie die
+    Exportformate beim Anwenden einer Vorlage erhalten.
+  - Nicht möglich (Hinweis statt Datei): andere Modi, leeres Ergebnis, Motiv größer als 400 mm.
+  - Grenzen: schmale Linien und kleine Schrift (unter ca. 1 mm) werden ebenfalls als Füllstich gestickt –
+    dafür ist Satinstich im Stickprogramm besser.
 - **Drag & Drop:** Ergebnisbild mit der Maus herausziehen – direkt in LightBurn, Finder oder
-  Explorer. Mitgezogen werden die gewählten Exportformate.
+  Explorer. Mitgezogen werden die gewählten Exportformate (auch PES/DST).
 - **An LightBurn senden** (Strg/Cmd+L): fügt das Ergebnis direkt ins offene LightBurn-Projekt ein
   (Mitte der Arbeitsfläche) – über die UDP-Schnittstelle von LightBurn (`PING`, dann `IMPORT:<pfad>`
   an `127.0.0.1:19840`, Antwort auf Port 19841). Gesendet werden die gewählten Exportformate wie beim
-  Herausziehen; der Dateiname enthält nur ASCII-Zeichen. Meldungen, wenn LightBurn nicht läuft, gerade
+  Herausziehen (ohne PES/DST); der Dateiname enthält nur ASCII-Zeichen. Meldungen, wenn LightBurn nicht läuft, gerade
   ein Dialog offen ist oder der Import fehlschlägt. Ist Port 19841 von einem anderen Programm belegt,
   wird ohne Bestätigung gesendet. Wird wie der Export in der Historie festgehalten.
 - **Optimiertes Original herausziehen:** Mit gedrückter Strg-Taste (Mac: Cmd) das Bild im
@@ -383,6 +409,7 @@ Renderer (src/renderer/index.html, klassische <script>-Tags, globale Module)
  ├─ ai.js             Vor-/Nachbereitung aller KI-Modelle, ruft window.api.models.run
  ├─ restore.js        Altes Foto restaurieren
  ├─ encoders.js       SVG/PNG/JPG/BMP mit mm/DPI
+ ├─ embroidery.js     Stickdateien: SVG-Pfade → Füllstich/Steppstich, PES- und DST-Ausgabe, Stichvorschau
  └─ pipeline-worker.js  Web Worker: führt processing/encoders/segmentation im Hintergrund aus
 ```
 

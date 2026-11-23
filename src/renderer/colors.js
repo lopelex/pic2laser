@@ -54,7 +54,7 @@ const Colors = (() => {
   // Brother-Standardfarben (PEC-Palette der PES-Dateien); Farbwerte wie in gängigen Stickprogrammen,
   // auf dem Bildschirm nur eine Näherung an das echte Garn
   const BROTHER = [
-    ['Preußischblau', 14, 31, 124], ['Blau', 10, 85, 163], ['Blaugrün', 48, 135, 119], ['Kornblumenblau', 75, 107, 175],
+    ['Preußischblau', 14, 31, 124], ['Blau', 10, 85, 163], ['Blaugrün', 0, 135, 119], ['Kornblumenblau', 75, 107, 175],
     ['Rot', 237, 23, 31], ['Rotbraun', 209, 92, 0], ['Magenta', 145, 54, 151], ['Hellflieder', 228, 154, 203],
     ['Flieder', 145, 95, 172], ['Mintgrün', 158, 214, 125], ['Tiefgold', 232, 169, 0], ['Orange', 254, 186, 53],
     ['Gelb', 255, 255, 0], ['Limettengrün', 112, 188, 31], ['Messing', 186, 152, 0], ['Silber', 168, 168, 168],
