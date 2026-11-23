@@ -594,12 +594,12 @@
           <label class="check"><input type="checkbox" data-key="fmtPng" /> PNG</label>
           <label class="check"><input type="checkbox" data-key="fmtJpg" /> JPG</label>
           <label class="check"><input type="checkbox" data-key="fmtBmp" /> BMP</label>
-          <label class="check" title="Stickdatei für Brother-, Babylock- und Bernette-Maschinen (Modi Fläche, Linien, Farben)"><input type="checkbox" data-key="fmtPes" /> PES (Sticken)</label>
-          <label class="check" title="Stickdatei im Tajima-Format, liest fast jede Stickmaschine – ohne Farben (Modi Fläche, Linien, Farben)"><input type="checkbox" data-key="fmtDst" /> DST (Sticken)</label>
+          <label class="check" title="Stickdatei für Brother-, Babylock- und Bernette-Maschinen (Modi Fläche, Linien, Wellen, Farben)"><input type="checkbox" data-key="fmtPes" /> PES (Sticken)</label>
+          <label class="check" title="Stickdatei im Tajima-Format, liest fast jede Stickmaschine – ohne Farben (Modi Fläche, Linien, Wellen, Farben)"><input type="checkbox" data-key="fmtDst" /> DST (Sticken)</label>
         </div>
       </section>
 
-      <section class="group" id="emb-group" data-mode="vector edges color">
+      <section class="group" id="emb-group" data-mode="vector edges sine color">
         <h3>Stickdatei</h3>
         <label class="field" title="Bestimmt die Grundwerte der Automatik: Dichte, Stichlänge, Zugausgleich und Unterlage">
           <span>Stoff</span>
@@ -622,7 +622,7 @@
         </div>
         <label class="check" title="Zeigt rechts die geplanten Stiche in Fadenfarbe statt der Flächen"><input type="checkbox" data-key="embPreview" /> Stiche in der Vorschau zeigen</label>
         <p class="hint emb-info" id="emb-info"></p>
-        <p class="hint info">Die Stickparameter stellt die Automatik je Farbe ein: Grundwerte vom Stoff, Stichwinkel mit den wenigsten Sprüngen (und anders als die Farbe darunter), schmale Stellen unter 0,35&nbsp;mm als Kontur im Steppstich, weniger Unterlage bei schmalen Flächen. Unter „Je Farbe einstellen…“ lässt sich jede Farbe von Hand anpassen. Reihenfolge wie in der Farbliste (unten → oben), je Fläche erst Unterlage, dann Deckstich; Wege innerhalb einer Fläche werden mitgestickt, längere Sprünge vernäht und abgeschnitten. <b>PES</b> speichert je Farbe das nächstliegende Brother-Garn (mit der Farbpalette „Brother-Garne“ stimmt es genau), <b>DST</b> keine Farben – dort die Garne an der Maschine in derselben Reihenfolge zuordnen.</p>
+        <p class="hint info">Die Stickparameter stellt die Automatik je Farbe ein: Grundwerte vom Stoff, Stichwinkel mit den wenigsten Sprüngen (und anders als die Farbe darunter), schmale Stellen unter 0,35&nbsp;mm als Kontur im Steppstich, weniger Unterlage bei schmalen Flächen. Unter „Je Farbe einstellen…“ lässt sich jede Farbe von Hand anpassen. Reihenfolge wie in der Farbliste (unten → oben), je Fläche erst Unterlage, dann Deckstich; Wege innerhalb einer Fläche werden mitgestickt, längere Sprünge vernäht und abgeschnitten. Im Modus <b>Wellen</b> werden die Wellenlinien im Steppstich oder Dreifachstich gestickt (Stichlängen und Genauigkeit unter „Je Farbe einstellen…“). <b>PES</b> speichert je Farbe das nächstliegende Brother-Garn (mit der Farbpalette „Brother-Garne“ stimmt es genau), <b>DST</b> keine Farben – dort die Garne an der Maschine in derselben Reihenfolge zuordnen.</p>
       </section>
 
       <section class="group">

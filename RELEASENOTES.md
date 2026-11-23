@@ -17,6 +17,8 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
   Grundwerte – abgeglichen mit Wilcom, Ink/Stitch, Brother PE-Design und Fachartikeln.
 - **Sieben Stickerei-Vorlagen:** T-Shirt, Polo-Shirt, Fleece/Sweatshirt, Handtuch, Jeans/Canvas/Tasche,
   Leder-Patch und Schriftzug einfarbig – mit passender Breite, Stoff, Brother-Garnen und PES-Export.
+- **Stickdatei im Modus Wellen:** Die Wellenlinien werden als Steppstich oder Dreifachstich gestickt; längster
+  und kürzester Stich sowie die Genauigkeit lassen sich unter „Je Farbe einstellen…“ einstellen.
 - **SVG als Originalbild:** SVG-Dateien lassen sich öffnen, hineinziehen und einfügen; eine Breite in mm, cm
   oder Zoll wird übernommen.
 - **Modus-Auswahl** als übersichtliche Kacheln mit Symbolen.

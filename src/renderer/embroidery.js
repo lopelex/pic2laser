@@ -27,7 +27,7 @@ const Embroidery = (() => {
    * Zerlegt einen SVG-Pfad in geschlossene Polygone [[x0, y0, x1, y1, …], …].
    * Kurven und Bögen werden in Stücke von höchstens seg (Pfadeinheiten) zerlegt.
    */
-  function pathToRings(d, seg) {
+  function pathToRings(d, seg, open = false) {
     const tok = String(d || '').match(TOKENS) || [];
     const rings = [];
     let ring = null, i = 0, cmd = '';
@@ -35,7 +35,7 @@ const Embroidery = (() => {
     const isNum = () => i < tok.length && !/^[A-Za-z]$/.test(tok[i]);
     const num = () => Number(tok[i++]);
     const close = () => {
-      if (ring && ring.length >= 6) rings.push(ring);
+      if (ring && ring.length >= (open ? 4 : 6)) rings.push(ring);
       ring = null;
     };
     const lineTo = (nx, ny) => {
@@ -130,6 +130,7 @@ const Embroidery = (() => {
           break;
         }
         case 'Z':
+          if (open && ring) ring.push(sx, sy); // offene Linien: geschlossenen Teilpfad bis zum Start führen
           close();
           x = sx;
           y = sy;
@@ -773,6 +774,48 @@ const Embroidery = (() => {
     }
   }
 
+  /**
+   * Offene Linien (Modus Wellen) im Steppstich bzw. Dreifachstich: Einstieg am näheren Ende jeder Linie,
+   * die Stiche folgen der Linie mit höchstens o.tol Abweichung, sind nicht länger als o.runLen und nicht
+   * kürzer als o.minLen (zu kurze Stiche reißen den Faden bzw. stechen an derselben Stelle ein).
+   */
+  function lineLayer(pen, lines, o, triple = false) {
+    const items = lines.map((r) => {
+      const s = simplifyLine(Array.from(r), o.tol);
+      const n = s.length / 2;
+      return { s, entries: n < 2 ? [] : [{ x: s[0], y: s[1], rev: false }, { x: s[2 * n - 2], y: s[2 * n - 1], rev: true }] };
+    });
+    const idx = makeIndex(items, 5);
+    while (idx.left) {
+      const p = pen.pos || { x: 0, y: 0 };
+      const c = idx.nearest(p.x, p.y);
+      idx.take(c.it);
+      const n = c.it.s.length / 2;
+      const at = (k) => (c.e.rev ? n - 1 - k : k);
+      const px = (k) => c.it.s[2 * at(k)], py = (k) => c.it.s[2 * at(k) + 1];
+      pen.moveTo(px(0), py(0), null);
+      let lx = px(0), ly = py(0);
+      for (let k = 1; k < n; k++) {
+        const x = px(k), y = py(k);
+        // zu kurze Stücke zusammenfassen (der letzte Punkt wird immer gestickt)
+        if (k < n - 1 && Math.hypot(x - lx, y - ly) < o.minLen) continue;
+        if (!triple) pen.lineTo(x, y, o.runLen);
+        else {
+          const m = Math.max(1, Math.ceil(Math.hypot(x - lx, y - ly) / o.runLen - 1e-9));
+          for (let t = 1; t <= m; t++) {
+            const ax = lx + ((x - lx) * (t - 1)) / m, ay = ly + ((y - ly) * (t - 1)) / m;
+            const bx = lx + ((x - lx) * t) / m, by = ly + ((y - ly) * t) / m;
+            pen.lineTo(bx, by, 1e9);
+            pen.lineTo(ax, ay, 1e9);
+            pen.lineTo(bx, by, 1e9);
+          }
+        }
+        lx = x;
+        ly = y;
+      }
+    }
+  }
+
   /* ---------------- Stickparameter je Farbe ---------------- */
 
   const clamp = (v, lo, hi, def) => {
@@ -917,6 +960,16 @@ const Embroidery = (() => {
   function autoParams(an, fabric, prevAngle, kind) {
     const f = FABRICS[fabric] || FABRICS.woven;
     if (kind === 'run') return { params: { type: 'run', len: 2.5 }, why: ['Umrisslinie als Steppstich'] };
+    if (kind === 'line') {
+      return {
+        params: { type: 'run', len: 2, min: 0.5, tol: 0.1 },
+        why: [
+          'Wellen als Steppstich: die Stiche folgen der Linie mit höchstens 0,1 mm Abweichung',
+          'Stiche 0,5–2 mm – kürzere fasst die Maschine schlecht, längere glätten die Wellen',
+          'Bei dichten Wellen (über ca. 1 Welle/mm) gehen feine Schwingungen verloren – Wellendichte senken oder Dreifachstich für kräftigere Linien',
+        ],
+      };
+    }
     const why = [];
     if (an && an.area > 0 && an.thinShare > 0.9) {
       why.push(`fast nur schmale Linien (im Mittel ${mm(an.width, 2)}) – Füllstich deckt hier nicht, deshalb Kontur als Steppstich`);
@@ -957,7 +1010,8 @@ const Embroidery = (() => {
 
   /** Parameter einer Ebene → interne Optionen. */
   function layerOpts(g, p, kind) {
-    const type = ['fill', 'run', 'triple', 'off'].includes(p.type) ? p.type : kind === 'run' ? 'run' : 'fill';
+    const type = ['fill', 'run', 'triple', 'off'].includes(p.type) && !(kind === 'line' && p.type === 'fill')
+      ? p.type : kind === 'run' || kind === 'line' ? 'run' : 'fill';
     const spacing = clamp(p.spacing, 0.1, 5, 0.22);
     const len = clamp(p.len, 1, 12, type === 'fill' ? 3.5 : 2.5);
     const ul = p.underlay === true ? UNDERLAY.normal : UNDERLAY[p.underlay] || null;
@@ -977,12 +1031,14 @@ const Embroidery = (() => {
       underLen: len, // wie Ink/Stitch: Unterlage mit der Stichlänge des Deckstichs
       runLen: Math.min(len, 6),
       maxLen: Math.max(len, 3),
+      minLen: clamp(p.min, 0.1, 3, 0.5),
+      tol: clamp(p.tol, 0.02, 1, 0.1),
     };
   }
 
   /**
    * Stichmuster planen.
-   * layers: [{ rings (mm), hex, kind: 'fill' | 'run', p?: { type, angle, spacing, len, underlay, pull } }]
+   * layers: [{ rings (mm), hex, kind: 'fill' | 'run' | 'line' (offene Linien), p?: { type, angle, spacing, len, underlay, pull } }]
    *   – Reihenfolge = Stickreihenfolge; type: 'fill' Füllstich, 'run' Steppstich (Kontur),
    *     'triple' Dreifachstich, 'off' nicht sticken; underlay: 'none' | 'light' | 'normal' | 'strong'
    * opts: Vorgaben für Ebenen ohne p ({ spacing, len, angle, underlay, pull }) und trimMm
@@ -1009,7 +1065,8 @@ const Embroidery = (() => {
       if (threads.length && !same) pen.colorChange();
       pen.layer = i;
       const mark = pen.ops.length;
-      if (o.type === 'fill') fillByWidth(pen, l, o);
+      if (l.kind === 'line') lineLayer(pen, l.rings, o, o.type === 'triple');
+      else if (o.type === 'fill') fillByWidth(pen, l, o);
       else runLayer(pen, l.rings, o, null, o.type === 'triple');
       if (pen.ops.length === mark) { pen.restore(before); return; } // nichts gestickt
       if (!same) threads.push({ hex: l.hex, rgb: hexRgb(l.hex), name: l.name || '' });
