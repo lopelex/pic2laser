@@ -1787,7 +1787,7 @@ async function runProcess() {
     state.baseResult = {
       w, h, bits, gray8, alpha8, rgba8, svg, widthMm, heightMm, dpi, mode: s.mode,
       colorLayers: colorLayers || null, // Modus Farben: Ebenen für die Farbliste
-      emb: embSource({ mode: s.mode, colors, fillPath, outline, outlineOnly: !!(s.outline && s.outlineOnly), mmPerPx }),
+      emb: embSource({ mode: s.mode, colors, fillPath, stroke, outline, outlineOnly: !!(s.outline && s.outlineOnly), mmPerPx }),
       // Relief: eigene Option „Weißen Hintergrund transparent“ (gilt für PNG/SVG)
       transparent: s.mode === 'relief' ? !!alpha8 : s.transparent,
       mmPerPx, outline, outlineOnly: !!(s.outline && s.outlineOnly), // für Rasterexporte mit Umrisslinie
@@ -1907,15 +1907,20 @@ function rasterizeColors(colors, w, h) {
 
 /* ---- Stickdateien (PES/DST) ---- */
 
+const EMB_MODES = ['vector', 'edges', 'color', 'sine']; // Modi mit Stickdatei
+
 /**
  * Vektordaten fürs Sticken: Farbflächen bzw. die Fläche (schwarz) als Füllstich, die Umrisslinie
  * als Steppstich. Nur Modi mit Vektorflächen (Fläche, Linien, Farben).
  */
-function embSource({ mode, colors, fillPath, outline, outlineOnly, mmPerPx }) {
-  if (!['vector', 'edges', 'color'].includes(mode)) return null;
+function embSource({ mode, colors, fillPath, stroke = null, outline, outlineOnly, mmPerPx }) {
+  if (!EMB_MODES.includes(mode)) return null;
   const layers = [];
   if (!outlineOnly) {
-    if (colors) {
+    if (mode === 'sine') {
+      // Wellen: offene Linien als Steppstich
+      if (stroke && stroke.d) layers.push({ d: stroke.d, hex: '#000000', name: 'Wellen', key: 'sine', kind: 'line', pad: 0 });
+    } else if (colors) {
       for (const c of colors) if (c.d) layers.push({ d: c.d, hex: c.hex, name: c.name || c.label, key: c.key || c.hex, kind: 'fill', pad: 0 });
     } else if (fillPath && String(fillPath).trim()) {
       layers.push({ d: fillPath, hex: '#000000', name: 'Fläche', key: 'fill', kind: 'fill', pad: 0 });
@@ -1931,7 +1936,7 @@ function embGeometry(r) {
   const e = r.emb;
   if (!e.rings) {
     e.rings = e.layers.map((l) => Embroidery.scaleRings(
-      Embroidery.pathToRings(l.d, 0.3 / e.mmPerPx), e.mmPerPx, -l.pad * e.mmPerPx, -l.pad * e.mmPerPx,
+      Embroidery.pathToRings(l.d, 0.3 / e.mmPerPx, l.kind === 'line'), e.mmPerPx, -l.pad * e.mmPerPx, -l.pad * e.mmPerPx,
     ));
     e.an = e.layers.map((l, i) => (l.kind === 'fill' ? Embroidery.analyze(e.rings[i]) : null));
   }
@@ -1991,9 +1996,9 @@ function embroideryFiles(r, s) {
 function embroideryProblem(r, s) {
   if (!embFormats(s)) return null;
   if (!r.emb) {
-    return ['vector', 'edges', 'color'].includes(r.mode) || r.merge
+    return EMB_MODES.includes(r.mode) || r.merge
       ? 'Keine Stickdatei – das Ergebnis ist leer.'
-      : 'PES/DST gibt es nur in den Modi Fläche, Linien und Farben.';
+      : 'PES/DST gibt es nur in den Modi Fläche, Linien, Wellen und Farben.';
   }
   const pat = stitchPattern(r, s);
   if (!pat || !pat.stats.stitches) return 'Keine Stickdatei – die Flächen sind zu klein für Stiche.';
@@ -2092,6 +2097,11 @@ const EMB_SLIDERS = {
     ['thin', 'Schmale Stellen als Kontur', 0, 2, 0.1, (v) => (Number(v) ? `unter ${fmtMm1(v)}` : 'aus'), 'Teilflächen schmaler als dieser Wert werden als Kontur im Steppstich gestickt (Füllstich deckt dort nicht)'],
   ],
   run: [['len', 'Stichlänge', 1, 4, 0.5, (v) => fmtMm1(v), 'Länge der Steppstiche – kürzer folgt Rundungen genauer']],
+  line: [
+    ['len', 'Längster Stich', 1, 4, 0.5, (v) => fmtMm1(v), 'Gerade Stücke der Wellen werden in Stiche höchstens dieser Länge geteilt'],
+    ['min', 'Kürzester Stich', 0.3, 1.5, 0.1, (v) => fmtMm1(v), 'Kürzere Stücke werden zusammengefasst – sehr kurze Stiche fasst die Maschine schlecht (Fadenriss, Knoten)'],
+    ['tol', 'Genauigkeit', 0.03, 0.3, 0.01, (v) => `± ${fmtMm2(v)}`, 'Wie genau die Stiche der Welle folgen – kleiner = mehr Stiche, rundere Wellen'],
+  ],
 };
 const fmtMm1 = (v) => `${Number(v).toFixed(1).replace('.', ',')} mm`;
 const fmtMm2 = (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`;
@@ -2122,7 +2132,7 @@ function setEmbManual(key, patch) {
 
 function embLayerSummary(lp, pat, i) {
   const p = lp.params;
-  let t = EMB_TYPE_NAMES[p.type] || p.type;
+  let t = lp.kind === 'line' && p.type !== 'off' ? (p.type === 'triple' ? 'Dreifachstich' : 'Steppstich') : EMB_TYPE_NAMES[p.type] || p.type;
   if (p.type === 'fill') t += ` ${Math.round(p.angle)}° · ${fmtMm2(p.spacing)}`;
   if (pat && p.type !== 'off' && pat.layers && pat.layers[i]) t += ` · ${fmtInt(pat.layers[i].stitches)} Stiche`;
   return t;
@@ -2170,7 +2180,7 @@ function renderEmbEdit(lp) {
   const why = `<b>Automatik:</b><ul>${l.auto.why.map((w) => `<li>${escHtml(w)}</li>`).join('')}</ul>`;
   if (sig !== embDlg.sig) {
     embDlg.sig = sig;
-    const types = l.kind === 'run' ? EMB_TYPES_RUN : EMB_TYPES_FILL;
+    const types = l.kind === 'fill' ? EMB_TYPES_FILL : EMB_TYPES_RUN;
     let html = `<div class="emb-edit-head"><span class="emb-swatch" style="background:${escHtml(l.hex)}"></span><b>${embDlg.sel + 1} ${escHtml(l.name)}</b></div>`
       + `<div class="emb-why">${why}</div>`
       + `<label class="field"><span>Stichart <i data-m="type"></i></span><select data-p="type">${types.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`;
@@ -2179,7 +2189,7 @@ function renderEmbEdit(lp) {
       html += `<label class="field" title="Lockere Stichlage unter dem Deckstich: hält den Stoff, gibt dem Deckstich Halt. Schmale Teilflächen bekommen automatisch weniger."><span>Unterlage <i data-m="underlay"></i></span><select data-p="underlay">${EMB_UNDERLAYS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`;
       html += embSliderHtml(EMB_SLIDERS.fill[4]);
     } else if (group === 'run') {
-      html += EMB_SLIDERS.run.map(embSliderHtml).join('');
+      html += (l.kind === 'line' ? EMB_SLIDERS.line : EMB_SLIDERS.run).map(embSliderHtml).join('');
     }
     html += `<div class="emb-edit-actions">
         <button class="btn btn-small" id="emb-auto-one" title="Alle Handeinstellungen dieser Farbe verwerfen">Automatik für diese Farbe</button>
@@ -2197,7 +2207,7 @@ function renderEmbEdit(lp) {
     if (document.activeElement !== el && v !== undefined) el.value = v;
     const out = box.querySelector(`output[data-o="${k}"]`);
     if (out) {
-      const def = (group === 'fill' ? EMB_SLIDERS.fill : EMB_SLIDERS.run).find((d) => d[0] === k);
+      const def = (group === 'fill' ? EMB_SLIDERS.fill : l.kind === 'line' ? EMB_SLIDERS.line : EMB_SLIDERS.run).find((d) => d[0] === k);
       out.textContent = def ? def[5](el.value) : el.value;
       out.classList.toggle('manual', k in l.manual);
     }

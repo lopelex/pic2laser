@@ -231,8 +231,8 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   Name „Nr. Farbname (#rrggbb)“) mit gefülltem Pfad in der Farbe, Reihenfolge von unten nach oben.
   LightBurn legt je Farbe eine Ebene an; Stickprogramme (Ink/Stitch, Hatch, Wilcom, Embrilliance
   StitchArtist) übernehmen Farben und Reihenfolge – dort werden die Sticharten zugewiesen.
-- **Stickdateien PES und DST** (Exportformate „PES (Sticken)“, „DST (Sticken)“; Modi Fläche, Linien und
-  Farben, auch mit Umrisslinie und beim Vereinigen zweier Vektor-Ergebnisse):
+- **Stickdateien PES und DST** (Exportformate „PES (Sticken)“, „DST (Sticken)“; Modi Fläche, Linien,
+  Wellen und Farben, auch mit Umrisslinie und beim Vereinigen zweier Vektor-Ergebnisse):
   - Flächen als **Füllstich (Tatami)**: Reihen im Stichwinkel, Einstiche je Reihe um ¼ der Stichlänge
     versetzt, Reihenenden um den Zugausgleich verlängert. Darunter eine **Unterlage** quer zur
     Stichrichtung (Reihenabstand 4 × Deckstich, mind. 1,2 mm; 0,4 mm vom Rand eingezogen).
@@ -242,6 +242,10 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
     Stichreihen, schon gestickte Stellen werden gemieden – die Wege liegen unter dem späteren Deckstich).
     Gibt es keinen Weg (getrennte Flächen) oder wäre er ein großer Umweg: Sprung, ab „Faden schneiden ab“
     mit Vernähen (je zwei kurze Rückstiche) und Fadenschnitt.
+  - **Wellen** (offene Linien) als Steppstich oder Dreifachstich: Einstieg am näheren Ende jeder Linie,
+    Stiche folgen der Welle mit höchstens ±0,1 mm Abweichung, 0,5–2 mm lang (kürzere Stücke werden
+    zusammengefasst; einstellbar im Dialog als „Längster/Kürzester Stich“ und „Genauigkeit“). Dichte Wellen
+    (über ca. 1 Welle/mm) werden dadurch zum Zickzack – für runde Wellen die Wellendichte senken.
   - Umrisslinie als **Steppstich** (2,5 mm) in Schwarz, nach den Flächen. Gleiche Farbe hintereinander
     (schwarze Fläche + Umrisslinie) ohne Farbwechsel.
   - Reihenfolge der Farben wie in der Ebenenliste; Motiv in der Datei zentriert, Einheit 0,1 mm.
