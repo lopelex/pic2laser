@@ -10,6 +10,9 @@ Alle KI-Funktionen laufen lokal und offline.
 
 - **Bild laden:** Drag & Drop ins Fenster, Datei-Dialog („Bild öffnen…“, Strg/Cmd+O) oder
   Einfügen aus der Zwischenablage (Strg/Cmd+V). Formate: PNG, JPG, WebP, BMP, GIF, AVIF, ICO.
+- **Kamera:** „Kamera…“ (Strg/Cmd+K) öffnet einen Dialog mit Live-Vorschau der Webcam; „Aufnehmen“
+  (oder Leertaste) übernimmt das Bild in voller Kameraauflösung verlustfrei als PNG als Originalbild.
+  Bei mehreren Kameras lässt sich die Kamera wählen, die Auswahl bleibt gespeichert.
 - **Vorschau:** Original und Ergebnis nebeneinander oder einzeln, aktualisiert sich bei jeder
   Änderung automatisch.
 - **Zoom:** Mausrad zoomt stufenlos (100–1600 %) auf die Mausposition; Trackpad: Pinch zoomt,

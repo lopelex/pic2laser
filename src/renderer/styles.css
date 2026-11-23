@@ -596,3 +596,33 @@ body.ctrl-drag #img-original:active { cursor: grabbing !important; }
 .update-progress .progress-bar { flex: 1 1 auto; }
 #update-progress-label { font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .update-actions { display: flex; gap: 8px; }
+
+/* ---------- Kamera ---------- */
+#camera-dialog { width: min(900px, calc(100vw - 32px)); }
+.camera-body { padding-top: 14px; }
+.camera-view {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  aspect-ratio: 16 / 9;
+  max-height: calc(100vh - 260px);
+  margin: 0 auto;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.camera-view:focus { outline: none; }
+.camera-view video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.camera-msg {
+  position: absolute; inset: 0; margin: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; text-align: center;
+  color: var(--muted); font-size: 13px;
+}
+.camera-msg:empty { display: none; }
+.camera-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.camera-flash.on { animation: camera-flash .35s ease-out; }
+@keyframes camera-flash { from { opacity: .8; } to { opacity: 0; } }
+.camera-row { margin-top: 10px; align-items: center; gap: 10px; }
+.camera-row .perf-status { margin: 0; }
+#camera-device { max-width: 60%; }
+#camera-device[hidden] { display: none; }

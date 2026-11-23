@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
   openImage: () => ipcRenderer.invoke('open-image'),
+  cameraAccess: () => ipcRenderer.invoke('camera-access'),
   exportFiles: (payload) => ipcRenderer.invoke('export-files', payload),
   dragPrepare: (payload) => ipcRenderer.invoke('drag-prepare', payload),
   dragStart: (kind = 'result') => ipcRenderer.send('drag-start', kind),

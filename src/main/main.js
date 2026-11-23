@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, utilityProcess, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, utilityProcess, nativeImage, systemPreferences } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const crypto = require('crypto');
@@ -249,6 +249,13 @@ models.register(ipcMain);
 /* ------------------------------------------------------------------ */
 
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'avif', 'ico'];
+
+// Kamerazugriff: macOS fragt einmalig nach (Text aus NSCameraUsageDescription), Windows/Linux erlauben direkt
+ipcMain.handle('camera-access', async () => {
+  if (process.platform !== 'darwin') return true;
+  if (systemPreferences.getMediaAccessStatus('camera') === 'granted') return true;
+  return systemPreferences.askForMediaAccess('camera');
+});
 
 ipcMain.handle('open-image', async () => {
   const res = await dialog.showOpenDialog(mainWindow, {

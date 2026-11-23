@@ -55,6 +55,9 @@
         }
       ],
       "category": "public.app-category.graphics-design",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Pic2Laser nutzt die Kamera, um Fotos als Vorlage aufzunehmen."
+      },
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
       "files": [
         "!node_modules/onnxruntime-node/bin/napi-v*/linux/**",

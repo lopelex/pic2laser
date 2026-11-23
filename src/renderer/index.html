@@ -19,6 +19,7 @@
     <div class="progress" id="progress" hidden><div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div><span id="progress-label"></span><button class="btn btn-small" id="btn-cancel" title="Alle laufenden Berechnungen und Downloads abbrechen (Esc)">Abbrechen</button></div>
     <div class="topbar-actions">
       <button id="btn-open" class="btn">Bild öffnen…</button>
+      <button id="btn-camera" class="btn" title="Foto mit der Webcam aufnehmen (Strg/Cmd+K)">Kamera…</button>
       <button id="btn-save-history" class="btn" disabled>In Historie speichern</button>
       <button id="btn-lightburn" class="btn" disabled title="Ergebnis ins offene LightBurn-Projekt einfügen (Strg/Cmd+L). LightBurn muss geöffnet sein.">An LightBurn</button>
       <button id="btn-export" class="btn btn-primary" disabled>Exportieren</button>
@@ -618,7 +619,8 @@
           <div class="dropzone-inner">
             <div class="drop-icon">⤓</div>
             <div class="drop-title">Bild hierher ziehen</div>
-            <div class="drop-sub">PNG, JPG, WebP, BMP, GIF … oder <a href="#" id="drop-open">Datei auswählen</a></div>
+            <div class="drop-sub">PNG, JPG, WebP, BMP, GIF … oder <a href="#" id="drop-open">Datei auswählen</a>
+              · <a href="#" id="drop-camera">mit Kamera aufnehmen</a></div>
           </div>
         </div>
       </div>
@@ -688,6 +690,32 @@
     <div class="dialog-foot">
       <span></span>
       <button class="btn" data-close>Schließen</button>
+    </div>
+  </dialog>
+
+  <!-- Webcam: Live-Vorschau und Aufnahme als Originalbild -->
+  <dialog class="dialog" id="camera-dialog" aria-labelledby="camera-title">
+    <div class="dialog-head">
+      <div>
+        <h2 id="camera-title">Kamera</h2>
+        <p class="dialog-sub">Die Aufnahme wird als Originalbild geladen und weiterverarbeitet</p>
+      </div>
+      <button class="icon-btn dialog-close" data-close title="Schließen (Esc)" aria-label="Schließen">✕</button>
+    </div>
+    <div class="dialog-body camera-body">
+      <div class="camera-view" tabindex="-1" autofocus>
+        <video id="camera-video" autoplay playsinline muted></video>
+        <p class="camera-msg" id="camera-msg"></p>
+        <div class="camera-flash" id="camera-flash"></div>
+      </div>
+      <div class="row camera-row">
+        <select id="camera-device" title="Kamera auswählen"></select>
+        <span class="perf-status grow" id="camera-info"></span>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn" data-close>Abbrechen</button>
+      <button class="btn btn-primary" id="camera-capture" disabled title="Foto aufnehmen (Leertaste)">Aufnehmen</button>
     </div>
   </dialog>
 
