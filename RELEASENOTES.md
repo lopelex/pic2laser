@@ -5,6 +5,16 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.11.0 – 23.11.2026
+
+### Neu
+- **Modus „Wellen“:** Zeichnet Bilder mit Sinuswellen – dunkle Stellen als dichte Wellen, helle als flache
+  Linien (Verfahren nach img2laser, gerechnet in WebAssembly). Das SVG enthält offene Linien, in LightBurn
+  als Linie gravieren. Einstellbar sind Richtung (waagrecht/senkrecht), Linienabstand, Wellenhöhe,
+  Wellendichte, Strichbreite und DPI; „Weiße Flächen auslassen“ lässt den freigestellten Hintergrund leer.
+- **Sechs neue Presets:** Porträt – Wellenlinien, Porträt – Wellen senkrecht (fein), Foto – Wellenlinien,
+  Landschaft – Wellen, Himmel frei, Haustier – Wellenlinien und Silhouette / Logo – mit Wellen gefüllt.
+
 ## 1.10.0 – 22.11.2026
 
 ### Neu
