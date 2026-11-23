@@ -135,18 +135,52 @@ const Encoders = (() => {
     return btoa(s);
   }
 
+  /** 24-Bit-BMP aus RGBA-Pixeln (Modus Farben; Transparenz vorher auf Weiß setzen). */
+  function bmp24(rgba, w, h, dpi) {
+    const rowBytes = Math.ceil((w * 3) / 4) * 4;
+    const pixelSize = rowBytes * h;
+    const offset = 14 + 40;
+    const buf = new ArrayBuffer(offset + pixelSize);
+    const dv = new DataView(buf);
+    const u8 = new Uint8Array(buf);
+    const ppm = Math.round(dpi / 0.0254);
+    u8[0] = 0x42; u8[1] = 0x4d;
+    dv.setUint32(2, buf.byteLength, true);
+    dv.setUint32(10, offset, true);
+    dv.setUint32(14, 40, true);
+    dv.setInt32(18, w, true);
+    dv.setInt32(22, h, true);
+    dv.setUint16(26, 1, true);
+    dv.setUint16(28, 24, true);
+    dv.setUint32(34, pixelSize, true);
+    dv.setInt32(38, ppm, true);
+    dv.setInt32(42, ppm, true);
+    for (let y = 0; y < h; y++) {
+      const row = offset + (h - 1 - y) * rowBytes;
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4, o = row + x * 3;
+        u8[o] = rgba[i + 2]; u8[o + 1] = rgba[i + 1]; u8[o + 2] = rgba[i];
+      }
+    }
+    return u8;
+  }
+
   const fmt = (n) => Number(n.toFixed(3)).toString();
+  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   /**
    * Baut das SVG. Maße in mm, damit LightBurn die Größe übernimmt.
    *  fillPath:  Potrace-Pfad (schwarz gefüllt)       – Modi Fläche/Linien
    *  imageB64:  eingebettetes Rasterbild (PNG, Base64) – Modi Foto/Relief
    *  stroke:    { d, width } Linien ohne Füllung (Breite in Pixeln) – Modus Wellen
+   *  colors:    [{ d, hex, label }] Farbebenen von unten nach oben – Modus Farben. Je Farbe eine
+   *             Inkscape-Ebene (Gruppe) mit gefülltem Pfad: LightBurn legt je Farbe eine Ebene an,
+   *             Stickprogramme (z. B. Ink/Stitch) übernehmen Farbe und Reihenfolge als Garnwechsel
    *  outline:   { d, pad } Umrisslinie (rot, ohne Füllung → eigene LightBurn-Ebene)
    *  preview:   Linienbreite für die Bildschirmvorschau statt Haarlinie
    * Bewusst ohne weißes Hintergrund-Rechteck: LightBurn würde es sonst als eigene Form importieren.
    */
-  function svgDocument({ w, h, widthMm, fillPath = null, imageB64 = null, stroke = null, outline = null, preview = false }) {
+  function svgDocument({ w, h, widthMm, fillPath = null, imageB64 = null, stroke = null, colors = null, outline = null, preview = false }) {
     const mmPerPx = widthMm / w;
     const pad = outline ? outline.pad : 0;
     const vbW = w + 2 * pad;
@@ -158,6 +192,14 @@ const Encoders = (() => {
     if (stroke && stroke.d) {
       parts.push(`  <path d="${stroke.d}" fill="none" stroke="#000" stroke-width="${fmt(stroke.width)}" stroke-linecap="round" stroke-linejoin="round"/>`);
     }
+    if (colors) {
+      colors.forEach((c, i) => {
+        if (!c.d) return;
+        parts.push(`  <g id="farbe-${i + 1}" inkscape:groupmode="layer" inkscape:label="${esc(c.label || c.hex)}">
+    <path d="${c.d}" fill="${c.hex}" fill-rule="evenodd" stroke="none"/>
+  </g>`);
+      });
+    }
     if (imageB64) {
       parts.push(`  <image width="${w}" height="${h}" style="image-rendering:pixelated" xlink:href="data:image/png;base64,${imageB64}"/>`);
     }
@@ -168,11 +210,11 @@ const Encoders = (() => {
       parts.push(`  <path d="${outline.d}" transform="translate(${-pad} ${-pad})" fill="none" stroke="#ff0000" ${stroke}/>`);
     }
     return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${fmt(vbW * mmPerPx)}mm" height="${fmt(vbH * mmPerPx)}mm" viewBox="${-pad} ${-pad} ${vbW} ${vbH}">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"${colors ? ' xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"' : ''} width="${fmt(vbW * mmPerPx)}mm" height="${fmt(vbH * mmPerPx)}mm" viewBox="${-pad} ${-pad} ${vbW} ${vbH}">
 ${parts.join('\n')}
 </svg>
 `;
   }
 
-  return { pngWithDpi, jpgWithDpi, bmp1bit, bmp8gray, canvasBytes, svgDocument, toBase64 };
+  return { pngWithDpi, jpgWithDpi, bmp1bit, bmp8gray, bmp24, canvasBytes, svgDocument, toBase64 };
 })();

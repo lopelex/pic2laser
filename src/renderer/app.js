@@ -63,6 +63,14 @@ const DEFAULTS = Object.freeze({
   sineDirection: 'h', // 'h' = waagrecht, 'v' = senkrecht
   sineSkipWhite: false, // weiße Flächen auslassen (keine Linie)
   sineNormalize: true, // Helligkeitsumfang des Bildes auf die Wellendichte strecken
+  // Farben (Farbflächen, z. B. für Stickerei)
+  colorCount: 0, // Anzahl Farben, 0 = automatisch
+  colorPalette: 'image', // 'image' = Bildfarben, 'brother' = Brother-Garnfarben
+  colorSmoothMm: 0.15, // Kanten glätten (Mehrheitsfilter)
+  colorMinAreaMm2: 0.5, // kleinere Flächen gehen in der Nachbarfarbe auf
+  colorOverlapMm: 0.1, // untere Ebenen reichen so weit unter die oberen
+  colorSkipBg: true, // Hintergrundfarbe (überwiegt am Bildrand) weglassen
+  colorEdits: [], // je Bild: [{ from, to?, off?, into? }] – Farben ausblenden, umfärben, zusammenführen
   // Umrisslinie
   outline: false,
   outlineOffsetMm: 2,
@@ -123,6 +131,7 @@ const ZOOM_MAX = 16;
 const MODE_HINTS = {
   vector: 'Ideal für Logos, Schriften, Strichzeichnungen und Silhouetten. Ergebnis sind echte Vektorpfade – in LightBurn als Füllung (Fill) gravieren.',
   edges: 'Zeichnet die Kanten und Randkonturen des Bildes als Linien nach – ergibt eine Strichzeichnung als Vektor. In LightBurn als Füllung (Fill) gravieren.',
+  color: 'Zerlegt das Bild in wenige Farbflächen – je Farbe eine eigene Ebene im SVG. Für Stickerei (Ink/Stitch, Hatch, Wilcom …) und Laser mit mehreren Farben/Ebenen.',
   sine: 'Zeichnet das Bild mit Sinuswellen: dunkle Stellen ergeben dichte Wellen, helle flache Linien. Ergebnis sind Vektorlinien – in LightBurn im Modus Linie (Line) gravieren.',
   relief: 'Erzeugt per KI eine Tiefenkarte des Fotos als Graustufenbild – für 3D-Reliefgravur in Holz (Laserleistung bestimmt die Tiefe).',
   dither: 'Ideal für Fotos. Graustufen werden in Punktmuster umgewandelt. Für LightBurn am besten zusätzlich PNG/BMP exportieren und als Bild im Modus „Passthrough" gravieren.',
@@ -207,6 +216,10 @@ const FORMATTERS = {
   sineAmplitude: (v) => `${Math.round(Number(v) * 200)} %`,
   sineDensity: (v) => `${Number(v).toFixed(1).replace('.', ',')} / mm`,
   sineMinDensity: (v) => (Number(v) ? `${Number(v).toFixed(1).replace('.', ',')} / mm` : 'gerade'),
+  colorCount: (v) => (Number(v) ? String(v) : 'Auto'),
+  colorSmoothMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
+  colorMinAreaMm2: (v) => (Number(v) ? `${Number(v).toFixed(1).replace('.', ',')} mm²` : 'aus'),
+  colorOverlapMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
   sineStrokeMm: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
   outlineOffsetMm: (v) => `${Number(v).toFixed(1)} mm`,
   shapeTolMm: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
@@ -381,6 +394,7 @@ function bindControls() {
   }
   $('#btn-clear-seeds').addEventListener('click', () => setSetting('bgSeeds', []));
   $('#btn-clear-sam').addEventListener('click', () => setSetting('samPoints', []));
+  $('#btn-color-reset').addEventListener('click', () => setSetting('colorEdits', []));
 
   // Anzeige: entfernten Hintergrund rot markieren oder ausblenden (nur Vorschau)
   $('#bg-hide').checked = ui.hideBackground;
@@ -447,7 +461,7 @@ function bindControls() {
 
   $('#btn-reset').addEventListener('click', () => {
     const keep = { fmtSvg: state.settings.fmtSvg, fmtPng: state.settings.fmtPng, fmtJpg: state.settings.fmtJpg, fmtBmp: state.settings.fmtBmp };
-    state.settings = { ...DEFAULTS, ...keep, bgSeeds: [], samPoints: [] };
+    state.settings = { ...DEFAULTS, ...keep, bgSeeds: [], samPoints: [], colorEdits: [] };
     state.activePreset = null;
     state.cancelRetries = 0;
     dragReady = false;
@@ -721,10 +735,31 @@ const BUILTIN_PRESETS = [
     desc: 'Dunkle Flächen einer Grafik werden mit gleichmäßigen Wellen gefüllt, Weiß bleibt leer – Wellen-Effekt für Logos und Schattenrisse.',
     settings: { mode: 'sine', sineSkipWhite: true, sineSpacingMm: 1.2, sineAmplitude: 0.45, sineDensity: 1.2, contrast: 40, blur: 0.3 },
   },
+  // ---- Farben (Farbflächen je Ebene) ----
+  {
+    group: 'Farben & Stickerei', name: 'Farbiges Logo – Farbflächen',
+    desc: 'Erkennt die Farben eines Logos automatisch, je Farbe eine Ebene im SVG; weißer Hintergrund entfällt. Für LightBurn mit mehreren Ebenen oder als Vorlage fürs Sticken.',
+    settings: { mode: 'color', colorCount: 0, workRes: 2000 },
+  },
+  {
+    group: 'Farben & Stickerei', name: 'Stickerei – Logo mit Brother-Garnen',
+    desc: 'Farben rasten auf Brother-Garne ein, 0,3 mm Überlappung gegen Lücken durch Stoffverzug, Flächen unter 2 mm² entfallen. SVG in Ink/Stitch, Hatch oder Wilcom öffnen und Sticharten zuweisen.',
+    settings: { mode: 'color', colorCount: 0, colorPalette: 'brother', colorOverlapMm: 0.3, colorMinAreaMm2: 2, colorSmoothMm: 0.3, workRes: 2000, alphaMax: 1.1 },
+  },
+  {
+    group: 'Farben & Stickerei', name: 'Comic / Illustration – 8 Farben',
+    desc: 'Grafiken mit vielen Farben auf 8 Farbflächen reduziert, Rauschen leicht geglättet.',
+    settings: { mode: 'color', colorCount: 8, blur: 0.4, colorSmoothMm: 0.25, colorMinAreaMm2: 1.5, workRes: 2000 },
+  },
+  {
+    group: 'Farben & Stickerei', name: 'Foto als Farbposter – 6 Farben',
+    desc: 'Foto stark vereinfacht zu 6 ruhigen Farbflächen (Poster-Effekt). Mit Freistellen bleibt nur das Motiv.',
+    settings: { mode: 'color', colorCount: 6, colorSkipBg: false, blur: 1.5, colorSmoothMm: 0.5, colorMinAreaMm2: 4, turdSize: 10, alphaMax: 1.2, optTolerance: 0.4 },
+  },
 ];
 
 // Werte, die zum einzelnen Bild gehören und nicht in Presets gespeichert werden
-const PER_IMAGE_KEYS = ['bgSeeds', 'samPoints'];
+const PER_IMAGE_KEYS = ['bgSeeds', 'samPoints', 'colorEdits'];
 
 function presetSettingsFromCurrent() {
   const out = { ...state.settings };
@@ -748,6 +783,7 @@ function applyPreset(key) {
     ...withDefaults({ ...keep, ...preset.settings }),
     bgSeeds: cur.bgSeeds,
     samPoints: cur.samPoints,
+    colorEdits: cur.colorEdits,
   };
   state.activePreset = { key, settings: presetSettingsFromCurrent() };
   state.cancelRetries = 0;
@@ -898,7 +934,7 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   if (settings) {
     state.settings = withDefaults(settings);
   } else {
-    state.settings = { ...state.settings, bgSeeds: [], samPoints: [] }; // Klickpunkte gelten nur für ein Bild
+    state.settings = { ...state.settings, bgSeeds: [], samPoints: [], colorEdits: [] }; // Klickpunkte und Farbänderungen gelten nur für ein Bild
   }
   persistSettings();
 
@@ -1250,12 +1286,12 @@ const KEYS = {
   smooth: (up) => `upscale:smooth:${up}`, // „Glatte Konturen“: Vergrößerung nur für die Fläche
 };
 
-const textWanted = (s) => s.textClean && s.mode !== 'relief' && s.mode !== 'sine';
+const textWanted = (s) => s.textClean && s.mode !== 'relief' && s.mode !== 'sine' && s.mode !== 'color';
 
 /** Maske, auf die sich die Texterkennung bezieht (null = ganzes Bild). */
 const textMaskKey = (s) => (s.textOrder === 'after' ? maskKeyFor(s) : null);
 
-const facesWanted = (s) => s.faceBoost && s.mode !== 'relief';
+const facesWanted = (s) => s.faceBoost && s.mode !== 'relief' && s.mode !== 'color';
 const faceMaskKey = (s) => (s.faceOrder === 'after' ? maskKeyFor(s) : null);
 
 /** Schlüssel der Freistellmaske für die aktuellen Einstellungen (null = keine Maske). */
@@ -1481,16 +1517,16 @@ function planSteps(s) {
     const model = AI.depthModel(s.depthModel);
     add('depth', MODEL_NAMES[model], model, (work.w * sc * work.h * sc) / 1e6, DEPTH_SEED_MS[model], KEYS.depth(up, s.depthRes, model));
   }
-  if (s.subjectLine && !maskKey && s.mode !== 'relief' && s.mode !== 'sine') {
+  if (s.subjectLine && !maskKey && s.mode !== 'relief' && s.mode !== 'sine' && s.mode !== 'color') {
     add('contour', 'Motivkontur', `seg:ai`, 1, SEG_SEED_MS.ai, KEYS.seg('ai', up));
   }
 
   const out = Processing.targetSize(src.w, src.h, s);
   const mp = (out.w * out.h) / 1e6;
   const variant = s.mode === 'edges' ? `:${s.edgeMethod}` : s.mode === 'dither' ? `:${s.ditherAlgo}` : '';
-  const renderSeed = { vector: 250, edges: s.edgeMethod === 'ai' ? 300 : 700, dither: 700, relief: 250, sine: 400 }[s.mode] + (s.outline ? 1500 : 0);
+  const renderSeed = { vector: 250, edges: s.edgeMethod === 'ai' ? 300 : 700, dither: 700, relief: 250, sine: 400, color: 900 }[s.mode] + (s.outline ? 1500 : 0);
   add('render', 'Bildverarbeitung', `render:${s.mode}${variant}${s.outline ? '+outline' : ''}`, mp, renderSeed);
-  if (!(s.outline && s.outlineOnly) && (s.mode === 'vector' || s.mode === 'edges')) {
+  if (!(s.outline && s.outlineOnly) && (s.mode === 'vector' || s.mode === 'edges' || s.mode === 'color')) {
     add('trace', 'Vektorisierung', `trace:${s.mode}${variant}`, mp, 1000);
   }
   if (s.outline) add('trace-outline', 'Umrisslinie', 'trace-outline', mp, 300);
@@ -1572,13 +1608,13 @@ async function runProcess() {
 
     // Motivkontur ohne Freistellen: Grenze per schneller KI ermitteln, Hintergrund bleibt erhalten
     let lineMask = null;
-    if (s.subjectLine && !mask && s.mode !== 'relief' && s.mode !== 'sine') {
+    if (s.subjectLine && !mask && s.mode !== 'relief' && s.mode !== 'sine' && s.mode !== 'color') {
       lineMask = await contourMask(s, work);
       if (stale()) return;
     }
 
     // 4. Rasterverarbeitung im Worker (blockiert die Oberfläche nicht)
-    let { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil, strokePath } =
+    let { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil, strokePath, colorLayers, colorMasks } =
       await Run.track('render', Pipeline.render(source, mask, s, lineMask, textSourceFor(s, source, work)));
     if (stale()) return;
     const widthMm = Math.max(0.1, s.widthMm);
@@ -1594,9 +1630,12 @@ async function runProcess() {
     state.dpiWarn = dpiWarn;
 
     // 5. Vektorisierung (Potrace im eigenen Prozess) – Füllung und Umrisslinie parallel
-    const fillJob = trace
-      ? Run.track('trace', window.api.trace({ bits, w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
-      : null;
+    // Modus Farben: alle Farbebenen in einem Auftrag (ein Pfad je Ebene)
+    const fillJob = colorMasks && colorMasks.length
+      ? Run.track('trace', window.api.trace({ layers: colorMasks, w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
+      : trace
+        ? Run.track('trace', window.api.trace({ bits, w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
+        : null;
     const outlineJob = sil
       ? Run.track('trace-outline', window.api.trace({ bits: sil.bits, w: sil.w, h: sil.h }, {
         turdSize: Math.round(sil.w * sil.h * 0.0005), // Kleinteile ignorieren
@@ -1609,7 +1648,13 @@ async function runProcess() {
     if (stale()) return;
     if (fillRes.status === 'rejected') throw fillRes.reason;
     if (outlineRes.status === 'rejected') throw outlineRes.reason;
-    const fillPath = fillRes.value;
+    const colors = colorLayers ? colorSvgLayers(colorLayers, fillRes.value || []) : null;
+    const fillPath = colors ? null : fillRes.value;
+    // Farben: Rasterexporte, Vorschaubild und Herausziehen zeigen genau die vektorisierten Flächen
+    const rgba8 = colors ? rasterizeColors(colors, w, h) : null;
+    if (colorLayers && !colors.some((c) => c.d) && !(s.outline && s.outlineOnly)) {
+      toast(colorLayers.length ? 'Alle Farben sind ausgeblendet – das Ergebnis ist leer.' : 'Keine Farben gefunden – das Bild ist leer oder vollständig freigestellt.', true);
+    }
     // Formen begradigt: Rasterexporte (PNG/JPG/BMP) und Vereinigen sollen dieselben Formen zeigen wie das SVG
     if (s.shapeFit && fillPath && bits) bits = rasterizePath(fillPath, w, h);
     // leere Silhouette (alles unter der Mindestgröße): keine Umrisslinie – sonst hätte das SVG einen Rand, die Rasterbilder nicht
@@ -1618,14 +1663,15 @@ async function runProcess() {
 
     const stroke = strokePath != null ? { d: strokePath, width: s.sineStrokeMm / mmPerPx } : null;
     if (stroke && !stroke.d) toast('Keine Wellen – das Bild ist vollständig weiß.', true);
-    const doc = { w, h, widthMm, fillPath, imageB64, stroke, outline };
+    const doc = { w, h, widthMm, fillPath, imageB64, stroke, colors, outline };
     const svg = Encoders.svgDocument(doc);
     const previewSvg = Encoders.svgDocument({ ...doc, preview: true });
 
     const pad = outline ? outline.pad : 0;
     const totalW = (w + 2 * pad) * mmPerPx, totalH = (h + 2 * pad) * mmPerPx;
     state.baseResult = {
-      w, h, bits, gray8, alpha8, svg, widthMm, heightMm, dpi, mode: s.mode,
+      w, h, bits, gray8, alpha8, rgba8, svg, widthMm, heightMm, dpi, mode: s.mode,
+      colorLayers: colorLayers || null, // Modus Farben: Ebenen für die Farbliste
       // Relief: eigene Option „Weißen Hintergrund transparent“ (gilt für PNG/SVG)
       transparent: s.mode === 'relief' ? !!alpha8 : s.transparent,
       mmPerPx, outline, outlineOnly: !!(s.outline && s.outlineOnly), // für Rasterexporte mit Umrisslinie
@@ -1638,6 +1684,7 @@ async function runProcess() {
         : { blob: new Blob([previewSvg], { type: 'image/svg+xml' }), pixelated: false },
     };
     state.cancelRetries = 0;
+    renderColorList();
     await composeMerged(true); // mit Historie-Eintrag vereinigen (falls gewählt) und anzeigen
     if (stale()) return;
 
@@ -1716,6 +1763,27 @@ function rasterizePath(d, w, h) {
   const bits = new Uint8Array(w * h);
   for (let p = 0, i = 3; p < bits.length; p++, i += 4) bits[p] = data[i] >= 128 ? 1 : 0;
   return bits;
+}
+
+/**
+ * Modus Farben: Ebenen fürs SVG (Pfad, Farbe, Name) – Reihenfolge von unten nach oben,
+ * nur sichtbare Farben (paths gehört zu den sichtbaren Ebenen in dieser Reihenfolge).
+ */
+function colorSvgLayers(layers, paths) {
+  const vis = layers.filter((l) => !l.off);
+  return vis.map((l, i) => ({ d: String(paths[i] || '').trim(), hex: l.hex, label: `${i + 1} ${l.name} (${l.hex})` }));
+}
+
+/** Farbebenen (SVG-Pfade) als RGBA-Bild w × h, leere Stellen transparent. */
+function rasterizeColors(colors, w, h) {
+  const canvas = new OffscreenCanvas(w, h);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  for (const c of colors) {
+    if (!c.d) continue;
+    ctx.fillStyle = c.hex;
+    ctx.fill(new Path2D(c.d), 'evenodd');
+  }
+  return ctx.getImageData(0, 0, w, h).data;
 }
 
 function showResult(blob, pixelated) {
@@ -2619,7 +2687,9 @@ async function buildRasterFiles(r, formats) {
   if (formats.bmp) {
     let bmp;
     const { canvas, w, h, composed } = rasterCanvas(r, false);
-    if (!composed) {
+    if (r.rgba8) {
+      bmp = Encoders.bmp24(canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data, w, h, r.dpi);
+    } else if (!composed) {
       bmp = r.gray8 ? Encoders.bmp8gray(r.gray8, r.w, r.h, r.dpi) : Encoders.bmp1bit(r.bits, r.w, r.h, r.dpi);
     } else {
       // zusammengesetztes Bild (mit Umrisslinie) wieder in Bits bzw. Graustufen umwandeln
@@ -3002,7 +3072,7 @@ function renderHistory() {
     name.textContent = e.name || 'Bild';
     const meta = document.createElement('div');
     meta.className = 'meta';
-    const mode = { dither: 'Foto', edges: 'Linien', relief: 'Relief', sine: 'Wellen' }[e.settings?.mode] || 'Fläche';
+    const mode = { dither: 'Foto', edges: 'Linien', relief: 'Relief', sine: 'Wellen', color: 'Farben' }[e.settings?.mode] || 'Fläche';
     const size = e.settings?.widthMm && e.width ? ` · ${round1(e.settings.widthMm)}×${round1((e.settings.widthMm * e.height) / e.width)} mm` : '';
     meta.textContent = `${mode}${size}`;
     const date = document.createElement('div');
@@ -3126,6 +3196,17 @@ async function composeMerged(inRun = false) {
     if (!inRun && !state.processing) setBusy(false); // evtl. noch laufende Vereinigung ist damit hinfällig
     return;
   }
+  if (base.mode === 'color' || m.mode === 'color') {
+    // Farbebenen lassen sich nicht in Schwarz-Weiß überblenden
+    toast('Vereinigen ist mit dem Modus „Farben“ nicht möglich – das Ergebnis wird ohne den Historie-Eintrag gezeigt.', true);
+    state.merge = null;
+    mergeRev++;
+    renderMergePanel();
+    renderHistory();
+    publishResult(base);
+    if (!inRun && !state.processing) setBusy(false);
+    return;
+  }
   const gen = state.generation;
   // geänderte Reihenfolge/Deckkraft machen diese Vereinigung nicht ungültig: Sie wird gezeigt und
   // danach mit den neuen Werten wiederholt (mergeRev / scheduleMerge)
@@ -3198,6 +3279,99 @@ async function composeMerged(inRun = false) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Modus Farben: Farbliste                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Bearbeitung einer Farbe ändern (Schlüssel: from = ursprüngliche Bildfarbe). patch-Werte
+ * undefined entfernen den Eintrag; leere Bearbeitungen fallen weg.
+ */
+function editColor(from, patch) {
+  const edits = (state.settings.colorEdits || []).map((e) => ({ ...e }));
+  let e = edits.find((x) => x.from === from);
+  if (!e) edits.push((e = { from }));
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined || v === null || v === '') delete e[k];
+    else e[k] = v;
+  }
+  setSetting('colorEdits', edits.filter((x) => Object.keys(x).length > 1));
+}
+
+/** Liste der Farbebenen (Reihenfolge = Ebenen im SVG bzw. Stickreihenfolge, von unten nach oben). */
+function renderColorList() {
+  const box = $('#color-list');
+  const r = state.baseResult;
+  const layers = r && r.mode === 'color' ? r.colorLayers || [] : [];
+  box.textContent = '';
+  $('#btn-color-reset').disabled = !(state.settings.colorEdits || []).length;
+  if (!layers.length) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = r && r.mode === 'color' ? 'Keine Farben gefunden.' : 'Die Farben erscheinen nach der Umwandlung.';
+    box.append(p);
+    return;
+  }
+  let n = 0;
+  for (const l of layers) {
+    const row = document.createElement('div');
+    row.className = 'color-row' + (l.off ? ' off' : '');
+
+    const on = document.createElement('input');
+    on.type = 'checkbox';
+    on.checked = !l.off;
+    on.title = l.off ? 'Farbe ausgeben' : 'Farbe weglassen (z. B. Stofffarbe)';
+    on.addEventListener('change', () => editColor(l.from, { off: on.checked ? undefined : true }));
+
+    const pick = document.createElement('input');
+    pick.type = 'color';
+    pick.value = l.hex;
+    pick.title = state.settings.colorPalette === 'image' ? 'Farbe ändern' : 'Farbe ändern (rastet auf das nächste Garn ein)';
+    pick.addEventListener('change', () => editColor(l.from, { to: pick.value }));
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = `${l.off ? '–' : ++n} · ${l.name}`;
+    name.title = `${l.name} ${l.hex}${l.merged.length ? ` – zusammengeführt mit ${l.merged.length} weiteren Farbe(n)` : ''}`;
+
+    const pct = document.createElement('span');
+    pct.className = 'pct';
+    const share = l.share * 100;
+    pct.textContent = share < 0.1 ? '< 0,1 %' : `${share.toFixed(share < 10 ? 1 : 0).replace('.', ',')} %`;
+
+    const into = document.createElement('select');
+    into.title = 'Mit einer anderen Farbe zusammenführen';
+    const opt0 = document.createElement('option');
+    opt0.value = '';
+    opt0.textContent = '⇢';
+    into.append(opt0);
+    for (const o of layers) {
+      if (o === l) continue;
+      const opt = document.createElement('option');
+      opt.value = o.from;
+      opt.textContent = `→ ${o.name}`;
+      into.append(opt);
+    }
+    into.addEventListener('change', () => into.value && editColor(l.from, { into: into.value }));
+
+    const tools = [on, pick, name, pct, into];
+    const edited = l.edited || l.merged.length;
+    if (edited) {
+      const undo = document.createElement('button');
+      undo.className = 'btn btn-small icon';
+      undo.textContent = '↺';
+      undo.title = 'Änderungen an dieser Farbe zurücknehmen (auch Zusammenführen)';
+      undo.addEventListener('click', () => {
+        const all = [l.from, ...l.merged];
+        setSetting('colorEdits', (state.settings.colorEdits || []).filter((e) => !all.includes(e.from)));
+      });
+      tools.push(undo);
+    }
+    row.append(...tools);
+    box.append(row);
+  }
+}
+
 /** Vereinigen-Einstellung geändert: neu vereinigen (nach einer laufenden Umwandlung). */
 function scheduleMerge(delay = 60) {
   mergeRev++;
@@ -3231,6 +3405,9 @@ async function startMerge(e) {
     return toast('Erst ein Bild öffnen und umwandeln – dann lässt sich ein Historie-Eintrag darüberlegen.', true);
   }
   if (e.id === state.historyId) return toast('Ein Eintrag lässt sich nicht mit sich selbst vereinigen.', true);
+  if (state.baseResult.mode === 'color' || e.settings?.mode === 'color') {
+    return toast('Vereinigen ist mit dem Modus „Farben“ nicht möglich.', true);
+  }
   const source = state.source;
   try {
     const layer = await loadMergeLayer(e.id);

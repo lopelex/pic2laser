@@ -76,6 +76,7 @@
           <button data-value="edges" title="Kanten nachzeichnen – Linienzeichnung als Vektor">Linien</button>
           <button data-value="dither" title="Dithering für Fotos">Foto</button>
           <button data-value="sine" title="Sinuswellen-Schattierung: dunkle Stellen als dichte Wellen (Vektorlinien)">Wellen</button>
+          <button data-value="color" title="Farbflächen: je Farbe eine Ebene (Stickerei, mehrfarbige Gravur)">Farben</button>
           <button data-value="relief" title="3D-Relief aus KI-Tiefenkarte (Graustufen)">Relief</button>
         </div>
         <p class="hint info" id="mode-hint"></p>
@@ -324,6 +325,38 @@
         <p class="hint info">Jede Zeile des Bildes wird zu einer Sinuswelle, deren Dichte der Helligkeit folgt (Verfahren nach img2laser). Das SVG enthält offene Linien – in LightBurn die Ebene auf <b>Linie</b> stellen. Kontrast und Gamma unter „Bildanpassung“ wirken direkt auf die Wellendichte; mit Freistellen und „Weiße Flächen auslassen“ bleibt der Hintergrund leer.</p>
       </section>
 
+      <section class="group" data-mode="color">
+        <h3>Farben</h3>
+        <label class="slider" title="Anzahl der Farben – Auto erkennt die Farben von Logos und Grafiken selbst (höchstens 10)">
+          <span>Anzahl Farben <output data-for="colorCount"></output></span>
+          <input type="range" data-key="colorCount" min="0" max="16" step="1" />
+        </label>
+        <label class="field" title="Bildfarben = Farben aus dem Bild; Garnfarben = jede Farbe rastet auf das nächste Garn ein (gleiche Garne werden zusammengeführt)">
+          <span>Farbpalette</span>
+          <select data-key="colorPalette">
+            <option value="image">Bildfarben</option>
+            <option value="brother">Brother-Garne (PES-Standardfarben)</option>
+          </select>
+        </label>
+        <label class="slider" title="Glättet die Grenzen zwischen den Farben (Zacken, Rauschen, Kantenglättung)">
+          <span>Kanten glätten <output data-for="colorSmoothMm"></output></span>
+          <input type="range" data-key="colorSmoothMm" min="0" max="1" step="0.05" />
+        </label>
+        <label class="slider" title="Kleinere Farbflächen gehen in der umgebenden Farbe auf – beim Sticken etwa 1–3 mm²">
+          <span>Kleinste Fläche <output data-for="colorMinAreaMm2"></output></span>
+          <input type="range" data-key="colorMinAreaMm2" min="0" max="20" step="0.5" />
+        </label>
+        <label class="slider" title="Untere Ebenen reichen so weit unter die oberen – verhindert Lücken zwischen den Farben (Stickerei: 0,2–0,4 mm)">
+          <span>Überlappung <output data-for="colorOverlapMm"></output></span>
+          <input type="range" data-key="colorOverlapMm" min="0" max="1" step="0.05" />
+        </label>
+        <label class="check" title="Die Fläche in der Farbe, die am Bildrand überwiegt, wird vom Rand aus entfernt (z. B. weißer Hintergrund). Dieselbe Farbe innerhalb des Motivs bleibt erhalten."><input type="checkbox" data-key="colorSkipBg" /> Hintergrundfarbe weglassen</label>
+        <h4>Ebenen <span class="sub">(unten → oben = Stickreihenfolge)</span></h4>
+        <div class="color-list" id="color-list"></div>
+        <button class="btn btn-small" id="btn-color-reset">Farbänderungen zurücksetzen</button>
+        <p class="hint info">Je Farbe eine eigene Ebene im SVG, die größte Fläche liegt unten. Häkchen = Farbe ausgeben, Farbfeld = Farbe ändern, ⇢ = mit einer anderen Farbe zusammenführen. <b>LightBurn</b> legt je Farbe eine Ebene an. <b>Stickprogramme</b> (Ink/Stitch, Hatch, Wilcom, Embrilliance StitchArtist) übernehmen Farben und Reihenfolge – dort Stichart (Füll-/Satinstich) zuweisen. Für weiche Fotos vorher „Weichzeichnen“ erhöhen.</p>
+      </section>
+
       <section class="group" data-mode="relief">
         <h3>Relief (3D)</h3>
         <label class="field">
@@ -351,7 +384,7 @@
         <p class="hint info">Hell = nah/erhaben, dunkel = fern/tief. In LightBurn als Bild mit „3D-Slicing“ bzw. Graustufen gravieren. Kontrast/Gamma steuern die Tiefenwirkung, Weichzeichnen glättet die Oberfläche.</p>
       </section>
 
-      <section class="group" data-mode="vector edges">
+      <section class="group" data-mode="vector edges color">
         <h3>Vektorisierung</h3>
         <label class="slider" data-mode="vector">
           <span>Schwellwert <output data-for="threshold"></output></span>
@@ -378,9 +411,9 @@
         </label>
       </section>
 
-      <section class="group" data-mode="vector edges">
+      <section class="group" data-mode="vector edges color">
         <h3>Formen verbessern</h3>
-        <div data-show="textClean">
+        <div data-mode="vector edges"><div data-show="textClean">
           <label class="field" title="Gilt für alle Verbesserungen dieses Abschnitts, nur zusammen mit „Schrift &amp; Logos“">
             <span>Reihenfolge zu „Schrift &amp; Logos“</span>
             <select data-key="shapeOrder">
@@ -389,7 +422,7 @@
             </select>
           </label>
           <p class="hint info">„Nach“: Glätten, Begradigen und Ruhige Linien gelten auch für die erkannte Schrift. „Vor“: Die Schriftbereiche (samt einbezogener Logo-Elemente) bleiben so, wie „Schrift &amp; Logos“ sie zeichnet. Im Modus Linien mit „Ruhige Linien“ meist „Vor“ wählen – sonst wird gefüllte Schrift zu Strichen.</p>
-        </div>
+        </div></div>
         <div data-mode="vector">
           <label class="check" title="Kleine Bilder per KI (Real-ESRGAN) vergrößern und Treppenstufen vor dem Schwellwert glätten"><input type="checkbox" data-key="smoothContours" /> Glatte Konturen (KI)</label>
           <p class="hint info">Für kleine oder pixelige Vorlagen: Das Bild wird per KI vergrößert (bei Bildern unter 2048 px), die Treppenstufen der Pixel werden vor dem Schwellwert verwischt. Ergibt runde, ruhige Umrisse statt Zacken.</p>

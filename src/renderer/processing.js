@@ -39,7 +39,8 @@ const Processing = (() => {
     return ctx.getImageData(0, 0, w, h).data;
   }
 
-  function toGray(bitmap, w, h, s) {
+  /** Quelle auf Weiß in w × h zeichnen (mit Weichzeichnen) und die RGBA-Pixel liefern. */
+  function drawSource(bitmap, w, h, s) {
     const canvas = new OffscreenCanvas(w, h);
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.fillStyle = '#fff';
@@ -75,7 +76,11 @@ const Processing = (() => {
       ctx.drawImage(bitmap, 0, 0, w, h);
     }
 
-    const data = ctx.getImageData(0, 0, w, h).data;
+    return ctx.getImageData(0, 0, w, h).data;
+  }
+
+  function toGray(bitmap, w, h, s) {
+    const data = drawSource(bitmap, w, h, s);
     const gray = new Float32Array(w * h);
     for (let i = 0, p = 0; p < gray.length; i += 4, p++) {
       gray[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
@@ -101,7 +106,7 @@ const Processing = (() => {
   }
 
   /** Helligkeit, Kontrast, Gamma, Invertieren. Ergebnis auf 0..255 begrenzt. */
-  function adjust(gray, s) {
+  function adjustLut(s) {
     const b = s.brightness * 2.55;
     const c = s.contrast * 2.55;
     const cf = (259 * (c + 255)) / (255 * (259 - c));
@@ -115,6 +120,11 @@ const Processing = (() => {
       if (s.invert) x = 255 - x;
       lut[v] = x;
     }
+    return lut;
+  }
+
+  function adjust(gray, s) {
+    const lut = adjustLut(s);
     const out = new Float32Array(gray.length);
     for (let i = 0; i < gray.length; i++) {
       const v = gray[i];
@@ -527,6 +537,29 @@ const Processing = (() => {
     }
 
     return { w, h, bits, gray8: null, alpha };
+  }
+
+  /**
+   * Modus Farben: Farbpixel in Arbeitsgröße mit Bildanpassung je Kanal (Weichzeichnen, Schärfen,
+   * Helligkeit, Kontrast, Gamma, Invertieren) und Deckung: opaque = 0 für transparente Pixel der
+   * Quelle und freigestellten Hintergrund.
+   * @returns {{ w, h, rgba: Uint8ClampedArray, opaque: Uint8Array }}
+   */
+  function processColor(bitmap, s, maskCanvas = null) {
+    const { w, h } = targetSize(bitmap.width, bitmap.height, s);
+    const n = w * h;
+    const rgba = drawSource(bitmap, w, h, s);
+    for (let ch = 0; ch < 3; ch++) {
+      let c = new Float32Array(n);
+      for (let p = 0; p < n; p++) c[p] = rgba[p * 4 + ch];
+      c = adjust(sharpen(c, w, h, s.sharpen), s);
+      for (let p = 0; p < n; p++) rgba[p * 4 + ch] = c[p];
+    }
+    const srcA = maskAlpha(bitmap, w, h);
+    const m = maskCanvas ? maskAlpha(maskCanvas, w, h) : null;
+    const opaque = new Uint8Array(n);
+    for (let p = 0; p < n; p++) opaque[p] = srcA[p] >= 0.5 && (!m || m[p] >= 0.5) ? 1 : 0;
+    return { w, h, rgba, opaque };
   }
 
   /**
@@ -1051,8 +1084,25 @@ const Processing = (() => {
     return canvas;
   }
 
+  /** Farbbild (Modus Farben) als Canvas – leere Pixel transparent oder weiß. */
+  function rgbaToCanvas(rgba8, w, h, transparent) {
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    if (!transparent) {
+      const tmp = new OffscreenCanvas(w, h);
+      tmp.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba8), w, h), 0, 0);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(tmp, 0, 0);
+    } else {
+      ctx.putImageData(new ImageData(new Uint8ClampedArray(rgba8), w, h), 0, 0);
+    }
+    return canvas;
+  }
+
   /** Ergebnis (Binär- oder Graustufenbild) als Canvas. */
   function resultCanvas(r, transparent) {
+    if (r.rgba8) return rgbaToCanvas(r.rgba8, r.w, r.h, transparent);
     return r.gray8 ? grayToCanvas(r.gray8, r.w, r.h, transparent ? r.alpha8 : null) : bitsToCanvas(r.bits, r.w, r.h, transparent);
   }
 
@@ -1309,5 +1359,5 @@ const Processing = (() => {
     return out;
   }
 
-  return { faceFeatureRegions, faceFeatureLevels, process, ditherGray, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate, distanceTransformSq, addSubjectLine, cleanLines, gaussBlur, thin };
+  return { faceFeatureRegions, faceFeatureLevels, process, processColor, rgbaToCanvas, ditherGray, bitsToCanvas, grayToCanvas, resultCanvas, otsu, targetSize, toGray, sharpen, adjust, silhouette, dilate, distanceTransformSq, addSubjectLine, cleanLines, gaussBlur, thin };
 })();

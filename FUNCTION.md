@@ -1,7 +1,8 @@
 # Pic2Laser – Funktionen
 
 Pic2Laser wandelt Bilder in Laser-Vorlagen für LightBurn um: Schwarz-Weiß-SVGs (Vektor) und
-optional Rasterbilder (PNG, JPG, BMP) – in der richtigen Größe in mm und mit DPI.
+optional Rasterbilder (PNG, JPG, BMP) – in der richtigen Größe in mm und mit DPI. Der Modus
+„Farben“ zerlegt Bilder in Farbflächen mit einer SVG-Ebene je Farbe (Stickerei, mehrfarbige Gravur).
 Alle KI-Funktionen laufen lokal und offline.
 
 ---
@@ -30,6 +31,7 @@ Alle KI-Funktionen laufen lokal und offline.
 | **Linien** | Strichzeichnungen | KI-Strichzeichnung (wählbares Modell, s. u.) oder Kantenerkennung (Canny) → Linien als Vektor |
 | **Foto** | Fotogravur | Dithering: Floyd-Steinberg, Atkinson, Jarvis, Stucki, Bayer 8×8 oder Schwellwert |
 | **Wellen** | Fotos und Porträts als Linienkunst | Sinuswellen-Schattierung (WebAssembly) → offene Vektorlinien, dunkel = dichte Wellen |
+| **Farben** | Farbige Logos, Grafiken, Stickvorlagen | Farbreduktion (k-Means in Lab) → je Farbe eine vektorisierte Ebene, größte Fläche unten |
 | **Relief** | 3D-Reliefgravur in Holz | KI-Tiefenkarte (Depth Anything V2) als Graustufenbild – hell = erhaben, dunkel = tief |
 
 ## Einstellungen
@@ -62,6 +64,27 @@ Alle KI-Funktionen laufen lokal und offline.
   auslassen“ setzt den Laser über rein weißen Flächen (z. B. freigestelltem Hintergrund) ab; Lücken und
   Linienstücke unter 0,8 mm werden dabei ignoriert. Das SVG enthält offene Linien (`fill="none"`) – in
   LightBurn als **Linie** gravieren. Verfahren nach img2laser (Kyle Larsen, MIT), gerechnet in Rust/WebAssembly.
+- **Farben:** *Anzahl Farben* (2–16 oder **Auto**: erhöht die Anzahl, bis fast jedes Pixel durch eine Farbe
+  oder eine Mischung zweier Farben erklärt ist – höchstens 10), *Farbpalette* (Bildfarben oder
+  **Brother-Garne**: jede Farbe rastet auf das nächste der 61 PES-Standardgarne ein, gleiche Garne werden
+  zusammengeführt; Farbwerte auf dem Bildschirm nur Näherung), *Kanten glätten* (Mehrheitsfilter, mm),
+  *Kleinste Fläche* (mm² – kleinere Flächen gehen in der Nachbarfarbe auf, auch kleine Lücken),
+  *Überlappung* (mm – untere Ebenen reichen unter die oberen, gegen Lücken durch Stoffverzug; Stickerei
+  0,2–0,4 mm) und *Hintergrundfarbe weglassen* (die Farbe, die am Bildrand überwiegt, wird nur dort
+  entfernt, wo sie mit dem Rand verbunden ist – weiße Schrift im Logo bleibt). Gerechnet wird mit den
+  Farben nach der Bildanpassung (Weichzeichnen, Schärfen, Helligkeit, Kontrast, Gamma je Kanal);
+  transparente und freigestellte Bereiche bleiben leer.
+  - Kantenglättung und JPEG-Farbsäume erzeugen Mischfarben; schmale Säume, die zwischen zwei anderen
+    Farben liegen (Gerade in RGB oder Lab), werden aufgelöst und nicht als eigene Farbe ausgegeben.
+  - **Ebenenliste** (unten → oben = Reihenfolge im SVG bzw. Stickreihenfolge): Häkchen = Farbe ausgeben,
+    Farbfeld = Farbe ändern (bei Garnpalette rastet sie auf das nächste Garn ein), ⇢ = mit einer
+    anderen Farbe zusammenführen, ↺ = Änderungen dieser Farbe zurücknehmen. Die Änderungen gelten nur
+    für das Bild (`colorEdits`, nicht in Presets) und hängen an der ursprünglichen Bildfarbe – sie
+    bleiben beim Verstellen der Regler erhalten, solange die Farbe ähnlich bleibt (ΔE < 12).
+  - Vektorisierung je Farbe mit Potrace (Regler unter „Vektorisierung“, auch „Formen begradigen“),
+    alle Ebenen in einem Auftrag. Rasterexporte zeigen genau die vektorisierten Flächen (BMP 24 Bit).
+  - „Vereinigen“ ist mit dem Modus Farben nicht möglich; Gesichter, Schrift & Logos und Motivkontur
+    sind ausgeblendet.
 - **Formen verbessern** (Abschnitt unter „Vektorisierung“). Mit „Schrift & Logos“ wählbar:
   *Reihenfolge* nach der Schrift-/Logoerkennung (Standard: die Verbesserungen gelten auch für die
   erkannte Schrift – sie wird aus dem KI-vergrößerten Bild gerechnet, mitbegradigt bzw. bei „Ruhige
@@ -178,9 +201,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 ## Presets
 
-- **42 Vorlagen**, gegliedert nach Eingangsbild: Logos, Schrift & Grafik · Porträts & Personen ·
+- **52 Vorlagen**, gegliedert nach Eingangsbild: Logos, Schrift & Grafik · Porträts & Personen ·
   Tiere · Fotos & Landschaft · Material (Holz, Schiefer/Glas/Alu, Leder, Acryl) ·
-  Schneiden & Relief. Jede Vorlage hat eine kurze Beschreibung.
+  Schneiden & Relief · Farben & Stickerei. Jede Vorlage hat eine kurze Beschreibung.
 - Darunter Vorlagen für Schilder/Piktogramme (Formen begradigen), pixelige Logos (Glatte Konturen),
   Gummistempel (invertiert), Fahrzeuge mit Schriftzug, Gebäude mit geraden Linien, Ausmalbilder,
   Porträt als Tuschezeichnung oder Bleistiftskizze, freigestelltes Relief als transparentes PNG
@@ -192,7 +215,11 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 ## Export & Weitergabe
 
 - **Exportieren** (Strg/Cmd+S): SVG (Maße in mm) und optional PNG, JPG, BMP (mit DPI; 1-Bit-BMP
-  bzw. 8-Bit-Graustufen beim Relief) – alle Dateien mit gleichem Namen in einem Ordner.
+  bzw. 8-Bit-Graustufen beim Relief, 24 Bit im Modus Farben) – alle Dateien mit gleichem Namen in einem Ordner.
+- **SVG im Modus Farben:** je Farbe eine Gruppe als Inkscape-Ebene (`inkscape:groupmode="layer"`,
+  Name „Nr. Farbname (#rrggbb)“) mit gefülltem Pfad in der Farbe, Reihenfolge von unten nach oben.
+  LightBurn legt je Farbe eine Ebene an; Stickprogramme (Ink/Stitch, Hatch, Wilcom, Embrilliance
+  StitchArtist) übernehmen Farben und Reihenfolge – dort werden die Sticharten zugewiesen.
 - **Drag & Drop:** Ergebnisbild mit der Maus herausziehen – direkt in LightBurn, Finder oder
   Explorer. Mitgezogen werden die gewählten Exportformate.
 - **An LightBurn senden** (Strg/Cmd+L): fügt das Ergebnis direkt ins offene LightBurn-Projekt ein
@@ -352,6 +379,7 @@ Renderer (src/renderer/index.html, klassische <script>-Tags, globale Module)
  ├─ app.js            Oberfläche, Zustand, Ablauf eines Durchlaufs, Export, Historie
  ├─ processing.js     Bildverarbeitung (Anpassungen, Schwellwert, Dithering, Kanten, Umriss)
  ├─ segmentation.js   Masken, Freistellen nach Farbe, Himmel entfernen, Klickpunkte
+ ├─ colors.js         Modus Farben: Farbreduktion, Garnpalette, Aufräumen, Ebenenmasken (nur im Worker)
  ├─ ai.js             Vor-/Nachbereitung aller KI-Modelle, ruft window.api.models.run
  ├─ restore.js        Altes Foto restaurieren
  ├─ encoders.js       SVG/PNG/JPG/BMP mit mm/DPI
