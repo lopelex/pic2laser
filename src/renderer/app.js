@@ -30,7 +30,8 @@ const DEFAULTS = Object.freeze({
   fmtBmp: false,
   fmtPes: false, // Stickdatei Brother
   fmtDst: false, // Stickdatei Tajima
-  // Stickdatei (PES/DST): Füllstich und Umrisslinie
+  fmtExp: false, // Stickdatei Melco (DesignShop)
+  // Stickdatei (PES/DST/EXP): Füllstich und Umrisslinie
   embFabric: 'woven', // Stoffart: Grundwerte der Automatik je Farbe
   embTrimMm: 3, // längere Sprünge mit Fadenschnitt
   embLayers: {}, // je Bild: { [Ebenen-Schlüssel]: { type, angle, spacing, len, pull, underlay, thin } } – von Hand gesetzt
@@ -188,11 +189,11 @@ const laserFormats = (s) => s.fmtSvg || s.fmtPng || s.fmtJpg || s.fmtBmp;
 const EMB_MODES = ['vector', 'edges', 'color', 'sine']; // Modi mit Stickdatei
 /**
  * Stickdatei möglich: nur in Modi mit Vektorflächen bzw. -linien (nicht Foto/Relief) – oder bei einer
- * Vereinigung, die als Vektor nachgezeichnet sein kann. Sonst gelten PES/DST als abgewählt (die Haken
+ * Vereinigung, die als Vektor nachgezeichnet sein kann. Sonst gelten PES/DST/EXP als abgewählt (die Haken
  * bleiben gespeichert und gelten wieder, sobald man in einen passenden Modus wechselt).
  */
 const embModeOk = (s) => EMB_MODES.includes(s.mode) || !!state.merge;
-const embFormats = (s) => embModeOk(s) && !!(s.fmtPes || s.fmtDst);
+const embFormats = (s) => embModeOk(s) && !!(s.fmtPes || s.fmtDst || s.fmtExp);
 
 function withDefaults(settings = {}) {
   const restoreOn = settings.restoreOn ?? !!(settings.restoreDenoise || settings.restoreScratches || settings.restoreFaces);
@@ -269,10 +270,10 @@ const LINE_HINTS = {
   teed: 'Kantendetektor: feine, durchgehende Umrisse. Zeichnet auch Strukturen wie Stoff oder Holzmaserung mit – ggf. vorher freistellen.',
 };
 
-/** PES/DST im Modus Foto und Relief ausgegraut (dort entsteht keine Stickdatei), Stickeinstellungen nur mit PES/DST. */
+/** PES/DST/EXP im Modus Foto und Relief ausgegraut (dort entsteht keine Stickdatei), Stickeinstellungen nur mit PES/DST/EXP. */
 function syncEmbFormats() {
   const s = state.settings;
-  for (const el of $$('[data-key="fmtPes"], [data-key="fmtDst"]')) {
+  for (const el of $$('[data-key="fmtPes"], [data-key="fmtDst"], [data-key="fmtExp"]')) {
     el.disabled = !embModeOk(s);
     el.closest('label').classList.toggle('disabled', el.disabled);
   }
@@ -398,7 +399,7 @@ function setSetting(key, value) {
   syncControls();
   if (key === 'bgSeeds' || key === 'samPoints' || key === 'bgRemove') renderMarkers();
   updatePresetHint();
-  if (key.startsWith('emb') || key === 'fmtPes' || key === 'fmtDst') {
+  if (key.startsWith('emb') || key === 'fmtPes' || key === 'fmtDst' || key === 'fmtExp') {
     scheduleEmbRefresh(); // Stiche neu planen (Vorschau, Herausziehen) – ohne neue Berechnung
   } else if (!key.startsWith('fmt')) {
     state.cancelRetries = 0; // neue Eingabe: wieder Neustarts erlauben
@@ -997,12 +998,12 @@ async function refreshPresets() {
 /**
  * Wofür ein Preset gedacht ist: 'laser', 'emb' (Sticken) oder 'both' (in beiden Listen).
  * Mitgelieferte: Gruppen „Stickerei …“ zum Sticken, sonst Lasern, außer use ist gesetzt.
- * Eigene: Sticken, wenn PES/DST gewählt sind und der Modus eine Stickdatei liefert.
+ * Eigene: Sticken, wenn PES/DST/EXP gewählt sind und der Modus eine Stickdatei liefert.
  */
 function presetUse(p, kind) {
   if (kind === 'user') {
     const s = p.settings || {};
-    return (s.fmtPes || s.fmtDst) && EMB_MODES.includes(s.mode) ? 'emb' : 'laser';
+    return (s.fmtPes || s.fmtDst || s.fmtExp) && EMB_MODES.includes(s.mode) ? 'emb' : 'laser';
   }
   return p.use || (p.group.startsWith('Stickerei') ? 'emb' : 'laser');
 }
@@ -2077,7 +2078,7 @@ function rasterizeColors(colors, w, h) {
   return ctx.getImageData(0, 0, w, h).data;
 }
 
-/* ---- Stickdateien (PES/DST) ---- */
+/* ---- Stickdateien (PES/DST/EXP) ---- */
 
 /**
  * Vektordaten fürs Sticken: Farbflächen bzw. die Fläche (schwarz) als Füllstich, die Umrisslinie
@@ -2151,7 +2152,7 @@ function stitchPattern(r, s = state.settings) {
 
 const EMB_MAX_MM = 400; // größere Motive passen in keinen Stickrahmen (und sprengen PES-Sprünge)
 
-/** PES/DST-Dateien des Ergebnisses (leer, wenn nicht gewählt oder nichts zu sticken). */
+/** PES/DST/EXP-Dateien des Ergebnisses (leer, wenn nicht gewählt oder nichts zu sticken). */
 function embroideryFiles(r, s) {
   if (!embFormats(s) || !r.emb) return [];
   const pat = stitchPattern(r, s);
@@ -2159,6 +2160,7 @@ function embroideryFiles(r, s) {
   const files = [];
   if (s.fmtPes) files.push({ ext: 'pes', data: Embroidery.toPes(pat, baseName()) });
   if (s.fmtDst) files.push({ ext: 'dst', data: Embroidery.toDst(pat, baseName()) });
+  if (s.fmtExp) files.push({ ext: 'exp', data: Embroidery.toExp(pat) });
   return files;
 }
 
@@ -2168,7 +2170,7 @@ function embroideryProblem(r, s) {
   if (!r.emb) {
     return EMB_MODES.includes(r.mode) || r.merge
       ? 'Keine Stickdatei – das Ergebnis ist leer.'
-      : 'PES/DST gibt es nur in den Modi Fläche, Linien, Wellen und Farben.';
+      : 'PES/DST/EXP gibt es nur in den Modi Fläche, Linien, Wellen und Farben.';
   }
   const pat = stitchPattern(r, s);
   if (!pat || !pat.stats.stitches) return 'Keine Stickdatei – die Flächen sind zu klein für Stiche.';
@@ -3499,6 +3501,7 @@ function scheduleDragPrepare(delay = 250) {
   if (state.result && state.result.emb) {
     if (fs0.fmtPes) exts.push('pes');
     if (fs0.fmtDst) exts.push('dst');
+    if (fs0.fmtExp) exts.push('exp');
   }
   renderResultInfo(exts);
   dragTimer = setTimeout(async () => {
@@ -3521,7 +3524,7 @@ function scheduleDragPrepare(delay = 250) {
 
 /**
  * Dateien zum Herausziehen bzw. Senden an LightBurn: gewählte Exportformate, ohne Auswahl das SVG.
- * embroidery: auch PES/DST (nur beim Herausziehen – LightBurn kann damit nichts anfangen).
+ * embroidery: auch PES/DST/EXP (nur beim Herausziehen – LightBurn kann damit nichts anfangen).
  */
 async function handoverFiles(r, s, embroidery = false) {
   const files = [];
@@ -3717,7 +3720,7 @@ async function exportCurrent() {
     if (!$('#busy').classList.contains('on')) scheduleProcess(0);
     return toast('Das Ergebnis wird an die geänderten Einstellungen angepasst – bitte danach noch einmal exportieren.');
   }
-  // PES/DST nicht möglich (falscher Modus, leer, zu groß): melden, die übrigen Formate trotzdem speichern
+  // PES/DST/EXP nicht möglich (falscher Modus, leer, zu groß): melden, die übrigen Formate trotzdem speichern
   const embProblem = embroideryProblem(r, s);
   if (embProblem && !laserFormats(s)) return toast(embProblem, true);
 

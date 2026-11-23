@@ -1,6 +1,6 @@
 {
   "name": "pic2laser",
-  "version": "1.15.0",
+  "version": "1.16.0",
   "description": "Bilder in Schwarz-Weiß-SVGs für LightBurn umwandeln",
   "main": "src/main/main.js",
   "scripts": {
@@ -11,7 +11,9 @@
     "dist:linux": "electron-builder --linux",
     "dist:all": "npm run dist:win && npm run dist:mac && build/sign-mac-adhoc.sh && npm run dist:linux",
     "release": "build/release.sh",
-    "build:wasm": "node build/build-wasm.js"
+    "build:wasm": "node build/build-wasm.js",
+    "test": "node --test test/",
+    "test:fixtures": "node test/make-fixtures.js"
   },
   "license": "GPL-2.0-or-later",
   "build": {

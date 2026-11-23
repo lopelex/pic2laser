@@ -14,6 +14,7 @@
  * Ausgabe:
  *  - PES (Brother, Version 1): PES-Teil für PE-Design u. a., PEC-Teil für die Stickmaschine
  *  - DST (Tajima): Industriestandard, ohne Farbinformation (Farben an der Maschine zuordnen)
+ *  - EXP (Melco): Stichformat von Melco (DesignShop, Melco-Maschinen), ebenfalls ohne Farben
  * Koordinaten in den Dateien: 0,1 mm, Mitte des Motivs = Nullpunkt.
  */
 const Embroidery = (() => {
@@ -1275,6 +1276,33 @@ const Embroidery = (() => {
     return b.done();
   }
 
+  /* ---- EXP (Melco) ---- */
+
+  /**
+   * EXP: ohne Kopf, je Stich 2 Byte Verschiebung (x, y; 0,1 mm, y nach oben, -127…127, Zweierkomplement).
+   * Steuerbefehle beginnen mit 0x80: 0x80 0x04 dx dy = Sprung, 0x80 0x01 0 0 = Farbwechsel,
+   * 0x80 0x80 0x07 0x00 = Fadenschnitt.
+   */
+  function toExp(pat) {
+    const out = [];
+    let x = 0, y = 0;
+    for (const p of pat.ops) {
+      if (p.c === STITCH || p.c === JUMP) {
+        for (const [dx, dy] of splitMove(p.x - x, p.y - y, 127)) {
+          if (p.c === JUMP) out.push(0x80, 0x04);
+          out.push(dx & 0xff, -dy & 0xff);
+        }
+        x = p.x;
+        y = p.y;
+      } else if (p.c === TRIM) {
+        out.push(0x80, 0x80, 0x07, 0x00);
+      } else if (p.c === COLOR) {
+        out.push(0x80, 0x01, 0x00, 0x00);
+      }
+    }
+    return new Uint8Array(out).buffer;
+  }
+
   /* ---- PES / PEC (Brother) ---- */
 
   // Brother-Standardfarben (PEC-Palette, Index 1–64)
@@ -1560,7 +1588,7 @@ const Embroidery = (() => {
   }
 
   return {
-    pathToRings, scaleRings, plan, analyze, autoParams, FABRICS, UNDERLAY_NAMES, THIN_MM, toDst, toPes, draw, pecIndices,
+    pathToRings, scaleRings, plan, analyze, autoParams, FABRICS, UNDERLAY_NAMES, THIN_MM, toDst, toExp, toPes, draw, pecIndices,
     CMD: { STITCH, JUMP, TRIM, COLOR, END },
   };
 })();

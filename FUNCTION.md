@@ -217,7 +217,7 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   - Unter *Sticken* sind die Modi Foto und Relief ausgegraut (sie liefern keine Stickdatei); steht der
     Modus beim Umschalten auf Foto oder Relief, wechselt er auf Fläche. Wird ein solcher Modus z. B. aus
     der Historie geladen, springt die Liste zurück auf *Lasern*.
-  - Eigene Presets erscheinen unter *Sticken*, wenn PES oder DST gewählt ist und der Modus eine Stickdatei
+  - Eigene Presets erscheinen unter *Sticken*, wenn PES, DST oder EXP gewählt ist und der Modus eine Stickdatei
     liefert, sonst unter *Lasern*.
 - **Stickerei-Vorlagen** (Farbflächen auf Brother-Garne, PES-Export, Stoff und Motivbreite):
   T-Shirt/Jersey (90 mm, Überlappung 0,4 mm), Polo/Piqué (80 mm, kleinste Fläche 3 mm²),
@@ -253,9 +253,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   Name „Nr. Farbname (#rrggbb)“) mit gefülltem Pfad in der Farbe, Reihenfolge von unten nach oben.
   LightBurn legt je Farbe eine Ebene an; Stickprogramme (Ink/Stitch, Hatch, Wilcom, Embrilliance
   StitchArtist) übernehmen Farben und Reihenfolge – dort werden die Sticharten zugewiesen.
-- **Stickdateien PES und DST** (Exportformate „PES (Sticken)“, „DST (Sticken)“; Modi Fläche, Linien,
+- **Stickdateien PES, DST und EXP** (Exportformate „PES (Sticken)“, „DST (Sticken)“, „EXP (Sticken, Melco)“; Modi Fläche, Linien,
   Wellen und Farben, auch mit Umrisslinie und beim Vereinigen zweier Vektor-Ergebnisse; in den Modi Foto
-  und Relief sind PES/DST ausgegraut und werden nicht exportiert):
+  und Relief sind PES/DST/EXP ausgegraut und werden nicht exportiert):
   - Flächen als **Füllstich (Tatami)**: Reihen im Stichwinkel, Einstiche je Reihe um ¼ der Stichlänge
     versetzt, Reihenenden um den Zugausgleich verlängert. Darunter eine **Unterlage** quer zur
     Stichrichtung (Reihenabstand 4 × Deckstich, mind. 1,2 mm; 0,4 mm vom Rand eingezogen).
@@ -276,7 +276,11 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
     Maschine (Brother-Farbnummern 1–64, Stiche, Sprünge mit Schnitt-Kennung, Vorschaubilder 48 × 38).
     Jede Farbe bekommt das nächstliegende noch freie Brother-Garn (Farbabstand „redmean“).
   - **DST** (Tajima): ohne Farben (Farbwechsel als Stopp), Fadenschnitt als drei Sprünge ohne Bewegung.
-  - Abschnitt „Stickdatei“ (nur mit PES/DST): **Stoff**, Faden schneiden ab, „Je Farbe einstellen…“;
+  - **EXP** (Melco): ohne Farben, ohne Kopf; Sprung, Farbwechsel und Fadenschnitt als Melco-Steuerbefehle.
+    Für **Melco DesignShop** (Datei → Öffnen, kommt als Stichdatei ohne bearbeitbare Objekte an) und
+    Melco-Maschinen; ein Hinweis im Abschnitt „Stickdatei“ verweist darauf. Das eigene DesignShop-Format
+    OFM ist nicht offengelegt und wird nicht geschrieben.
+  - Abschnitt „Stickdatei“ (nur mit PES/DST/EXP): **Stoff**, Faden schneiden ab, „Je Farbe einstellen…“;
     Anzeige von Stichzahl, Farben, Fadenschnitten, Größe und passendem Rahmen (100 × 100 / 130 × 180 mm).
     „Stiche in der Vorschau zeigen“ zeichnet die geplanten Stiche in Fadenfarbe. Diese Einstellungen
     ändern nur die Stickdatei (keine Neuberechnung) und bleiben wie die Exportformate beim Anwenden einer
@@ -317,11 +321,11 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   - Grenzen: schmale Linien und kleine Schrift (unter ca. 1 mm) werden ebenfalls als Füllstich gestickt –
     dafür ist Satinstich im Stickprogramm besser.
 - **Drag & Drop:** Ergebnisbild mit der Maus herausziehen – direkt in LightBurn, Finder oder
-  Explorer. Mitgezogen werden die gewählten Exportformate (auch PES/DST).
+  Explorer. Mitgezogen werden die gewählten Exportformate (auch PES/DST/EXP).
 - **An LightBurn senden** (Strg/Cmd+L): fügt das Ergebnis direkt ins offene LightBurn-Projekt ein
   (Mitte der Arbeitsfläche) – über die UDP-Schnittstelle von LightBurn (`PING`, dann `IMPORT:<pfad>`
   an `127.0.0.1:19840`, Antwort auf Port 19841). Gesendet werden die gewählten Exportformate wie beim
-  Herausziehen (ohne PES/DST); der Dateiname enthält nur ASCII-Zeichen. Meldungen, wenn LightBurn nicht läuft, gerade
+  Herausziehen (ohne PES/DST/EXP); der Dateiname enthält nur ASCII-Zeichen. Meldungen, wenn LightBurn nicht läuft, gerade
   ein Dialog offen ist oder der Import fehlschlägt. Ist Port 19841 von einem anderen Programm belegt,
   wird ohne Bestätigung gesendet. Wird wie der Export in der Historie festgehalten.
 - **Optimiertes Original herausziehen:** Mit gedrückter Strg-Taste (Mac: Cmd) das Bild im
@@ -479,7 +483,7 @@ Renderer (src/renderer/index.html, klassische <script>-Tags, globale Module)
  ├─ ai.js             Vor-/Nachbereitung aller KI-Modelle, ruft window.api.models.run
  ├─ restore.js        Altes Foto restaurieren
  ├─ encoders.js       SVG/PNG/JPG/BMP mit mm/DPI
- ├─ embroidery.js     Stickdateien: SVG-Pfade → Füllstich/Steppstich, PES- und DST-Ausgabe, Stichvorschau
+ ├─ embroidery.js     Stickdateien: SVG-Pfade → Füllstich/Steppstich, PES-, DST- und EXP-Ausgabe, Stichvorschau
  └─ pipeline-worker.js  Web Worker: führt processing/encoders/segmentation im Hintergrund aus
 ```
 

@@ -7,6 +7,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 V=$(node -p "require('./package.json').version")
+
+# Stickdateien (PES/DST/EXP) prüfen – keine Release mit fehlerhafter Ausgabe
+npm test --silent || { echo "Abbruch: npm test schlägt fehl" >&2; exit 1; }
 TAG="v$V"
 
 FILES=(
