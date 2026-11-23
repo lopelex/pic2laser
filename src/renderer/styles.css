@@ -144,6 +144,8 @@ input:disabled { opacity: .5; }
 
 .check { display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 6px 0; }
 .check input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+.check.disabled { opacity: .45; cursor: default; }
+.check.disabled input { opacity: 1; }
 
 .row { display: flex; gap: 8px; align-items: center; }
 .row.two > * { flex: 1; }
@@ -378,6 +380,7 @@ body.has-image .dropzone:not(.dragging) { display: none; }
 /* ---------- Presets ---------- */
 .presets-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .presets-head h3 { margin: 0; }
+.preset-tab { margin-bottom: 8px; }
 #preset-select { flex: 1; min-width: 0; }
 .preset-save { margin-top: 8px; }
 #preset-name {
@@ -726,6 +729,7 @@ body.ctrl-drag #img-original:active { cursor: grabbing !important; }
   font-size: 12px; cursor: pointer;
 }
 .mode-grid button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.mode-grid button:hover { color: var(--text); border-color: #444a56; }
+.mode-grid button:hover:not(:disabled) { color: var(--text); border-color: #444a56; }
+.mode-grid button:disabled { opacity: .35; cursor: default; }
 .mode-grid button.active { color: var(--text); background: var(--panel-2); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .mode-grid button.active svg { color: var(--accent-2); }

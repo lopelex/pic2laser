@@ -5,6 +5,27 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.15.0 – 23.11.2026
+
+### Neu
+- **Presets getrennt nach Lasern und Sticken:** Ein Umschalter über der Preset-Liste zeigt nur die
+  Laser- oder nur die Stickvorlagen. Ähnliche Vorlagen bleiben in beiden Varianten erhalten; „Farbiges Logo“
+  und „Comic / Illustration – 8 Farben“ stehen in beiden Listen. Eigene Presets mit PES/DST erscheinen
+  unter Sticken.
+- **20 weitere Stickerei-Vorlagen nach Stil:** Linienzeichnung (Motiv, Porträt, Gebäude/Fahrzeug),
+  Tusche-Porträt, Tusche-/Comiczeichnung (Scan), Bleistiftskizze (Porträt, Tier/Motiv), Fläche (Silhouette,
+  Stencil-Porträt, kleiner Schriftzug/Monogramm), Wellen (Porträt, Haustier, Landschaft, Logo) und Farben mit
+  4, 6, 8, 10, 12 oder 16 Brother-Garnen. Sie setzen Breite und PES-Export, der gewählte Stoff bleibt.
+
+### Verbessert
+- **Foto und Relief beim Sticken ausgegraut:** Bei den Presets „Sticken“ lassen sich die Modi Foto und Relief
+  nicht wählen (sie liefern keine Stickdatei); beim Umschalten wechselt die App auf Fläche.
+- **PES/DST im Modus Foto und Relief ausgegraut:** Dort entsteht keine Stickdatei, deshalb werden PES und
+  DST weder exportiert noch beim Herausziehen mitgegeben. Die Haken bleiben gespeichert und gelten wieder,
+  sobald man in einen Modus mit Stickdatei wechselt.
+- **Meldungen bleiben 5 Sekunden länger offen:** 8 statt 3 Sekunden, mit Knopf (z. B. „Im Ordner zeigen“)
+  11 statt 6 Sekunden.
+
 ## 1.14.0 – 23.11.2026
 
 ### Neu

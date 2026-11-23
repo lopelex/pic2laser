@@ -185,7 +185,14 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 const isOutputKey = (k) => k.startsWith('fmt') || k.startsWith('emb');
 const outputPrefs = (s) => Object.fromEntries(Object.keys(DEFAULTS).filter(isOutputKey).map((k) => [k, s[k]]));
 const laserFormats = (s) => s.fmtSvg || s.fmtPng || s.fmtJpg || s.fmtBmp;
-const embFormats = (s) => s.fmtPes || s.fmtDst;
+const EMB_MODES = ['vector', 'edges', 'color', 'sine']; // Modi mit Stickdatei
+/**
+ * Stickdatei möglich: nur in Modi mit Vektorflächen bzw. -linien (nicht Foto/Relief) – oder bei einer
+ * Vereinigung, die als Vektor nachgezeichnet sein kann. Sonst gelten PES/DST als abgewählt (die Haken
+ * bleiben gespeichert und gelten wieder, sobald man in einen passenden Modus wechselt).
+ */
+const embModeOk = (s) => EMB_MODES.includes(s.mode) || !!state.merge;
+const embFormats = (s) => embModeOk(s) && !!(s.fmtPes || s.fmtDst);
 
 function withDefaults(settings = {}) {
   const restoreOn = settings.restoreOn ?? !!(settings.restoreDenoise || settings.restoreScratches || settings.restoreFaces);
@@ -262,6 +269,16 @@ const LINE_HINTS = {
   teed: 'Kantendetektor: feine, durchgehende Umrisse. Zeichnet auch Strukturen wie Stoff oder Holzmaserung mit – ggf. vorher freistellen.',
 };
 
+/** PES/DST im Modus Foto und Relief ausgegraut (dort entsteht keine Stickdatei), Stickeinstellungen nur mit PES/DST. */
+function syncEmbFormats() {
+  const s = state.settings;
+  for (const el of $$('[data-key="fmtPes"], [data-key="fmtDst"]')) {
+    el.disabled = !embModeOk(s);
+    el.closest('label').classList.toggle('disabled', el.disabled);
+  }
+  $('#emb-group').hidden = !embFormats(s);
+}
+
 function syncControls() {
   const s = state.settings;
   for (const el of $$('[data-key]')) {
@@ -273,9 +290,21 @@ function syncControls() {
     const key = out.dataset.for;
     out.textContent = FORMATTERS[key] ? FORMATTERS[key](s[key]) : s[key];
   }
-  for (const btn of $$('#mode button')) btn.classList.toggle('active', btn.dataset.value === s.mode);
+  // Modus ohne Stickdatei (Foto, Relief) gewählt, z. B. aus der Historie: zurück zu den Laser-Presets
+  if (presetTab() === 'emb' && !EMB_MODES.includes(s.mode)) {
+    ui.presetTab = 'laser';
+    saveUi();
+    renderPresets();
+  }
+  for (const btn of $$('#mode button')) {
+    btn.classList.toggle('active', btn.dataset.value === s.mode);
+    // Presets „Sticken“: Foto und Relief ausgegraut
+    btn.disabled = presetTab() === 'emb' && !EMB_MODES.includes(btn.dataset.value);
+    if (btn.dataset.tip === undefined) btn.dataset.tip = btn.title;
+    btn.title = btn.disabled ? 'Liefert keine Stickdatei – zum Lasern oben bei den Presets auf „Lasern“ umschalten' : btn.dataset.tip;
+  }
   for (const g of $$('[data-mode]')) g.hidden = !g.dataset.mode.split(' ').includes(s.mode);
-  if (!embFormats(s)) $('#emb-group').hidden = true; // Stickeinstellungen nur mit PES/DST
+  syncEmbFormats();
   for (const el of $$('[data-algo]')) el.hidden = s.ditherAlgo !== el.dataset.algo;
   for (const el of $$('[data-bg]')) el.hidden = !el.dataset.bg.split(' ').includes(s.bgRemove);
   for (const el of $$('[data-edge]')) el.hidden = el.dataset.edge !== s.edgeMethod;
@@ -758,12 +787,12 @@ const BUILTIN_PRESETS = [
   },
   // ---- Farben (Farbflächen je Ebene) ----
   {
-    group: 'Farben', name: 'Farbiges Logo – Farbflächen',
+    group: 'Farben', use: 'both', name: 'Farbiges Logo – Farbflächen',
     desc: 'Erkennt die Farben eines Logos automatisch, je Farbe eine Ebene im SVG; weißer Hintergrund entfällt. Für LightBurn mit mehreren Ebenen oder als Vorlage fürs Sticken.',
     settings: { mode: 'color', colorCount: 0, workRes: 2000 },
   },
   {
-    group: 'Farben', name: 'Comic / Illustration – 8 Farben',
+    group: 'Farben', use: 'both', name: 'Comic / Illustration – 8 Farben',
     desc: 'Grafiken mit vielen Farben auf 8 Farbflächen reduziert, Rauschen leicht geglättet.',
     settings: { mode: 'color', colorCount: 8, blur: 0.4, colorSmoothMm: 0.25, colorMinAreaMm2: 1.5, workRes: 2000 },
   },
@@ -774,39 +803,145 @@ const BUILTIN_PRESETS = [
   },
   // ---- Stickerei: Stickdatei (PES) mit Stoff, Motivbreite und Brother-Garnen ----
   {
-    group: 'Stickerei', name: 'Stickerei – Logo auf T-Shirt (Jersey)',
+    group: 'Stickerei – nach Stoff', name: 'Stickerei – Logo auf T-Shirt (Jersey)',
     desc: 'Brustlogo 90 mm breit für Strick/Jersey: lockerere Füllung, 0,35 mm Zugausgleich, kräftige Unterlage mit Kantenlauf, 0,4 mm Überlappung gegen Lücken durch Verziehen. Brother-Garne, PES-Export. Mit weichem Schnittvlies (Cut-away) sticken.',
     settings: { ...EMB_LOGO, embFabric: 'knit', widthMm: 90, colorOverlapMm: 0.4, colorMinAreaMm2: 2 },
   },
   {
-    group: 'Stickerei', name: 'Stickerei – Brustlogo auf Polo-Shirt (Piqué)',
+    group: 'Stickerei – nach Stoff', name: 'Stickerei – Brustlogo auf Polo-Shirt (Piqué)',
     desc: 'Brustlogo 80 mm breit für Piqué: wie Jersey, kleinste Flächen 3 mm² (feine Details versinken in der Waffelstruktur). Brother-Garne, PES-Export.',
     settings: { ...EMB_LOGO, embFabric: 'pique', widthMm: 80, colorOverlapMm: 0.4, colorMinAreaMm2: 3 },
   },
   {
-    group: 'Stickerei', name: 'Stickerei – Logo auf Fleece / Sweatshirt',
+    group: 'Stickerei – nach Stoff', name: 'Stickerei – Logo auf Fleece / Sweatshirt',
     desc: 'Logo 100 mm breit für Fleece und Sweat (große Motive auf der Vorderseite bis etwa 240 mm): 0,40 mm Zugausgleich, kräftige Unterlage, kleinste Flächen 3 mm². Brother-Garne, PES-Export.',
     settings: { ...EMB_LOGO, embFabric: 'fleece', widthMm: 100, colorOverlapMm: 0.4, colorMinAreaMm2: 3 },
   },
   {
-    group: 'Stickerei', name: 'Stickerei – Handtuch (Frottee)',
+    group: 'Stickerei – nach Stoff', name: 'Stickerei – Handtuch (Frottee)',
     desc: 'Motiv 100 mm breit für Frottee: dichtere Füllung, kräftige Unterlage, kleinste Flächen 4 mm² und stärker geglättet – feine Details versinken in den Schlaufen. Wasserlösliche Folie obenauf legen. Brother-Garne, PES-Export.',
     settings: { ...EMB_LOGO, embFabric: 'pile', widthMm: 100, colorOverlapMm: 0.4, colorMinAreaMm2: 4, colorSmoothMm: 0.4 },
   },
   {
-    group: 'Stickerei', name: 'Stickerei – Jeans, Canvas, Tasche (Webware)',
+    group: 'Stickerei – nach Stoff', name: 'Stickerei – Jeans, Canvas, Tasche (Webware)',
     desc: 'Logo 100 mm breit für feste Webware (Baumwolle, Twill, Jeans, Canvas): Standarddichte 4,5 Linien/mm, 0,20 mm Zugausgleich, 0,3 mm Überlappung. Brother-Garne, PES-Export.',
     settings: { ...EMB_LOGO, embFabric: 'woven', widthMm: 100, colorOverlapMm: 0.3, colorMinAreaMm2: 2 },
   },
   {
-    group: 'Stickerei', name: 'Stickerei – Leder / Kunstleder (Patch)',
+    group: 'Stickerei – nach Stoff', name: 'Stickerei – Leder / Kunstleder (Patch)',
     desc: 'Motiv 70 mm breit für Leder: lockere Füllung und wenig Unterlage gegen Perforation, kleinste Flächen 3 mm², wenig Überlappung (Leder verzieht kaum). Spitze Nadel (70) verwenden. Brother-Garne, PES-Export.',
     settings: { ...EMB_LOGO, embFabric: 'leather', widthMm: 70, colorOverlapMm: 0.2, colorMinAreaMm2: 3 },
   },
   {
-    group: 'Stickerei', name: 'Stickerei – Schriftzug / Silhouette einfarbig',
+    group: 'Stickerei – nach Stoff', name: 'Stickerei – Schriftzug / Silhouette einfarbig',
     desc: 'Schwarze Fläche aus Logo, Schrift oder Schattenriss als einfarbige Stickdatei, 100 mm breit, für Webware. Die Garnfarbe wählt man an der Maschine; schmale Linien unter 1 mm werden als Kontur gestickt.',
     settings: { mode: 'vector', alphaMax: 1.1, turdSize: 10, widthMm: 100, fmtPes: true, embFabric: 'woven' },
+  },
+
+  // ---- Stickerei nach Stil: Linien, Tusche, Skizze, Fläche, Wellen, Farben ----
+  // Setzen Breite und PES, lassen den gewählten Stoff stehen. Getestet mit Porträt, Ente, Landschaft und
+  // Vereinslogo: Linien mit „Ruhige Linien“ und etwas verstärkt (0,6–0,9 mm breit, ruhiger Füllstich statt
+  // Krümeln, wenige Sprünge), Wellen höchstens etwa 1 Welle/mm mit 1,4–1,8 mm Abstand (Steppstich folgt
+  // der Welle noch), Farben auf Brother-Garne (gleiche Garne werden zusammengelegt – 16 ergibt oft 10–12).
+  {
+    group: 'Stickerei – Linien, Tusche & Skizze', name: 'Stickerei – Linienzeichnung (Motiv freigestellt)',
+    desc: 'Motiv aus einem Foto freigestellt (BEN2, Download ca. 131 MB) als ruhige, kräftige Umrisslinien, 100 mm breit – ca. 6.000–10.000 Stiche. Kurze Striche und Krümel werden entfernt, damit wenig Sprünge entstehen. PES-Export, Stoff bleibt.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineStyle: 'contour', lineRes: 768, threshold: 150, bgRemove: 'ben2', maskLargest: true, lineClean: true, lineSmoothMm: 0.4, lineMinMm: 3, lineBoldMm: 0.3, widthMm: 100, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Linien, Tusche & Skizze', name: 'Stickerei – Porträt als Linienzeichnung',
+    desc: 'Porträt freigestellt als klare Umrisslinien wie gezeichnet, 100 mm breit, Gesichtszüge verstärkt. Wenige, ca. 0,9 mm breite Linien – gut für Kissen, Taschen und Shirts.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineStyle: 'contour', lineRes: 768, threshold: 150, bgRemove: 'modnet', maskLargest: true, lineClean: true, lineSmoothMm: 0.4, lineMinMm: 3, lineBoldMm: 0.3, faceBoost: true, faceStrength: 1, mouthStrength: 0.8, noseStrength: 0.4, chinStrength: 0.4, cheekStrength: 0, widthMm: 100, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Linien, Tusche & Skizze', name: 'Stickerei – Gebäude / Fahrzeug (gerade Linien)',
+    desc: 'Häuser, Kirchen, Autos und Maschinen als Linienstickerei, 120 mm breit: Kanten werden zu exakten Geraden und Bögen, Schriftzüge bleiben gefüllt.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineStyle: 'contour', lineRes: 1024, threshold: 150, lineClean: true, lineSmoothMm: 0.3, lineMinMm: 4, lineBoldMm: 0.3, shapeFit: true, shapeTolMm: 0.2, shapeSnap: true, textClean: true, textPad: 1.5, shapeOrder: 'before', widthMm: 120, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Linien, Tusche & Skizze', name: 'Stickerei – Tusche-Porträt',
+    desc: 'Porträt wie mit Tusche gezeichnet (U²-Net, Download 176 MB), Haare und dunkle Kleidung als gefüllte Fläche, 100 mm breit. Kräftiger Stil, ca. 20.000–25.000 Stiche – auf Webware oder mit Vlies sticken.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineStyle: 'portrait', threshold: 150, bgRemove: 'modnet', maskLargest: true, lineClean: true, lineSmoothMm: 0.4, lineMinMm: 2, widthMm: 100, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Linien, Tusche & Skizze', name: 'Stickerei – Tuschezeichnung / Comic (Scan)',
+    desc: 'Gescannte oder fotografierte Tusche- und Comiczeichnung, 100 mm breit: Striche werden geschlossen und geglättet, Papierstruktur verschwindet. Haarfeine Striche (unter 0,35 mm) werden automatisch als Kontur gestickt.',
+    settings: { mode: 'vector', contrast: 45, brightness: 15, gamma: 0.8, sharpen: 0.3, blur: 0.4, threshold: 150, turdSize: 12, alphaMax: 1.1, optTolerance: 0.3, workRes: 2400, widthMm: 100, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Linien, Tusche & Skizze', name: 'Stickerei – Bleistiftskizze Porträt',
+    desc: 'Porträt als lockere, zarte Skizze mit wenigen Strichen, 100 mm breit – ca. 8.000 Stiche. Striche leicht verstärkt, damit der Faden deckt.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineStyle: 'sketch', lineRes: 768, threshold: 170, bgRemove: 'modnet', maskLargest: true, lineClean: true, lineSmoothMm: 0.3, lineMinMm: 2, lineBoldMm: 0.2, faceBoost: true, faceStrength: 0.8, mouthStrength: 1, noseStrength: 0.6, chinStrength: 0.4, cheekStrength: 0, widthMm: 100, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Linien, Tusche & Skizze', name: 'Stickerei – Skizze Tier / Motiv',
+    desc: 'Haustier oder Gegenstand freigestellt (BEN2, Download ca. 131 MB) als leichte Bleistiftskizze, 100 mm breit.',
+    settings: { mode: 'edges', edgeMethod: 'ai', lineStyle: 'sketch', lineRes: 832, threshold: 165, bgRemove: 'ben2', maskLargest: true, lineClean: true, lineSmoothMm: 0.3, lineMinMm: 2, lineBoldMm: 0.2, widthMm: 100, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Fläche & Wellen', name: 'Stickerei – Silhouette aus Foto (gefüllt)',
+    desc: 'Motiv freigestellt (BEN2, Download ca. 131 MB) als komplett gefüllter Schattenriss ohne Innendetails, 90 mm breit – eine ruhige Füllstichfläche mit kaum Sprüngen, ideal für Tiere und Personen.',
+    settings: { mode: 'vector', bgRemove: 'ben2', maskLargest: true, brightness: -100, threshold: 254, turdSize: 30, alphaMax: 1.2, optTolerance: 0.4, widthMm: 90, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Fläche & Wellen', name: 'Stickerei – Porträt als Schablone (Stencil)',
+    desc: 'Porträt als flächige Schwarz-Weiß-Grafik (Stencil), 100 mm breit: große, zusammenhängende Flächen, kleine Inseln entfernt – einfarbig gestickt.',
+    settings: { mode: 'vector', bgRemove: 'modnet', maskLargest: true, contrast: 25, blur: 2, gamma: 1.25, threshold: 100, turdSize: 60, alphaMax: 1.2, optTolerance: 0.4, faceBoost: true, faceStrength: 1, mouthStrength: 1, noseStrength: 0.6, chinStrength: 0.6, cheekStrength: 0.3, widthMm: 100, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Fläche & Wellen', name: 'Stickerei – Kleiner Schriftzug / Monogramm (Cap)',
+    desc: 'Schrift, Initialen oder kleines Logo einfarbig, 55 mm breit – z. B. für Mützen, Ärmel und Handtuch-Monogramme. Kleine Flächen werden geglättet, haarfeine Stellen als Kontur gestickt.',
+    settings: { mode: 'vector', threshold: 128, blur: 0.3, turdSize: 8, alphaMax: 1.1, optTolerance: 0.2, workRes: 2400, widthMm: 55, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Fläche & Wellen', name: 'Stickerei – Porträt in Wellen',
+    desc: 'Porträt freigestellt als waagrechte Wellenlinien im Steppstich, 120 mm breit (Rahmen ab 130 × 180 mm), ca. 15.000–20.000 Stiche. Für kräftigere Linien unter „Je Farbe einstellen…“ den Dreifachstich wählen.',
+    settings: { mode: 'sine', bgRemove: 'modnet', maskLargest: true, sineSkipWhite: true, sineSpacingMm: 1.4, sineAmplitude: 0.45, sineDensity: 1.2, brightness: -6, contrast: 15, gamma: 1.4, blur: 0.6, faceBoost: true, faceStrength: 0.8, mouthStrength: 0.5, noseStrength: 0.3, chinStrength: 0.3, widthMm: 120, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Fläche & Wellen', name: 'Stickerei – Haustier in Wellen',
+    desc: 'Tier freigestellt (BEN2, Download ca. 131 MB) in Wellen mit 1,4 mm Abstand, 110 mm breit – Augen und Fellzeichnung bleiben erkennbar, der Hintergrund bleibt leer.',
+    settings: { mode: 'sine', bgRemove: 'ben2', maskLargest: true, sineSkipWhite: true, sineSpacingMm: 1.4, sineAmplitude: 0.45, sineDensity: 1.2, brightness: -10, contrast: 15, gamma: 1.8, sharpen: 0.4, blur: 0.4, widthMm: 110, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Fläche & Wellen', name: 'Stickerei – Landschaft / Foto in Wellen',
+    desc: 'Ganzes Foto als ruhige, breite Wellen mit 1,8 mm Abstand, 120 mm breit – wenige Stiche (ca. 5.000–8.000), helle Flächen werden fast gerade Linien.',
+    settings: { mode: 'sine', sineSpacingMm: 1.8, sineAmplitude: 0.45, sineDensity: 1, contrast: 20, gamma: 1.6, blur: 1, widthMm: 120, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Fläche & Wellen', name: 'Stickerei – Silhouette / Logo mit Wellen gefüllt',
+    desc: 'Dunkle Flächen einer Grafik oder eines Schattenrisses werden mit gleichmäßigen Wellen gefüllt, Weiß bleibt leer, 100 mm breit – leichter Stickeffekt statt schwerer Füllung.',
+    settings: { mode: 'sine', sineSkipWhite: true, sineSpacingMm: 1.5, sineAmplitude: 0.45, sineDensity: 1, contrast: 40, blur: 0.3, widthMm: 100, fmtPes: true },
+  },
+  {
+    group: 'Stickerei – Farben (4–16)', name: 'Stickerei – 4 Farben (Logo / Wappen)',
+    desc: 'Logo, Wappen oder Vereinsemblem auf höchstens 4 Brother-Garne reduziert, 90 mm breit – wenige Farbwechsel, kräftige Flächen. Weißer Hintergrund entfällt.',
+    settings: { ...EMB_LOGO, colorCount: 4, blur: 0.4, colorMinAreaMm2: 2, colorOverlapMm: 0.3, widthMm: 90 },
+  },
+  {
+    group: 'Stickerei – Farben (4–16)', name: 'Stickerei – 6 Farben (Comic / Clipart)',
+    desc: 'Comic, Clipart oder Sticker-Motiv mit bis zu 6 Brother-Garnen, 100 mm breit. Leicht geglättet, Flächen unter 2 mm² gehen in der Nachbarfarbe auf.',
+    settings: { ...EMB_LOGO, colorCount: 6, blur: 0.4, colorMinAreaMm2: 2, colorOverlapMm: 0.3, widthMm: 100 },
+  },
+  {
+    group: 'Stickerei – Farben (4–16)', name: 'Stickerei – 8 Farben (Illustration)',
+    desc: 'Illustration oder farbiges Motiv mit bis zu 8 Brother-Garnen, 100 mm breit, kleinste Flächen 3 mm² – guter Kompromiss aus Farbtreue und Farbwechseln.',
+    settings: { ...EMB_LOGO, colorCount: 8, blur: 0.8, colorSmoothMm: 0.4, colorMinAreaMm2: 3, colorOverlapMm: 0.3, widthMm: 100 },
+  },
+  {
+    group: 'Stickerei – Farben (4–16)', name: 'Stickerei – 10 Farben (Foto vereinfacht)',
+    desc: 'Foto als Farbposter mit bis zu 10 Brother-Garnen, 90 mm breit, kräftig geglättet. Motiv freigestellt (BEN2, Download ca. 131 MB) – der Hintergrund wird nicht gestickt.',
+    settings: { ...EMB_LOGO, colorCount: 10, colorSkipBg: false, bgRemove: 'ben2', maskLargest: true, blur: 1.2, colorSmoothMm: 0.5, colorMinAreaMm2: 4, colorOverlapMm: 0.3, turdSize: 10, alphaMax: 1.2, optTolerance: 0.4, widthMm: 90 },
+  },
+  {
+    group: 'Stickerei – Farben (4–16)', name: 'Stickerei – 12 Farben (Foto / Landschaft)',
+    desc: 'Foto oder Landschaft mit bis zu 12 Brother-Garnen, 110 mm breit – mehr Farbabstufungen, ca. 30.000–40.000 Stiche. Ähnliche Garne werden zusammengelegt, oft bleiben 8–10 Farben.',
+    settings: { ...EMB_LOGO, colorCount: 12, colorSkipBg: false, blur: 1.2, colorSmoothMm: 0.5, colorMinAreaMm2: 4, colorOverlapMm: 0.3, turdSize: 10, alphaMax: 1.2, optTolerance: 0.4, widthMm: 110 },
+  },
+  {
+    group: 'Stickerei – Farben (4–16)', name: 'Stickerei – 16 Farben (Porträt / Foto, maximal)',
+    desc: 'Größte Farbtreue mit bis zu 16 Brother-Garnen für Porträts und Fotos, Motiv freigestellt (BEN2, Download ca. 131 MB), 100 mm breit. Ähnliche Garne werden zusammengelegt (oft 10–12 Farben); viele Farbwechsel und ca. 40.000–50.000 Stiche.',
+    settings: { ...EMB_LOGO, colorCount: 16, colorSkipBg: false, bgRemove: 'ben2', maskLargest: true, blur: 1.5, colorSmoothMm: 0.5, colorMinAreaMm2: 4, colorOverlapMm: 0.3, turdSize: 10, alphaMax: 1.2, optTolerance: 0.4, widthMm: 100 },
   },
 ];
 
@@ -859,21 +994,44 @@ async function refreshPresets() {
   renderPresets();
 }
 
+/**
+ * Wofür ein Preset gedacht ist: 'laser', 'emb' (Sticken) oder 'both' (in beiden Listen).
+ * Mitgelieferte: Gruppen „Stickerei …“ zum Sticken, sonst Lasern, außer use ist gesetzt.
+ * Eigene: Sticken, wenn PES/DST gewählt sind und der Modus eine Stickdatei liefert.
+ */
+function presetUse(p, kind) {
+  if (kind === 'user') {
+    const s = p.settings || {};
+    return (s.fmtPes || s.fmtDst) && EMB_MODES.includes(s.mode) ? 'emb' : 'laser';
+  }
+  return p.use || (p.group.startsWith('Stickerei') ? 'emb' : 'laser');
+}
+const presetTab = () => (ui.presetTab === 'emb' ? 'emb' : 'laser');
+const inPresetTab = (p, kind) => ['both', presetTab()].includes(presetUse(p, kind));
+// In der Liste „Sticken“ ist der Vorsatz „Stickerei – “ überflüssig
+const presetLabel = (s) => (presetTab() === 'emb' ? s.replace(/^Stickerei – /, '') : s);
+
 function renderPresets() {
+  for (const b of $$('#preset-tab button')) b.classList.toggle('active', b.dataset.value === presetTab());
   const sel = $('#preset-select');
   sel.replaceChildren();
   const placeholder = new Option('– Preset wählen –', '');
   sel.append(placeholder);
   const group = (label, items, kind) => {
+    items = items.filter((p) => inPresetTab(p, kind));
     if (!items.length) return;
     const g = document.createElement('optgroup');
-    g.label = label;
-    for (const p of items) g.append(new Option(p.name, `${kind}:${p.name}`));
+    g.label = presetLabel(label);
+    for (const p of items) g.append(new Option(presetLabel(p.name), `${kind}:${p.name}`));
     sel.append(g);
   };
   group('Eigene Presets', state.presets, 'user');
-  for (const name of [...new Set(BUILTIN_PRESETS.map((p) => p.group))]) {
-    group(name, BUILTIN_PRESETS.filter((p) => p.group === name), 'builtin');
+  let groups = [...new Set(BUILTIN_PRESETS.map((p) => p.group))];
+  // Sticken: eigene Stickerei-Gruppen zuerst, gemeinsame Laser-Vorlagen (ohne PES) danach
+  if (presetTab() === 'emb') groups = [...groups.filter((n) => n.startsWith('Stickerei')), ...groups.filter((n) => !n.startsWith('Stickerei'))];
+  for (const name of groups) {
+    const label = presetTab() === 'emb' && !name.startsWith('Stickerei') ? `${name} – SVG-Ebenen für Stickprogramme` : name;
+    group(label, BUILTIN_PRESETS.filter((p) => p.group === name), 'builtin');
   }
   const active = state.activePreset?.key || '';
   sel.value = Array.from(sel.options).some((o) => o.value === active) ? active : '';
@@ -915,6 +1073,20 @@ async function savePreset() {
 }
 
 function bindPresets() {
+  for (const b of $$('#preset-tab button')) {
+    b.addEventListener('click', () => {
+      if (presetTab() === b.dataset.value) return;
+      // Sticken: Foto und Relief liefern keine Stickdatei – auf Fläche wechseln
+      if (b.dataset.value === 'emb' && !EMB_MODES.includes(state.settings.mode)) {
+        setSetting('mode', 'vector');
+        toast('Zum Sticken auf Modus Fläche gewechselt – Foto und Relief liefern keine Stickdatei.');
+      }
+      ui.presetTab = b.dataset.value;
+      saveUi();
+      renderPresets();
+      syncControls();
+    });
+  }
   $('#preset-select').addEventListener('change', (e) => {
     if (e.target.value) applyPreset(e.target.value);
     else {
@@ -1906,8 +2078,6 @@ function rasterizeColors(colors, w, h) {
 }
 
 /* ---- Stickdateien (PES/DST) ---- */
-
-const EMB_MODES = ['vector', 'edges', 'color', 'sine']; // Modi mit Stickdatei
 
 /**
  * Vektordaten fürs Sticken: Farbflächen bzw. die Fläche (schwarz) als Füllstich, die Umrisslinie
@@ -4079,6 +4249,7 @@ function mergeButton(e) {
 function renderMergePanel() {
   const m = state.merge;
   $('#merge-group').hidden = !m;
+  syncEmbFormats(); // eine Vereinigung kann eine Stickdatei liefern
   $('#pane-result .pane-label').textContent = m ? `Ergebnis + ${m.name}` : 'Ergebnis';
   if (!m) return;
   $('#merge-name').textContent = m.name;
@@ -4308,7 +4479,8 @@ function toast(msg, isError = false, action = null) {
   el.classList.toggle('error', isError);
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), action ? 6000 : 3000);
+  // 8 s, mit Knopf 11 s – genug Zeit, auch längere Meldungen zu lesen
+  toastTimer = setTimeout(() => el.classList.remove('show'), action ? 11000 : 8000);
 }
 
 /* ------------------------------------------------------------------ */

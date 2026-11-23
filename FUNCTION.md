@@ -205,9 +205,20 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 ## Presets
 
-- **58 Vorlagen**, gegliedert nach Eingangsbild: Logos, Schrift & Grafik · Porträts & Personen ·
-  Tiere · Fotos & Landschaft · Material (Holz, Schiefer/Glas/Alu, Leder, Acryl) ·
-  Schneiden & Relief · Farben · Stickerei. Jede Vorlage hat eine kurze Beschreibung.
+- **78 Vorlagen**, getrennt nach **Lasern** und **Sticken** (Umschalter über der Preset-Liste, die Wahl
+  bleibt gespeichert). Jede Vorlage hat eine kurze Beschreibung.
+  - *Lasern* (51), gegliedert nach Eingangsbild: Logos, Schrift & Grafik · Porträts & Personen · Tiere ·
+    Fotos & Landschaft · Material (Holz, Schiefer/Glas/Alu, Leder, Acryl) · Schneiden & Relief · Farben.
+  - *Sticken* (29): nach Stoff · Linien, Tusche & Skizze · Fläche & Wellen · Farben (4–16) – der Vorsatz
+    „Stickerei – “ entfällt in dieser Liste. Dazu am Ende die beiden Farben-Vorlagen „Farbiges Logo“ und
+    „Comic / Illustration – 8 Farben“ als SVG-Ebenen für Stickprogramme (stehen in beiden Listen).
+  - Ähnliche Vorlagen gibt es bewusst in beiden Varianten (z. B. Porträt als Tuschezeichnung zum Lasern
+    und als Tusche-Porträt mit PES zum Sticken).
+  - Unter *Sticken* sind die Modi Foto und Relief ausgegraut (sie liefern keine Stickdatei); steht der
+    Modus beim Umschalten auf Foto oder Relief, wechselt er auf Fläche. Wird ein solcher Modus z. B. aus
+    der Historie geladen, springt die Liste zurück auf *Lasern*.
+  - Eigene Presets erscheinen unter *Sticken*, wenn PES oder DST gewählt ist und der Modus eine Stickdatei
+    liefert, sonst unter *Lasern*.
 - **Stickerei-Vorlagen** (Farbflächen auf Brother-Garne, PES-Export, Stoff und Motivbreite):
   T-Shirt/Jersey (90 mm, Überlappung 0,4 mm), Polo/Piqué (80 mm, kleinste Fläche 3 mm²),
   Fleece/Sweatshirt (100 mm), Handtuch/Frottee (100 mm, kleinste Fläche 4 mm², stärker geglättet),
@@ -215,6 +226,17 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   Schriftzug/Silhouette einfarbig (Modus Fläche). Breiten nach üblichen Platzierungsmaßen
   (Brustlogo 75–100 mm, Sweatshirt-Front bis etwa 240 mm). Anders als die übrigen Vorlagen setzen sie
   Breite, Exportformat PES und Stoff; die übrigen Exportformate bleiben.
+- **Stickerei-Vorlagen nach Stil** (setzen Breite und PES, der gewählte Stoff bleibt):
+  - *Linien, Tusche & Skizze:* Linienzeichnung mit freigestelltem Motiv bzw. Porträt (Kräftige Konturen,
+    ruhige Linien, kurze Striche unter 3 mm entfernt, 0,3 mm verstärkt → ca. 0,9 mm breite Linien, wenige
+    Sprünge), Gebäude/Fahrzeug mit Formen begradigen (120 mm), Tusche-Porträt (U²-Net), Tusche-/Comiczeichnung
+    als Scan (Modus Fläche, haarfeine Striche automatisch als Kontur), Bleistiftskizze für Porträt und Tier.
+  - *Fläche & Wellen:* gefüllte Silhouette (BEN2, 90 mm), Stencil-Porträt, kleiner Schriftzug/Monogramm
+    (55 mm, z. B. Mütze), Wellen für Porträt (120 mm), Haustier (110 mm), Landschaft (1,8 mm Abstand) und
+    Logo/Silhouette – höchstens etwa 1 Welle/mm, damit der Steppstich der Welle folgt.
+  - *Farben (4–16):* 4 Farben (Logo/Wappen, 90 mm), 6 (Comic/Clipart), 8 (Illustration), 10 (Foto vereinfacht,
+    freigestellt), 12 (Foto/Landschaft, 110 mm) und 16 (Porträt/Foto, freigestellt) auf Brother-Garne; mehr
+    Farben werden stärker geglättet (kleinste Fläche 2–4 mm²). Gleiche Garne werden zusammengelegt.
 - Darunter Vorlagen für Schilder/Piktogramme (Formen begradigen), pixelige Logos (Glatte Konturen),
   Gummistempel (invertiert), Fahrzeuge mit Schriftzug, Gebäude mit geraden Linien, Ausmalbilder,
   Porträt als Tuschezeichnung oder Bleistiftskizze, freigestelltes Relief als transparentes PNG
@@ -232,7 +254,8 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   LightBurn legt je Farbe eine Ebene an; Stickprogramme (Ink/Stitch, Hatch, Wilcom, Embrilliance
   StitchArtist) übernehmen Farben und Reihenfolge – dort werden die Sticharten zugewiesen.
 - **Stickdateien PES und DST** (Exportformate „PES (Sticken)“, „DST (Sticken)“; Modi Fläche, Linien,
-  Wellen und Farben, auch mit Umrisslinie und beim Vereinigen zweier Vektor-Ergebnisse):
+  Wellen und Farben, auch mit Umrisslinie und beim Vereinigen zweier Vektor-Ergebnisse; in den Modi Foto
+  und Relief sind PES/DST ausgegraut und werden nicht exportiert):
   - Flächen als **Füllstich (Tatami)**: Reihen im Stichwinkel, Einstiche je Reihe um ¼ der Stichlänge
     versetzt, Reihenenden um den Zugausgleich verlängert. Darunter eine **Unterlage** quer zur
     Stichrichtung (Reihenabstand 4 × Deckstich, mind. 1,2 mm; 0,4 mm vom Rand eingezogen).
