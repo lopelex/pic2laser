@@ -358,7 +358,7 @@
         <h4>Ebenen <span class="sub">(unten → oben = Stickreihenfolge)</span></h4>
         <div class="color-list" id="color-list"></div>
         <button class="btn btn-small" id="btn-color-reset">Farbänderungen zurücksetzen</button>
-        <p class="hint info">Je Farbe eine eigene Ebene im SVG, die größte Fläche liegt unten. Häkchen = Farbe ausgeben, Farbfeld = Farbe ändern, ⇢ = mit einer anderen Farbe zusammenführen. <b>LightBurn</b> legt je Farbe eine Ebene an. <b>Sticken:</b> unter „Exportformate“ PES oder DST wählen – direkt für die Stickmaschine, mit Füllstich je Farbe. Alternativ übernehmen Stickprogramme (Ink/Stitch, Hatch, Wilcom, Embrilliance StitchArtist) das SVG mit Farben und Reihenfolge – dort Stichart zuweisen. Für weiche Fotos vorher „Weichzeichnen“ erhöhen.</p>
+        <p class="hint info">Je Farbe eine eigene Ebene im SVG, die größte Fläche liegt unten. Häkchen = Farbe ausgeben, Farbfeld = Farbe ändern, ⇢ = mit einer anderen Farbe zusammenführen. <b>LightBurn</b> legt je Farbe eine Ebene an. <b>Sticken:</b> unter „Exportformate“ PES, DST oder EXP wählen – direkt für die Stickmaschine, mit Füllstich je Farbe. Alternativ übernehmen Stickprogramme (Ink/Stitch, Hatch, Wilcom, Embrilliance StitchArtist) das SVG mit Farben und Reihenfolge – dort Stichart zuweisen. Für weiche Fotos vorher „Weichzeichnen“ erhöhen.</p>
       </section>
 
       <section class="group" data-mode="relief">
@@ -600,6 +600,7 @@
           <label class="check"><input type="checkbox" data-key="fmtBmp" /> BMP</label>
           <label class="check" title="Stickdatei für Brother-, Babylock- und Bernette-Maschinen (Modi Fläche, Linien, Wellen, Farben)"><input type="checkbox" data-key="fmtPes" /> PES (Sticken)</label>
           <label class="check" title="Stickdatei im Tajima-Format, liest fast jede Stickmaschine – ohne Farben (Modi Fläche, Linien, Wellen, Farben)"><input type="checkbox" data-key="fmtDst" /> DST (Sticken)</label>
+          <label class="check" title="Stickdatei im Melco-Format – direkt für Melco DesignShop und Melco-Maschinen, ohne Farben (Modi Fläche, Linien, Wellen, Farben)"><input type="checkbox" data-key="fmtExp" /> EXP (Sticken, Melco)</label>
         </div>
       </section>
 
@@ -626,7 +627,8 @@
         </div>
         <label class="check" title="Zeigt rechts die geplanten Stiche in Fadenfarbe statt der Flächen"><input type="checkbox" data-key="embPreview" /> Stiche in der Vorschau zeigen</label>
         <p class="hint emb-info" id="emb-info"></p>
-        <p class="hint info">Die Stickparameter stellt die Automatik je Farbe ein: Grundwerte vom Stoff, Stichwinkel mit den wenigsten Sprüngen (und anders als die Farbe darunter), schmale Stellen unter 0,35&nbsp;mm als Kontur im Steppstich, weniger Unterlage bei schmalen Flächen. Unter „Je Farbe einstellen…“ lässt sich jede Farbe von Hand anpassen. Reihenfolge wie in der Farbliste (unten → oben), je Fläche erst Unterlage, dann Deckstich; Wege innerhalb einer Fläche werden mitgestickt, längere Sprünge vernäht und abgeschnitten. Im Modus <b>Wellen</b> werden die Wellenlinien im Steppstich oder Dreifachstich gestickt (Stichlängen und Genauigkeit unter „Je Farbe einstellen…“). <b>PES</b> speichert je Farbe das nächstliegende Brother-Garn (mit der Farbpalette „Brother-Garne“ stimmt es genau), <b>DST</b> keine Farben – dort die Garne an der Maschine in derselben Reihenfolge zuordnen.</p>
+        <p class="hint info">Die Stickparameter stellt die Automatik je Farbe ein: Grundwerte vom Stoff, Stichwinkel mit den wenigsten Sprüngen (und anders als die Farbe darunter), schmale Stellen unter 0,35&nbsp;mm als Kontur im Steppstich, weniger Unterlage bei schmalen Flächen. Unter „Je Farbe einstellen…“ lässt sich jede Farbe von Hand anpassen. Reihenfolge wie in der Farbliste (unten → oben), je Fläche erst Unterlage, dann Deckstich; Wege innerhalb einer Fläche werden mitgestickt, längere Sprünge vernäht und abgeschnitten. Im Modus <b>Wellen</b> werden die Wellenlinien im Steppstich oder Dreifachstich gestickt (Stichlängen und Genauigkeit unter „Je Farbe einstellen…“). <b>PES</b> speichert je Farbe das nächstliegende Brother-Garn (mit der Farbpalette „Brother-Garne“ stimmt es genau), <b>DST</b> und <b>EXP</b> keine Farben – dort die Garne an der Maschine in derselben Reihenfolge zuordnen.</p>
+        <p class="hint info"><b>Melco DesignShop:</b> „EXP (Sticken, Melco)“ wählen und die Datei in DesignShop über Datei → Öffnen laden. Sie kommt als Stichdatei an (keine bearbeitbaren Objekte), die Farben dort zuordnen. DesignShop liest auch DST. Melco-Maschinen (Melco OS, z.&nbsp;B. EMT16X) laden EXP oder DST direkt; für die Fadenschnitte in DST „Jump Count For Trim“ auf 3 lassen.</p>
       </section>
 
       <section class="group">

@@ -86,7 +86,7 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
 - **Ausgabegröße in mm**: SVGs enthalten `width/height` in mm, Rasterbilder die DPI –
   LightBurn importiert alles direkt in der richtigen Größe.
 - **Export** als SVG, PNG, JPG und/oder 1-Bit-BMP (Strg+S oder Strg+E)
-- **Stickdateien** PES (Brother) und DST (Tajima) direkt für die Stickmaschine: Flächen als Füllstich mit
+- **Stickdateien** PES (Brother), DST (Tajima) und EXP (Melco, z. B. für Melco DesignShop) direkt für die Stickmaschine: Flächen als Füllstich mit
   Unterlage und Zugausgleich, Umrisslinie als Steppstich, Wege innerhalb der Flächen statt Fadenschnitten;
   Stickparameter je Farbe automatisch aus Stoff und Form (Winkel, Unterlage, schmale Stellen als Kontur),
   im Dialog „Je Farbe einstellen…“ mit Stichvorschau von Hand anpassbar; Stichzahl und passender Stickrahmen
@@ -198,15 +198,29 @@ Pic2Laser selbst ist Open Source (GPL-2.0-or-later, siehe [Lizenz](#lizenz)). F�
 - `src/renderer/sine.js` – Modus Wellen: lädt das WebAssembly-Modul und rechnet Einstellungen in Pixel um
 - `wasm/sine/` – Rust-Quelltext der Sinuswellen (→ `src/renderer/wasm/sine-wasm.js`, eingebettet als Base64)
 - `src/renderer/encoders.js` – SVG-, PNG-, JPG- und BMP-Ausgabe mit DPI-Angaben
-- `src/renderer/embroidery.js` – Stickdateien: Füll- und Steppstich aus den Vektorpfaden, PES- und DST-Ausgabe
+- `src/renderer/embroidery.js` – Stickdateien: Füll- und Steppstich aus den Vektorpfaden, PES-, DST- und EXP-Ausgabe
 - `src/renderer/app.js` – Oberfläche, Presets, Vorschau, Zoom, Export, Historie
 - `src/renderer/index.html`, `styles.css` – Oberfläche
 - `models/` – mitgelieferte ONNX-Modelle
+- `test/` – Tests der Stickdateien (`npm test`), Referenzdateien und Checkliste in `test/fixtures/`
 - `build/` – Icon, macOS-Intel-Konfiguration, Ad-hoc-Signierskript, Release-Skript (`release.sh`), WASM-Build (`build-wasm.js`)
 
 Das erzeugte `src/renderer/wasm/sine-wasm.js` liegt im Repository – `npm start` und Releases brauchen kein
 Rust. Nach Änderungen in `wasm/sine` neu bauen mit `npm run build:wasm` (braucht `cargo` und das Ziel
 `wasm32-unknown-unknown`, z. B. `rustup target add wasm32-unknown-unknown`).
+
+## Tests
+
+`npm test` prüft die Stickdateien PES, DST und EXP an drei Prüfmotiven: Die Dateien werden mit eigenen,
+vom Schreiber unabhängigen Lesern zurückgelesen und mit den geplanten Stichen verglichen. Geprüft werden
+auch die Dateiköpfe, die Grenzwerte der Formate (lange Sprünge, große Schritte) und dass die Ausgabe Byte
+für Byte den Referenzdateien in `test/fixtures/` entspricht. Ist `pyembroidery` installiert
+(`pip install pyembroidery`), liest es die Dateien zusätzlich als zweiter, fremder Leser; mit
+`REQUIRE_PYEMBROIDERY=1` schlägt der Test fehl, wenn es fehlt.
+
+Ändern sich Stiche oder Dateiformate gewollt, die Referenzdateien mit `npm run test:fixtures` neu
+schreiben und nach [test/fixtures/CHECKLISTE.md](test/fixtures/CHECKLISTE.md) im Stickprogramm und auf
+der Maschine prüfen. `build/release.sh` führt `npm test` vor jeder Release aus.
 
 ## Lizenz
 

@@ -5,6 +5,25 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.16.0 – 23.11.2026
+
+### Neu
+- **Stickdatei EXP (Melco):** Neues Exportformat „EXP (Sticken, Melco)“ in den Modi Fläche, Linien, Wellen
+  und Farben – direkt für Melco DesignShop (Datei → Öffnen) und Melco-Maschinen. Wie DST ohne Farben, die
+  Garne werden in DesignShop oder an der Maschine zugeordnet. Ein Hinweis im Abschnitt „Stickdatei“
+  erklärt den Weg nach DesignShop.
+- **Melco-Maschinen (Melco OS, z. B. EMT16X):** laden EXP oder DST direkt. DST-Fadenschnitte sind so
+  geschrieben, dass Melco OS sie mit der Standardeinstellung „Jump Count For Trim“ = 3 als Schnitt erkennt
+  (vom Test abgesichert); der Hinweis in der App nennt die Einstellung.
+
+### Intern
+- **Tests der Stickdateien (`npm test`):** PES, DST und EXP werden an drei Prüfmotiven mit unabhängigen
+  Lesern (eigene und pyembroidery) zurückgelesen, Dateiköpfe und Formatgrenzen geprüft und mit
+  Referenzdateien verglichen. Die Release läuft nur mit bestandenen Tests. Für den Test im Stickprogramm und
+  auf der Maschine gibt es Prüfdateien und eine Checkliste in `test/fixtures/`.
+
+---
+
 ## 1.15.0 – 23.11.2026
 
 ### Neu
