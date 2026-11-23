@@ -38,7 +38,7 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
 
 ## Funktionen
 
-- **Drag & Drop**, Datei-Dialog (Strg+O) oder Einfügen aus der Zwischenablage (Strg+V)
+- **Drag & Drop**, Datei-Dialog (Strg+O), Einfügen aus der Zwischenablage (Strg+V) oder Aufnahme mit der Webcam (Strg+K)
 - **Live-Vorschau** Original/Ergebnis nebeneinander, synchrones Scrollen.
   Mausrad bzw. Strg+Mausrad/Pinch zoomt auf die Mausposition, Verschieben durch Ziehen
   (im Ergebnis mit der mittleren Maustaste)
