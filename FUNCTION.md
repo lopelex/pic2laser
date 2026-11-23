@@ -10,7 +10,10 @@ Alle KI-Funktionen laufen lokal und offline.
 ## Bild laden & Vorschau
 
 - **Bild laden:** Drag & Drop ins Fenster, Datei-Dialog („Bild öffnen…“, Strg/Cmd+O) oder
-  Einfügen aus der Zwischenablage (Strg/Cmd+V). Formate: PNG, JPG, WebP, BMP, GIF, AVIF, ICO.
+  Einfügen aus der Zwischenablage (Strg/Cmd+V). Formate: PNG, JPG, WebP, BMP, GIF, AVIF, ICO, SVG.
+  SVG wird im Browser gerendert (ohne Skripte) und auf 3000 px an der längeren Seite gerastert,
+  Transparenz bleibt erhalten; steht die Breite in mm, cm oder Zoll in der Datei, wird sie als
+  Ausgabebreite übernommen.
 - **Kamera:** „Kamera…“ (Strg/Cmd+K) öffnet einen Dialog mit Live-Vorschau der Webcam; „Aufnehmen“
   (oder Leertaste) übernimmt das Bild in voller Kameraauflösung verlustfrei als PNG als Originalbild.
   Bei mehreren Kameras lässt sich die Kamera wählen, die Auswahl bleibt gespeichert.
@@ -201,9 +204,16 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 ## Presets
 
-- **52 Vorlagen**, gegliedert nach Eingangsbild: Logos, Schrift & Grafik · Porträts & Personen ·
+- **58 Vorlagen**, gegliedert nach Eingangsbild: Logos, Schrift & Grafik · Porträts & Personen ·
   Tiere · Fotos & Landschaft · Material (Holz, Schiefer/Glas/Alu, Leder, Acryl) ·
-  Schneiden & Relief · Farben & Stickerei. Jede Vorlage hat eine kurze Beschreibung.
+  Schneiden & Relief · Farben · Stickerei. Jede Vorlage hat eine kurze Beschreibung.
+- **Stickerei-Vorlagen** (Farbflächen auf Brother-Garne, PES-Export, Stoff und Motivbreite):
+  T-Shirt/Jersey (90 mm, Überlappung 0,4 mm), Polo/Piqué (80 mm, kleinste Fläche 3 mm²),
+  Fleece/Sweatshirt (100 mm), Handtuch/Frottee (100 mm, kleinste Fläche 4 mm², stärker geglättet),
+  Jeans/Canvas/Tasche – Webware (100 mm), Leder/Kunstleder-Patch (70 mm, Überlappung 0,2 mm) und
+  Schriftzug/Silhouette einfarbig (Modus Fläche). Breiten nach üblichen Platzierungsmaßen
+  (Brustlogo 75–100 mm, Sweatshirt-Front bis etwa 240 mm). Anders als die übrigen Vorlagen setzen sie
+  Breite, Exportformat PES und Stoff; die übrigen Exportformate bleiben.
 - Darunter Vorlagen für Schilder/Piktogramme (Formen begradigen), pixelige Logos (Glatte Konturen),
   Gummistempel (invertiert), Fahrzeuge mit Schriftzug, Gebäude mit geraden Linien, Ausmalbilder,
   Porträt als Tuschezeichnung oder Bleistiftskizze, freigestelltes Relief als transparentes PNG
@@ -238,11 +248,43 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
     Maschine (Brother-Farbnummern 1–64, Stiche, Sprünge mit Schnitt-Kennung, Vorschaubilder 48 × 38).
     Jede Farbe bekommt das nächstliegende noch freie Brother-Garn (Farbabstand „redmean“).
   - **DST** (Tajima): ohne Farben (Farbwechsel als Stopp), Fadenschnitt als drei Sprünge ohne Bewegung.
-  - Abschnitt „Stickdatei“ (nur mit PES/DST): Reihenabstand, Stichlänge, Stichwinkel, Zugausgleich,
-    Faden schneiden ab, Unterlage; Anzeige von Stichzahl, Farben, Fadenschnitten, Größe und passendem
-    Rahmen (100 × 100 / 130 × 180 mm). „Stiche in der Vorschau zeigen“ zeichnet die geplanten Stiche in
-    Fadenfarbe. Diese Einstellungen ändern nur die Stickdatei (keine Neuberechnung) und bleiben wie die
-    Exportformate beim Anwenden einer Vorlage erhalten.
+  - Abschnitt „Stickdatei“ (nur mit PES/DST): **Stoff**, Faden schneiden ab, „Je Farbe einstellen…“;
+    Anzeige von Stichzahl, Farben, Fadenschnitten, Größe und passendem Rahmen (100 × 100 / 130 × 180 mm).
+    „Stiche in der Vorschau zeigen“ zeichnet die geplanten Stiche in Fadenfarbe. Diese Einstellungen
+    ändern nur die Stickdatei (keine Neuberechnung) und bleiben wie die Exportformate beim Anwenden einer
+    Vorlage erhalten.
+  - **Stickparameter je Farbe (Automatik):** Der Stoff liefert die Grundwerte (Reihenabstand /
+    Stichlänge / Zugausgleich, Unterlage): Webware 0,22/4,0/0,20 mm normal, Strick/Jersey und Piqué
+    0,25/4,0/0,35 mm kräftig, Fleece/Sweat 0,26/4,0/0,40 mm kräftig, Frottee/Handtuch 0,20/4,0/0,40 mm
+    kräftig (Hinweis auf Topping), Leder/Kunstleder 0,33/4,5/0,10 mm leicht (Hinweis auf spitze Nadel).
+    - Reihenabstand = tatsächlicher Abstand benachbarter Reihen wie in Ink/Stitch (Vorgabe 0,25 mm) und
+      PE-Design (Vorgabe 4,5 Linien/mm = 0,22 mm); im Dialog zusätzlich als Linien/mm. Wilcom/Hatch messen
+      zwischen zwei Hinreihen – deren übliche 0,38–0,45 mm entsprechen etwa 0,2 mm hier. Ergebnis:
+      rund 1.000–1.500 Stiche je Quadratzoll Füllfläche, wie die gängigen Faustregeln.
+    - Abgeglichen mit der Wilcom-Dokumentation (Tatami 4 mm Stichlänge, Versatz ¼; Zugausgleich
+      Baumwolle 0,20, T-Shirt 0,35, Fleece 0,40 mm), den Ink/Stitch-Vorgaben (Stichlänge 4 mm,
+      4 Versätze, Unterlage +90° mit der Stichlänge des Deckstichs, Wege 2,5 mm innerhalb der Fläche)
+      und Fachartikeln (Strick/Polo/Fleece lockerer, Frottee 10–15 % dichter, Leder etwa 50 % lockerer
+      mit 4–5 mm Stichlänge und wenig Unterlage). Schnitt ab 3 mm (Wilcom: kürzere Verbindungen sind
+      meist unsichtbar).
+    - Stichwinkel aus 30/45/60/120/135/150°: die wenigsten Blöcke (= Wege und Sprünge), Diagonalen
+      bevorzugt, mindestens 45° Unterschied zur Fläche darunter, möglichst 90° (gleiche Winkel
+      benachbarter Flächen verzahnen und öffnen Lücken).
+    - Teilflächen schmaler als 1 mm werden als Kontur im Steppstich gestickt (Satinstich bräuchte
+      mindestens 1,2–1,5 mm, den gibt es noch nicht); besteht eine Farbe fast
+      nur aus solchen Linien, wird die ganze Farbe Kontur.
+    - Unterlage je Teilfläche höchstens: unter 1,5 mm aus, unter 3 mm leicht, unter 5 mm normal.
+      Leicht = Reihen alle max(2 mm, 8 × Abstand), normal = max(1 mm, 5 × Abstand), kräftig =
+      max(0,8 mm, 3,5 × Abstand) plus Steppstich entlang der Kanten (Ink/Stitch: 3 × Abstand).
+  - **Dialog „Stickparameter je Farbe“:** links Stoff, Schnittlänge und die Farben in Stickreihenfolge
+    (Häkchen = sticken, Kurzfassung und Stichzahl je Farbe, „von Hand“-Markierung), Mitte die
+    Stichvorschau (Mausrad = Zoom, Ziehen = Verschieben, Doppelklick = Einpassen, andere Farben
+    abblenden), rechts die gewählte Farbe: Begründung der Automatik, Stichart (Füllstich, Kontur als
+    Steppstich oder Dreifachstich, nicht sticken), Stichwinkel, Reihenabstand, Stichlänge, Zugausgleich,
+    Unterlage, „Schmale Stellen als Kontur“. Geänderte Werte gelten nur für dieses Bild (`embLayers`,
+    Schlüssel = ursprüngliche Bildfarbe, bleiben beim Umfärben erhalten); Doppelklick auf einen Regler,
+    „Automatik für diese Farbe“ bzw. „Alle Farben auf Automatik“ nehmen sie zurück, „Auf alle Farben
+    übertragen“ kopiert sie.
   - Nicht möglich (Hinweis statt Datei): andere Modi, leeres Ergebnis, Motiv größer als 400 mm.
   - Grenzen: schmale Linien und kleine Schrift (unter ca. 1 mm) werden ebenfalls als Füllstich gestickt –
     dafür ist Satinstich im Stickprogramm besser.

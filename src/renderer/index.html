@@ -71,13 +71,13 @@
 
       <section class="group">
         <h3>Modus</h3>
-        <div class="segmented" id="mode">
-          <button data-value="vector" class="active" title="Flächen als Vektor (Logos, Schrift, Silhouetten)">Fläche</button>
-          <button data-value="edges" title="Kanten nachzeichnen – Linienzeichnung als Vektor">Linien</button>
-          <button data-value="dither" title="Dithering für Fotos">Foto</button>
-          <button data-value="sine" title="Sinuswellen-Schattierung: dunkle Stellen als dichte Wellen (Vektorlinien)">Wellen</button>
-          <button data-value="color" title="Farbflächen: je Farbe eine Ebene (Stickerei, mehrfarbige Gravur)">Farben</button>
-          <button data-value="relief" title="3D-Relief aus KI-Tiefenkarte (Graustufen)">Relief</button>
+        <div class="mode-grid" id="mode">
+          <button data-value="vector" class="active" title="Flächen als Vektor (Logos, Schriften, Silhouetten)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8.5 15h-17z" fill="currentColor" stroke="none"/></svg><span>Fläche</span></button>
+          <button data-value="edges" title="Kanten nachzeichnen – Linienzeichnung als Vektor"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18c3-8 6-11 8-8s4 1 8-6"/><path d="M4 21h16"/></svg><span>Linien</span></button>
+          <button data-value="dither" title="Dithering für Fotos"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor" stroke="none"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></g></svg><span>Foto</span></button>
+          <button data-value="sine" title="Sinuswellen-Schattierung: dunkle Stellen als dichte Wellen (Vektorlinien)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8c2.5-4 5-4 7.5 0s5 4 7.5 0 3.5-3 5-2"/><path d="M2 16c2.5-4 5-4 7.5 0s5 4 7.5 0 3.5-3 5-2"/></svg><span>Wellen</span></button>
+          <button data-value="color" title="Farbflächen: je Farbe eine Ebene (Stickerei, mehrfarbige Gravur)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="5"/><circle cx="15" cy="9" r="5"/><circle cx="12" cy="15" r="5"/></svg><span>Farben</span></button>
+          <button data-value="relief" title="3D-Relief aus KI-Tiefenkarte (Graustufen)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 19l6-9 4 5 3-4 7 8z"/></svg><span>Relief</span></button>
         </div>
         <p class="hint info" id="mode-hint"></p>
       </section>
@@ -601,30 +601,28 @@
 
       <section class="group" id="emb-group" data-mode="vector edges color">
         <h3>Stickdatei</h3>
-        <label class="slider" title="Abstand der Stichreihen im Füllstich – kleiner = dichter. Üblich 0,35–0,45 mm, für dünne Stoffe eher mehr">
-          <span>Reihenabstand <output data-for="embSpacing"></output></span>
-          <input type="range" data-key="embSpacing" min="0.25" max="1" step="0.05" />
-        </label>
-        <label class="slider" title="Längster Stich im Füllstich (Tatami), üblich 3–4 mm">
-          <span>Stichlänge <output data-for="embLen"></output></span>
-          <input type="range" data-key="embLen" min="2" max="7" step="0.5" />
-        </label>
-        <label class="slider" title="Richtung der Stichreihen (0° = waagrecht)">
-          <span>Stichwinkel <output data-for="embAngle"></output></span>
-          <input type="range" data-key="embAngle" min="0" max="175" step="5" />
-        </label>
-        <label class="slider" title="Der Faden zieht den Stoff quer zur Stichrichtung zusammen – die Reihen werden an beiden Enden so weit verlängert">
-          <span>Zugausgleich <output data-for="embPull"></output></span>
-          <input type="range" data-key="embPull" min="0" max="0.6" step="0.05" />
+        <label class="field" title="Bestimmt die Grundwerte der Automatik: Dichte, Stichlänge, Zugausgleich und Unterlage">
+          <span>Stoff</span>
+          <select data-key="embFabric">
+            <option value="woven">Webware (Baumwolle, Twill, Jeans)</option>
+            <option value="knit">Strick / Jersey (T-Shirt)</option>
+            <option value="pique">Piqué (Polo-Shirt)</option>
+            <option value="fleece">Fleece / Sweat</option>
+            <option value="pile">Frottee / Handtuch</option>
+            <option value="leather">Leder / Kunstleder</option>
+          </select>
         </label>
         <label class="slider" title="Sprünge ab dieser Länge werden vernäht und abgeschnitten, kürzere als Sprungstich ausgeführt">
           <span>Faden schneiden ab <output data-for="embTrimMm"></output></span>
           <input type="range" data-key="embTrimMm" min="1" max="10" step="0.5" />
         </label>
-        <label class="check" title="Lockere Stichlage quer zur Stichrichtung unter jeder Fläche: hält den Stoff und gibt dem Deckstich Halt"><input type="checkbox" data-key="embUnderlay" /> Unterlage</label>
+        <div class="row">
+          <span class="hint grow" id="emb-manual-info"></span>
+          <button class="btn btn-small" id="btn-emb-dialog" title="Stichart, Winkel, Dichte, Unterlage und Zugausgleich je Farbe – mit Stichvorschau">Je Farbe einstellen…</button>
+        </div>
         <label class="check" title="Zeigt rechts die geplanten Stiche in Fadenfarbe statt der Flächen"><input type="checkbox" data-key="embPreview" /> Stiche in der Vorschau zeigen</label>
         <p class="hint emb-info" id="emb-info"></p>
-        <p class="hint info">Flächen werden mit Füllstich (Tatami) gestickt, die Umrisslinie als Steppstich. Reihenfolge wie in der Farbliste (unten → oben), je Fläche erst Unterlage, dann Deckstich; Wege innerhalb einer Fläche werden mitgestickt, längere Sprünge vernäht und abgeschnitten. <b>PES</b> speichert je Farbe das nächstliegende Brother-Garn (mit der Farbpalette „Brother-Garne“ stimmt es genau), <b>DST</b> keine Farben – dort die Garne an der Maschine in derselben Reihenfolge zuordnen. Sehr schmale Linien und kleine Schrift (unter ca. 1 mm) stickt man besser mit Satinstich im Stickprogramm.</p>
+        <p class="hint info">Die Stickparameter stellt die Automatik je Farbe ein: Grundwerte vom Stoff, Stichwinkel mit den wenigsten Sprüngen (und anders als die Farbe darunter), schmale Stellen unter 1&nbsp;mm als Kontur im Steppstich, weniger Unterlage bei schmalen Flächen. Unter „Je Farbe einstellen…“ lässt sich jede Farbe von Hand anpassen. Reihenfolge wie in der Farbliste (unten → oben), je Fläche erst Unterlage, dann Deckstich; Wege innerhalb einer Fläche werden mitgestickt, längere Sprünge vernäht und abgeschnitten. <b>PES</b> speichert je Farbe das nächstliegende Brother-Garn (mit der Farbpalette „Brother-Garne“ stimmt es genau), <b>DST</b> keine Farben – dort die Garne an der Maschine in derselben Reihenfolge zuordnen.</p>
       </section>
 
       <section class="group">
@@ -753,6 +751,55 @@
     <div class="dialog-foot">
       <span></span>
       <button class="btn" data-close>Schließen</button>
+    </div>
+  </dialog>
+
+  <!-- Stickparameter je Farbe mit Stichvorschau -->
+  <dialog class="dialog emb-dialog" id="emb-dialog" aria-labelledby="emb-title">
+    <div class="dialog-head">
+      <div>
+        <h2 id="emb-title">Stickparameter je Farbe</h2>
+        <p class="dialog-sub">Automatisch aus Stoff und Form der Flächen – jede Farbe lässt sich von Hand anpassen</p>
+      </div>
+      <button class="icon-btn dialog-close" data-close title="Schließen (Esc)" aria-label="Schließen">✕</button>
+    </div>
+    <div class="emb-body">
+      <aside class="emb-side">
+        <label class="field" title="Grundwerte der Automatik">
+          <span>Stoff</span>
+          <select data-key="embFabric">
+            <option value="woven">Webware (Baumwolle, Twill, Jeans)</option>
+            <option value="knit">Strick / Jersey (T-Shirt)</option>
+            <option value="pique">Piqué (Polo-Shirt)</option>
+            <option value="fleece">Fleece / Sweat</option>
+            <option value="pile">Frottee / Handtuch</option>
+            <option value="leather">Leder / Kunstleder</option>
+          </select>
+        </label>
+        <label class="slider" title="Sprünge ab dieser Länge werden vernäht und abgeschnitten">
+          <span>Faden schneiden ab <output data-for="embTrimMm"></output></span>
+          <input type="range" data-key="embTrimMm" min="1" max="10" step="0.5" />
+        </label>
+        <h4>Farben <span class="sub">(Stickreihenfolge)</span></h4>
+        <div class="emb-layers" id="emb-layers"></div>
+      </aside>
+      <div class="emb-main">
+        <div class="emb-view" id="emb-view">
+          <canvas id="emb-canvas"></canvas>
+          <div class="emb-view-tools">
+            <label class="check"><input type="checkbox" id="emb-dim" checked /> Andere Farben abblenden</label>
+            <button class="btn btn-small" id="emb-fit" title="Ganzes Motiv zeigen (Doppelklick)">Einpassen</button>
+          </div>
+          <p class="emb-view-hint">Mausrad = Zoom · Ziehen = Verschieben · Doppelklick = Einpassen</p>
+          <p class="emb-busy" id="emb-busy" hidden>Stiche werden geplant …</p>
+        </div>
+        <p class="emb-stats" id="emb-stats"></p>
+      </div>
+      <aside class="emb-edit" id="emb-edit"></aside>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn" id="emb-reset-all" title="Alle Handeinstellungen verwerfen">Alle Farben auf Automatik</button>
+      <button class="btn btn-primary" data-close>Fertig</button>
     </div>
   </dialog>
 

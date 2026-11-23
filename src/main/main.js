@@ -248,7 +248,7 @@ models.register(ipcMain);
 /* Dateien öffnen / exportieren                                       */
 /* ------------------------------------------------------------------ */
 
-const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'avif', 'ico'];
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'avif', 'ico', 'svg'];
 
 // Kamerazugriff: macOS fragt einmalig nach (Text aus NSCameraUsageDescription), Windows/Linux erlauben direkt
 ipcMain.handle('camera-access', async () => {

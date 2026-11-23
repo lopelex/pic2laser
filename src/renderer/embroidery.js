@@ -537,9 +537,9 @@ const Embroidery = (() => {
   /** Sammelt Stiche, Sprünge, Schnitte und Farbwechsel (mm, absolut). */
   function makePen(o) {
     const ops = [];
-    let px = null, py = null, tie = true, lastDx = 0, lastDy = 0, stitched = false;
+    let px = null, py = null, tie = true, lastDx = 0, lastDy = 0, stitched = false, layer = 0;
     const push = (x, y, c) => {
-      ops.push({ x, y, c });
+      ops.push({ x, y, c, l: layer });
       if (c === STITCH) {
         if (px !== null && (x !== px || y !== py)) { lastDx = x - px; lastDy = y - py; }
         stitched = true;
@@ -596,25 +596,27 @@ const Embroidery = (() => {
           return;
         }
         tieOff();
-        if (stitched && d >= o.trimMm) ops.push({ x: px, y: py, c: TRIM });
+        if (stitched && d >= o.trimMm) ops.push({ x: px, y: py, c: TRIM, l: layer });
         push(x, y, JUMP);
         tie = true;
       },
       /** Zustand merken/zurücksetzen (Farbe ohne Stiche wieder entfernen) */
       save() { return { n: ops.length, px, py, tie, lastDx, lastDy, stitched }; },
       restore(s) { ops.length = s.n; ({ px, py, tie, lastDx, lastDy, stitched } = s); },
+      /** Ebene (Index in der Liste) für die folgenden Stiche – für Vorschau und Statistik */
+      set layer(i) { layer = i; },
       colorChange() {
         tieOff();
-        ops.push({ x: px, y: py, c: TRIM });
-        ops.push({ x: px, y: py, c: COLOR });
+        ops.push({ x: px, y: py, c: TRIM, l: layer });
+        ops.push({ x: px, y: py, c: COLOR, l: layer });
         tie = true;
         stitched = false;
       },
       end() {
         tieOff();
         if (px !== null) {
-          ops.push({ x: px, y: py, c: TRIM });
-          ops.push({ x: px, y: py, c: END });
+          ops.push({ x: px, y: py, c: TRIM, l: layer });
+          ops.push({ x: px, y: py, c: END, l: layer });
         }
       },
     };
@@ -637,6 +639,8 @@ const Embroidery = (() => {
     if (!top) return;
     const topBlocks = buildBlocks(top);
     const router = makeRouter(top, o);
+    // kräftige Unterlage: zuerst ein Steppstich entlang der Kanten (Wege dazwischen innerhalb der Fläche)
+    if (o.edgeRun) runLayer(pen, rings, { runLen: 2.5 }, router);
     const regions = new Map();
     const regionOf = (id) => {
       let r = regions.get(id);
@@ -681,7 +685,7 @@ const Embroidery = (() => {
         const pts = stitchBlock(c.it, sc, c.e, so);
         if (pts.length < 2) continue;
         pen.moveTo(pts[0], pts[1], router);
-        for (let k = 2; k < pts.length; k += 2) pen.lineTo(pts[k], pts[k + 1]);
+        for (let k = 2; k < pts.length; k += 2) pen.lineTo(pts[k], pts[k + 1], o.maxLen);
         if (router && sc === top) router.cover(c.it);
       }
     };
@@ -730,8 +734,12 @@ const Embroidery = (() => {
     return out;
   }
 
-  /** Steppstich entlang geschlossener Linien (Umrisslinie). */
-  function runLayer(pen, rings, o) {
+  /**
+   * Steppstich entlang geschlossener Linien (Umrisslinie, Kontur schmaler Flächen, Kantenunterlage).
+   * triple: Dreifachstich (jeder Stich vor, zurück, vor) – kräftigere Linie.
+   * router: Wege zwischen den Linien innerhalb einer Fläche mitsticken.
+   */
+  function runLayer(pen, rings, o, router = null, triple = false) {
     const items = rings.map((r) => {
       const s = simplifyRing(r, 0.05);
       const n = s.length / 2;
@@ -747,55 +755,297 @@ const Embroidery = (() => {
       idx.take(c.it);
       const { s } = c.it, n = s.length / 2;
       if (n < 2) continue;
-      pen.moveTo(s[2 * c.e.k], s[2 * c.e.k + 1], null);
+      pen.moveTo(s[2 * c.e.k], s[2 * c.e.k + 1], router);
       for (let j = 1; j <= n; j++) {
         const k = (c.e.k + j) % n;
-        pen.lineTo(s[2 * k], s[2 * k + 1], o.runLen);
+        const tx = s[2 * k], ty = s[2 * k + 1];
+        if (!triple) { pen.lineTo(tx, ty, o.runLen); continue; }
+        const q = pen.pos, d = Math.hypot(tx - q.x, ty - q.y);
+        const m = Math.max(1, Math.ceil(d / o.runLen - 1e-9));
+        for (let t = 1; t <= m; t++) {
+          const ax = q.x + ((tx - q.x) * (t - 1)) / m, ay = q.y + ((ty - q.y) * (t - 1)) / m;
+          const bx = q.x + ((tx - q.x) * t) / m, by = q.y + ((ty - q.y) * t) / m;
+          pen.lineTo(bx, by, 1e9);
+          pen.lineTo(ax, ay, 1e9);
+          pen.lineTo(bx, by, 1e9);
+        }
       }
     }
   }
 
+  /* ---------------- Stickparameter je Farbe ---------------- */
+
+  const clamp = (v, lo, hi, def) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : def;
+  };
+
+  /**
+   * Unterlage: Reihenabstand = max(min, mult × Deckstich-Abstand), Einzug vom Rand;
+   * „kräftig“ zusätzlich mit Steppstich entlang der Kanten.
+   */
+  const UNDERLAY = {
+    none: null,
+    light: { mult: 8, min: 2, inset: 0.5, edge: false },
+    normal: { mult: 5, min: 1, inset: 0.4, edge: false },
+    strong: { mult: 3.5, min: 0.8, inset: 0.4, edge: true },
+  };
+  const UNDERLAY_ORDER = ['none', 'light', 'normal', 'strong'];
+
+  /**
+   * Stoffarten: Grundwerte für die Automatik, abgeglichen mit Hersteller-Dokumentation und Fachartikeln:
+   * - Reihenabstand = tatsächlicher Abstand benachbarter Reihen (wie Ink/Stitch, Vorgabe 0,25 mm, und
+   *   PE-Design, Vorgabe 4,5 Linien/mm = 0,22 mm). Wilcom & Co. messen zwischen zwei Hinreihen (die
+   *   Rückreihe liegt dazwischen) – deren üblichen 0,38–0,45 mm entsprechen hier etwa 0,2–0,22 mm.
+   *   Verhältnisse aus der Literatur: Strick/Polo/Fleece etwa 10–25 % lockerer (gegen Verziehen),
+   *   Frottee 10–15 % dichter, Leder etwa 50 % lockerer (Perforation)
+   * - Stichlänge: Wilcom und Ink/Stitch 4 mm, Leder 4–5 mm
+   * - Zugausgleich (Wilcom-Tabelle): Baumwolle/Drill 0,20, T-Shirt 0,35, Fleece 0,40 mm; Polo 0,35–0,40;
+   *   Leder geringer
+   * - Unterlage: Baumwolle wenig, Strick/Polo/Fleece/Frottee kräftig (Kantenlauf + Fläche), Leder sparsam
+   */
+  const FABRICS = {
+    woven: { name: 'Webware (Baumwolle, Twill, Jeans)', spacing: 0.22, len: 4, pull: 0.2, underlay: 'normal' },
+    knit: { name: 'Strick / Jersey (T-Shirt)', spacing: 0.25, len: 4, pull: 0.35, underlay: 'strong' },
+    pique: { name: 'Piqué (Polo-Shirt)', spacing: 0.25, len: 4, pull: 0.35, underlay: 'strong' },
+    fleece: { name: 'Fleece / Sweat', spacing: 0.26, len: 4, pull: 0.4, underlay: 'strong' },
+    pile: {
+      name: 'Frottee / Handtuch', spacing: 0.2, len: 4, pull: 0.4, underlay: 'strong',
+      note: 'Frottee: wasserlösliche Folie (Topping) obenauf, damit die Schlaufen nicht durchstechen',
+    },
+    leather: {
+      name: 'Leder / Kunstleder', spacing: 0.33, len: 4.5, pull: 0.1, underlay: 'light',
+      note: 'Leder: weniger Einstiche gegen Perforation, spitze Nadel (70) verwenden',
+    },
+  };
+
+  const ANGLES = [45, 135, 30, 60, 120, 150];
+  const THIN_MM = 1; // schmaler als das deckt Füllstich nicht (Satin bräuchte mind. 1,2–1,5 mm) – als Kontur (Steppstich)
+  const angDiff = (a, b) => { const d = Math.abs(a - b) % 180; return Math.min(d, 180 - d); };
+
+  /** Punkt in Polygon (gerade-ungerade), Polygon als flaches Array. */
+  function inRing(r, x, y) {
+    let inside = false;
+    const n = r.length / 2;
+    for (let k = 0, j = n - 1; k < n; j = k++) {
+      const yi = r[2 * k + 1], yj = r[2 * j + 1];
+      if ((yi > y) !== (yj > y) && x < ((r[2 * j] - r[2 * k]) * (y - yi)) / (yj - yi) + r[2 * k]) inside = !inside;
+    }
+    return inside;
+  }
+
+  /**
+   * Zerlegt die Polygone einer Ebene in zusammenhängende Teilflächen (Außenkontur + Löcher)
+   * mit Fläche, Umfang und mittlerer Breite (2 × Fläche / Umfang).
+   */
+  function components(rings) {
+    const info = rings.map((r) => {
+      let a = 0, len = 0, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      const n = r.length / 2;
+      for (let k = 0; k < n; k++) {
+        const j = (k + 1) % n;
+        const xa = r[2 * k], ya = r[2 * k + 1], xb = r[2 * j], yb = r[2 * j + 1];
+        a += xa * yb - xb * ya;
+        len += Math.hypot(xb - xa, yb - ya);
+        if (xa < x0) x0 = xa;
+        if (xa > x1) x1 = xa;
+        if (ya < y0) y0 = ya;
+        if (ya > y1) y1 = ya;
+      }
+      return { area: Math.abs(a) / 2, len, box: [x0, y0, x1, y1], depth: 0, parent: -1 };
+    });
+    // Verschachtelungstiefe: von wie vielen anderen Konturen ein Punkt der Kontur umschlossen ist
+    const order = info.map((_, k) => k).sort((a, b) => info[b].area - info[a].area);
+    for (let ii = 0; ii < order.length; ii++) {
+      const k = order[ii], r = rings[k], px = r[0], py = r[1];
+      let best = -1;
+      for (let jj = 0; jj < ii; jj++) {
+        const j = order[jj], b = info[j].box;
+        if (px < b[0] || px > b[2] || py < b[1] || py > b[3]) continue;
+        if (!inRing(rings[j], px, py)) continue;
+        info[k].depth++;
+        if (best < 0 || info[j].area < info[best].area) best = j;
+      }
+      info[k].parent = best;
+    }
+    const comps = new Map();
+    info.forEach((it, k) => {
+      const outer = it.depth % 2 === 0 ? k : it.parent;
+      if (outer < 0) return;
+      let c = comps.get(outer);
+      if (!c) comps.set(outer, (c = { rings: [], area: 0, per: 0 }));
+      c.rings.push(k);
+      c.area += k === outer ? it.area : -it.area;
+      c.per += it.len;
+    });
+    return [...comps.values()].map((c) => ({ ...c, area: Math.max(0, c.area), width: c.per ? (2 * Math.max(0, c.area)) / c.per : 0 }));
+  }
+
+  /**
+   * Form einer Ebene vermessen: Fläche (mm²), Umfang (mm), Teilflächen mit Breite, Flächenanteil der
+   * schmalen Teile (< 0,9 mm) und je Kandidatenwinkel die Zahl der Blöcke (mehr = mehr Wege/Sprünge).
+   */
+  function analyze(rings) {
+    const comps = components(rings);
+    let area = 0, per = 0, thinArea = 0;
+    for (const c of comps) {
+      area += c.area;
+      per += c.per;
+      if (c.width < THIN_MM) thinArea += c.area;
+    }
+    const coarse = Math.max(0.6, Math.sqrt(area) / 80);
+    const blocks = {};
+    for (const a of ANGLES) {
+      const sc = scanRows(rings, (a * Math.PI) / 180, coarse);
+      blocks[a] = sc ? buildBlocks(sc).length : 0;
+    }
+    return { area, perimeter: per, width: per ? (2 * area) / per : 0, thinShare: area ? thinArea / area : 0, comps, blocks };
+  }
+
+  const mm = (v, d = 1) => `${Number(v).toFixed(d).replace('.', ',')} mm`;
+
+  /**
+   * Automatische Stickparameter einer Ebene aus Form und Stoff.
+   * prevAngle: Winkel der Fläche darunter (benachbarte Farben sollen sich im Winkel absetzen).
+   * Ergebnis: { params: { type, angle, spacing, len, underlay, pull }, why: [Begründungen] }
+   */
+  function autoParams(an, fabric, prevAngle, kind) {
+    const f = FABRICS[fabric] || FABRICS.woven;
+    if (kind === 'run') return { params: { type: 'run', len: 2.5 }, why: ['Umrisslinie als Steppstich'] };
+    const why = [];
+    if (an && an.area > 0 && an.thinShare > 0.9) {
+      why.push(`fast nur schmale Linien (im Mittel ${mm(an.width, 2)}) – Füllstich deckt hier nicht, deshalb Kontur als Steppstich`);
+      return { params: { type: 'run', len: 2 }, why };
+    }
+    const params = { type: 'fill', spacing: f.spacing, len: f.len, pull: f.pull, underlay: f.underlay, thin: THIN_MM };
+    // Winkel: wenigste Blöcke, Diagonalen bevorzugt, anders als die Fläche darunter
+    let best = 45, bs = Infinity;
+    const minB = an ? Math.min(...ANGLES.map((a) => an.blocks[a] || 0)) : 0;
+    for (const a of ANGLES) {
+      let sc = an ? an.blocks[a] || 0 : 0;
+      if (a !== 45 && a !== 135) sc = sc * 1.05 + 0.5;
+      // benachbarte Flächen: gleicher Winkel verzahnt und öffnet Lücken, 90° Unterschied hält am besten
+      if (prevAngle != null) sc = angDiff(a, prevAngle) < 45 ? sc * 1.25 + 1 : sc * (1 + (0.06 * (90 - angDiff(a, prevAngle))) / 45);
+      if (sc < bs - 1e-9) { bs = sc; best = a; }
+    }
+    params.angle = best;
+    const reasons = [];
+    if (an && (an.blocks[best] || 0) <= minB) reasons.push('wenigste Wege und Sprünge');
+    if (prevAngle != null && angDiff(best, prevAngle) >= 45) reasons.push(`${angDiff(best, prevAngle)}° gegen die Farbe darunter (${prevAngle}°) – setzt sich ab, weniger Lücken`);
+    if (!reasons.length) reasons.push('diagonal – bewährte Grundrichtung, kaum Unterschied zwischen den Winkeln');
+    why.push(`Füllstich ${best}°${reasons.length ? ` – ${reasons.join(', ')}` : ''}`);
+    why.push(`Reihenabstand ${mm(f.spacing, 2)} (${(1 / f.spacing).toFixed(1).replace('.', ',')} Linien/mm), Stichlänge ${mm(f.len)}, Zugausgleich ${mm(f.pull, 2)}, Unterlage ${UNDERLAY_NAMES[f.underlay]} – Werte für ${f.name}`);
+    if (f.note) why.push(f.note);
+    if (an) {
+      const thin = an.comps.filter((c) => c.width < THIN_MM).length;
+      const narrow = an.comps.filter((c) => c.width >= THIN_MM && c.width < 5).length;
+      if (thin) why.push(`${thin} schmale ${thin === 1 ? 'Stelle' : 'Stellen'} unter ${mm(THIN_MM)} als Kontur (Steppstich)`);
+      if (narrow && f.underlay !== 'none') why.push('schmale Teilflächen bekommen weniger Unterlage');
+    }
+    return { params, why };
+  }
+
+  const UNDERLAY_NAMES = { none: 'aus', light: 'leicht', normal: 'normal', strong: 'kräftig' };
+
+  /** Höchste sinnvolle Unterlage für eine Teilfläche dieser Breite (schmal = sie schaute seitlich hervor). */
+  const underlayCap = (w) => (w < 1.5 ? 0 : w < 3 ? 1 : w < 5 ? 2 : 3);
+
+  /** Parameter einer Ebene → interne Optionen. */
+  function layerOpts(g, p, kind) {
+    const type = ['fill', 'run', 'triple', 'off'].includes(p.type) ? p.type : kind === 'run' ? 'run' : 'fill';
+    const spacing = clamp(p.spacing, 0.1, 5, 0.22);
+    const len = clamp(p.len, 1, 12, type === 'fill' ? 3.5 : 2.5);
+    const ul = p.underlay === true ? UNDERLAY.normal : UNDERLAY[p.underlay] || null;
+    return {
+      ...g,
+      type,
+      spacing,
+      len,
+      angle: clamp(p.angle, -360, 360, 45),
+      pull: clamp(p.pull, 0, 2, 0.2),
+      underlay: !!ul,
+      underSpacing: ul ? Math.max(ul.min, spacing * ul.mult) : 0,
+      inset: ul ? ul.inset : 0.4,
+      edgeRun: !!(ul && ul.edge),
+      underlayLevel: ul ? UNDERLAY_ORDER.indexOf(p.underlay === true ? 'normal' : p.underlay) : 0,
+      thin: clamp(p.thin, 0, 5, 0),
+      underLen: len, // wie Ink/Stitch: Unterlage mit der Stichlänge des Deckstichs
+      runLen: Math.min(len, 6),
+      maxLen: Math.max(len, 3),
+    };
+  }
+
   /**
    * Stichmuster planen.
-   * layers: [{ rings (mm), hex, kind: 'fill' | 'run' }] – Reihenfolge = Stickreihenfolge
-   * opts: { spacing, len, angle, underlay, pull, trimMm }
-   * Ergebnis: { ops: [{x, y, c}] in 0,1 mm (Mitte = 0), threads: [{hex, rgb}], stats, bounds }
+   * layers: [{ rings (mm), hex, kind: 'fill' | 'run', p?: { type, angle, spacing, len, underlay, pull } }]
+   *   – Reihenfolge = Stickreihenfolge; type: 'fill' Füllstich, 'run' Steppstich (Kontur),
+   *     'triple' Dreifachstich, 'off' nicht sticken; underlay: 'none' | 'light' | 'normal' | 'strong'
+   * opts: Vorgaben für Ebenen ohne p ({ spacing, len, angle, underlay, pull }) und trimMm
+   * Ergebnis: { ops: [{x, y, c, l}] in 0,1 mm (Mitte = 0), threads, layers: [{hex, stitches}], stats, bounds }
    */
   function plan(layers, opts = {}) {
-    const o = {
-      spacing: 0.4, len: 3.5, angle: 45, underlay: true, pull: 0.2, trimMm: 3,
-      ...opts,
+    const g = {
+      trimMm: clamp(opts.trimMm, 0.5, 50, 3),
+      travelLen: 2.5,
+      tieLen: 0.5,
+      overMax: 40, // Verbindungen über schon Gesticktes: höchstens so lang (mm), sonst Sprung/Schnitt
+      maxLen: 3.5,
     };
-    o.spacing = Math.min(5, Math.max(0.15, Number(o.spacing) || 0.4));
-    o.len = Math.min(12, Math.max(1, Number(o.len) || 3.5));
-    o.underSpacing = Math.max(1.2, o.spacing * 4);
-    o.underLen = 3;
-    o.inset = 0.4;
-    o.runLen = Math.min(o.len, 2.5);
-    o.maxLen = Math.max(o.len, 3);
-    o.travelLen = 2.5;
-    o.tieLen = 0.5;
-    o.overMax = 40; // Verbindungen über schon Gesticktes: höchstens so lang (mm), sonst Sprung/Schnitt
-    const pen = makePen(o);
+    const defaults = { spacing: 0.22, len: 4, angle: 45, underlay: 'normal', pull: 0.2, ...opts };
+    const pen = makePen(g);
     const threads = [];
-    for (const l of layers) {
-      if (!l.rings || !l.rings.length) continue;
+    layers.forEach((l, i) => {
+      if (!l.rings || !l.rings.length) return;
+      const o = layerOpts(g, l.p || defaults, l.kind);
+      if (o.type === 'off') return;
       const before = pen.save();
       // gleiche Garnfarbe wie zuvor (z. B. schwarze Fläche + Umrisslinie): ohne Farbwechsel weiter
       const same = threads.length && threads[threads.length - 1].hex.toLowerCase() === String(l.hex).toLowerCase();
       if (threads.length && !same) pen.colorChange();
+      pen.layer = i;
       const mark = pen.ops.length;
-      if (l.kind === 'run') runLayer(pen, l.rings, o);
-      else fillLayer(pen, l.rings, o);
-      if (pen.ops.length === mark) { pen.restore(before); continue; } // nichts gestickt
+      if (o.type === 'fill') fillByWidth(pen, l, o);
+      else runLayer(pen, l.rings, o, null, o.type === 'triple');
+      if (pen.ops.length === mark) { pen.restore(before); return; } // nichts gestickt
       if (!same) threads.push({ hex: l.hex, rgb: hexRgb(l.hex), name: l.name || '' });
-    }
+    });
     pen.end();
-    return finalize(pen.ops, threads);
+    const pat = finalize(pen.ops, threads, layers.length);
+    pat.layers = layers.map((l, i) => ({ hex: l.hex, rgb: hexRgb(l.hex), stitches: pat.perLayer[i] }));
+    return pat;
+  }
+
+  /**
+   * Füllstich einer Ebene, Teilflächen nach Breite: schmaler als thin als Kontur (Steppstich),
+   * die Unterlage je Teilfläche höchstens so kräftig, wie es die Breite zulässt.
+   */
+  function fillByWidth(pen, l, o) {
+    const comps = (l.an && l.an.comps) || components(l.rings);
+    const groups = new Map(); // Unterlagen-Stufe → Polygone; -1 = Kontur
+    for (const c of comps) {
+      const key = o.thin > 0 && c.width < o.thin ? -1 : o.underlay ? Math.min(o.underlayLevel, underlayCap(c.width)) : 0;
+      let g = groups.get(key);
+      if (!g) groups.set(key, (g = []));
+      for (const k of c.rings) g.push(l.rings[k]);
+    }
+    for (const key of [3, 2, 1, 0]) {
+      const rings = groups.get(key);
+      if (!rings) continue;
+      const name = UNDERLAY_ORDER[key];
+      const ul = UNDERLAY[name];
+      fillLayer(pen, rings, {
+        ...o,
+        underlay: !!ul,
+        underSpacing: ul ? Math.max(ul.min, o.spacing * ul.mult) : 0,
+        inset: ul ? ul.inset : 0.4,
+        edgeRun: !!(ul && ul.edge),
+      });
+    }
+    if (groups.has(-1)) runLayer(pen, groups.get(-1), { ...o, runLen: 2 });
   }
 
   /** mm → 0,1 mm (gerundet), Motiv um den Nullpunkt zentriert, doppelte Einstiche entfernt. */
-  function finalize(raw, threads) {
+  function finalize(raw, threads, nLayers = 0) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const p of raw) {
       if (p.c !== STITCH && p.c !== JUMP) continue;
@@ -805,7 +1055,8 @@ const Embroidery = (() => {
       if (p.y > y1) y1 = p.y;
     }
     const ops = [];
-    if (!threads.length || !Number.isFinite(x0)) return { ops, threads: [], stats: { stitches: 0, jumps: 0, trims: 0, colors: 0 }, bounds: [0, 0, 0, 0] };
+    const perLayer = new Array(nLayers).fill(0);
+    if (!threads.length || !Number.isFinite(x0)) return { ops, threads: [], perLayer, stats: { stitches: 0, jumps: 0, trims: 0, colors: 0 }, bounds: [0, 0, 0, 0] };
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     let lx = null, ly = null, prev = null;
     const st = { stitches: 0, jumps: 0, trims: 0, colors: threads.length };
@@ -815,6 +1066,7 @@ const Embroidery = (() => {
       if (p.c === STITCH) {
         if (prev === STITCH && x === lx && y === ly) continue; // gleiche Stelle nach dem Runden
         st.stitches++;
+        if (p.l < nLayers) perLayer[p.l]++;
       } else if (p.c === JUMP) {
         if (prev === JUMP) { ops[ops.length - 1].x = x; ops[ops.length - 1].y = y; lx = x; ly = y; continue; }
         st.jumps++;
@@ -822,7 +1074,7 @@ const Embroidery = (() => {
         if (prev === TRIM) continue;
         st.trims++;
       }
-      ops.push({ x, y, c: p.c });
+      ops.push({ x, y, c: p.c, l: p.l });
       if (p.c === STITCH || p.c === JUMP) {
         lx = x;
         ly = y;
@@ -833,7 +1085,7 @@ const Embroidery = (() => {
       }
       prev = p.c;
     }
-    return { ops, threads, stats: st, bounds: [bx0, by0, bx1, by1] };
+    return { ops, threads, perLayer, stats: st, bounds: [bx0, by0, bx1, by1] };
   }
 
   function hexRgb(hex) {
@@ -1203,28 +1455,35 @@ const Embroidery = (() => {
   /**
    * Zeichnet die Stiche auf ein Canvas (Fadenfarbe, Fadenbreite ca. 0,35 mm).
    * scale = Pixel je 0,1 mm, ox/oy = Lage des Nullpunkts in Pixeln.
+   * highlight: Index einer Ebene, die anderen werden blass gezeichnet (-1 = alle normal).
    */
-  function draw(ctx, pat, scale, ox, oy) {
-    let color = 0, x = null, y = null;
+  function draw(ctx, pat, scale, ox, oy, highlight = -1) {
+    let x = null, y = null, cur = -1;
     const lw = Math.max(0.6, 3.5 * scale);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     const stroke = () => {
-      const t = pat.threads[color];
+      if (cur < 0) return;
+      const t = (pat.layers && pat.layers[cur]) || pat.threads[0];
       const [r, g, b] = t ? t.rgb : [0, 0, 0];
+      ctx.globalAlpha = highlight >= 0 && cur !== highlight ? 0.16 : 1;
       // Rand, darauf der Faden: einzelne Stiche bleiben erkennbar (dunkle Garne mit hellem Rand)
       const dark = 0.299 * r + 0.587 * g + 0.114 * b < 70;
       const edge = (v) => (dark ? v + (255 - v) * 0.4 : v * 0.55) | 0;
       ctx.strokeStyle = `rgb(${edge(r)},${edge(g)},${edge(b)})`;
-      ctx.lineWidth = lw * 1.35;
+      // Faden etwas schmaler als echt (0,35 mm), damit Reihen und Stichrichtung erkennbar bleiben
+      ctx.lineWidth = lw * 1.15;
       ctx.stroke();
       ctx.strokeStyle = `rgb(${r},${g},${b})`;
-      ctx.lineWidth = lw;
+      ctx.lineWidth = lw * 0.6;
       ctx.stroke();
+      ctx.globalAlpha = 1;
     };
     ctx.beginPath();
     for (const p of pat.ops) {
       if (p.c === STITCH) {
+        const l = p.l || 0;
+        if (l !== cur) { stroke(); ctx.beginPath(); cur = l; }
         const px = ox + p.x * scale, py = oy + p.y * scale;
         if (x === null) ctx.moveTo(px, py);
         else { ctx.moveTo(x, y); ctx.lineTo(px, py); }
@@ -1233,16 +1492,15 @@ const Embroidery = (() => {
       } else if (p.c === JUMP) {
         x = ox + p.x * scale;
         y = oy + p.y * scale;
-      } else if (p.c === COLOR) {
-        stroke();
-        ctx.beginPath();
-        color++;
       }
     }
     stroke();
   }
 
-  return { pathToRings, scaleRings, plan, toDst, toPes, draw, pecIndices, CMD: { STITCH, JUMP, TRIM, COLOR, END } };
+  return {
+    pathToRings, scaleRings, plan, analyze, autoParams, FABRICS, UNDERLAY_NAMES, THIN_MM, toDst, toPes, draw, pecIndices,
+    CMD: { STITCH, JUMP, TRIM, COLOR, END },
+  };
 })();
 
 if (typeof module !== 'undefined') module.exports = Embroidery;
