@@ -5,6 +5,31 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.14.0 – 23.11.2026
+
+### Neu
+- **Stickparameter je Farbe:** Eine Automatik stellt jede Farbe passend zu Stoff und Form ein. Der Stichwinkel
+  bekommt die wenigsten Sprünge und möglichst 90° zur Farbe darunter (weniger Lücken), sehr schmale Stellen
+  werden als Kontur gestickt, schmale Flächen bekommen weniger Unterlage. Im Dialog „Je Farbe einstellen…“ mit
+  Stichvorschau (Zoom, andere Farben abblenden) lässt sich jede Farbe von Hand anpassen: Stichart (Füllstich,
+  Stepp- oder Dreifachstich, nicht sticken), Winkel, Reihenabstand, Stichlänge, Zugausgleich und Unterlage.
+- **Stoffe:** Webware, Strick/Jersey, Piqué, Fleece/Sweat, Frottee/Handtuch und Leder/Kunstleder liefern die
+  Grundwerte – abgeglichen mit Wilcom, Ink/Stitch, Brother PE-Design und Fachartikeln.
+- **Sieben Stickerei-Vorlagen:** T-Shirt, Polo-Shirt, Fleece/Sweatshirt, Handtuch, Jeans/Canvas/Tasche,
+  Leder-Patch und Schriftzug einfarbig – mit passender Breite, Stoff, Brother-Garnen und PES-Export.
+- **SVG als Originalbild:** SVG-Dateien lassen sich öffnen, hineinziehen und einfügen; eine Breite in mm, cm
+  oder Zoll wird übernommen.
+- **Modus-Auswahl** als übersichtliche Kacheln mit Symbolen.
+
+### Verbessert
+- **Dichtere Füllung:** Der Reihenabstand ist jetzt der tatsächliche Abstand der Stichreihen (Webware
+  0,22 mm = 4,5 Linien/mm wie in PE-Design). Bisher war die Füllung etwa halb so dicht wie üblich.
+  Stichlänge 4 mm, Zugausgleich je Stoff (Baumwolle 0,20, T-Shirt 0,35, Fleece 0,40 mm).
+
+### Behoben
+- **Kleine helle Flächen fehlten beim Sticken** (z. B. das Weiß in kleinen Augen): Schmale Stellen werden erst
+  unter 0,35 mm als Kontur gestickt, breitere mit Füllstich.
+
 ## 1.13.0 – 23.11.2026
 
 ### Neu
