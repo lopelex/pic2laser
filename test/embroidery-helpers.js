@@ -85,6 +85,7 @@ function motifFiles(key) {
     pes: new Uint8Array(E.toPes(pat, key)),
     dst: new Uint8Array(E.toDst(pat, key)),
     exp: new Uint8Array(E.toExp(pat)),
+    inf: new Uint8Array(E.toInf(pat)),
   };
 }
 
@@ -181,6 +182,29 @@ function readDst(buf) {
 }
 
 /** EXP lesen: 2 Byte je Stich, 0x80-Befehle (01 Farbwechsel, 04 Sprung, 80 Fadenschnitt). */
+/** INF lesen (Farben zu EXP/DST): Kopf 1, 8, Restlänge, Zahl der Farben; je Satz Länge, Nummer, RGB, Nadel, Name, Garnkarte. */
+function readInf(buf) {
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const head = [0, 4, 8, 12].map((o) => dv.getUint32(o, false));
+  const threads = [];
+  let i = 16;
+  for (let k = 0; k < head[3]; k++) {
+    const len = dv.getUint16(i, false);
+    const rec = buf.subarray(i, i + len);
+    const str = (from) => {
+      const end = rec.indexOf(0, from);
+      return { s: Buffer.from(rec.subarray(from, end)).toString('latin1'), next: end + 1 };
+    };
+    const name = str(9), chart = str(name.next);
+    threads.push({
+      len, index: dv.getUint16(i + 2, false), rgb: [rec[4], rec[5], rec[6]], needle: dv.getUint16(i + 7, false),
+      name: name.s, chart: chart.s, used: chart.next,
+    });
+    i += len;
+  }
+  return { head, threads, end: i };
+}
+
 function readExp(buf) {
   const ops = [];
   let x = 0, y = 0;
@@ -260,4 +284,4 @@ function readPes(buf) {
   return { magic, pecAt, hoop, sections, sectionCount, pec: readPec(buf, pecAt) };
 }
 
-module.exports = { E, CMD: E.CMD, MOTIFS, FIXTURES, motifPattern, motifFiles, normalize, readDst, readExp, readPes, readPec };
+module.exports = { E, CMD: E.CMD, MOTIFS, FIXTURES, motifPattern, motifFiles, normalize, readDst, readExp, readInf, readPes, readPec };

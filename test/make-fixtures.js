@@ -16,7 +16,7 @@ const rows = [];
 for (const key of Object.keys(MOTIFS)) {
   const m = MOTIFS[key];
   const f = motifFiles(key);
-  for (const ext of ['pes', 'dst', 'exp']) fs.writeFileSync(path.join(FIXTURES, `${key}.${ext}`), f[ext]);
+  for (const ext of ['pes', 'dst', 'exp', 'inf']) fs.writeFileSync(path.join(FIXTURES, `${key}.${ext}`), f[ext]);
   const codes = E.pecIndices(f.pat.threads);
   const fmt = (v) => v.toFixed(1).replace('.', ',');
   rows.push({
@@ -52,6 +52,7 @@ schneiden am Ende ohnehin.
 | PES | Brother PE-Design oder Artspira | | |
 | DST | Wilcom TrueSizer, Embird oder Hatch | | |
 | EXP | Melco DesignShop | | |
+| EXP + INF | Melco DesignShop 12 (Farben) | | |
 | EXP | Wilcom TrueSizer oder Embird | | |
 
 Je Datei prüfen:
@@ -59,6 +60,8 @@ Je Datei prüfen:
 - [ ] Größe wie in der Tabelle, Motiv nicht gespiegelt oder gedreht (Wellenlinie unten, kleines Quadrat rechts oben)
 - [ ] Stichzahl ungefähr wie in der Tabelle
 - [ ] Farbwechsel an den richtigen Stellen (PES: Farben wie in der Tabelle; DST/EXP: nur die Wechsel)
+- [ ] DesignShop 12 mit \`.inf\` im selben Ordner: Farben genau wie in der Tabelle (Hex-Werte), Namen
+  Rot/Blau/Schwarz – auch für die DST, solange die \`.inf\` daneben liegt
 - [ ] Fadenschnitte vor den langen Sprüngen (Programm zeigt Schnitt-Symbole bzw. zählt sie)
 - [ ] \`sprung\`: der lange Sprung ist ein Sprung (keine Stichlinie quer über den Stoff)
 
@@ -75,6 +78,9 @@ Aus dem Handbuch „Melco OS – Advanced Interface“ (v11):
   Befehl auswertet, zeigt erst der Probestick (siehe unten) – sonst DST verwenden.
 - **Farben:** DST und EXP haben keine Garnfarben, Melco OS zeigt Zufallsfarben je Farbblock. Die Nadel je
   Farbblock in der Farbfolge (Color Sequence) festlegen, Reihenfolge wie in Pic2Laser.
+- **Farben über DesignShop 12:** Zu EXP schreibt Pic2Laser eine INF-Datei (gleicher Name) mit Farbe, Name und
+  Nadel je Farbblock. DesignShop 12 liest sie zu EXP und DST („Color information via an accompanying INF
+  file“). Als OFM gespeichert zeigt auch Melco OS die Farben. Alternativ PES öffnen (Brother-Garne).
 - Stickfeld höchstens 410 × 393 mm (Flachrahmen), Dateien bis 500 KB (EXP ca. 250 000, DST ca. 170 000 Stiche).
 
 ## Stufe 3: Probestick auf der Maschine

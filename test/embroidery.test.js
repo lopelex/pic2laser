@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { E, CMD, MOTIFS, FIXTURES, motifFiles, normalize, readDst, readExp, readPes } = require('./embroidery-helpers');
+const { E, CMD, MOTIFS, FIXTURES, motifFiles, normalize, readDst, readExp, readInf, readPes } = require('./embroidery-helpers');
 
 const { STITCH, JUMP, TRIM, COLOR, END } = CMD;
 const KEYS = Object.keys(MOTIFS);
@@ -127,6 +127,37 @@ for (const key of KEYS) {
   });
 }
 
+/* ---------------- INF (Farben zu EXP/DST) ---------------- */
+
+for (const key of KEYS) {
+  test(`${key}: INF rücklesen – je Farbblock Farbe, Name und Nadel`, () => {
+    const { pat, inf } = files[key];
+    const r = readInf(inf);
+    assert.deepEqual(r.head.slice(0, 2), [1, 8], 'Kopf');
+    assert.equal(r.head[2], inf.length - 12, 'Restlänge im Kopf');
+    assert.equal(r.head[3], pat.threads.length, 'Zahl der Farben');
+    assert.equal(r.end, inf.length, 'Daten nach dem letzten Satz');
+    // Farbblöcke in DST/EXP = Farbwechsel + 1
+    assert.equal(pat.threads.length, pat.ops.filter((p) => p.c === COLOR).length + 1, 'Farben ≠ Farbblöcke der Stichdatei');
+    r.threads.forEach((t, i) => {
+      const want = pat.threads[i];
+      assert.equal(t.index, i, `Satz ${i}: Nummer`);
+      assert.equal(t.needle, i + 1, `Satz ${i}: Nadel`);
+      assert.deepEqual(t.rgb, [...want.rgb], `Satz ${i}: Farbe`);
+      assert.equal(t.name, want.name.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss'), `Satz ${i}: Name`);
+      assert.equal(t.used, t.len, `Satz ${i}: Satzlänge`);
+    });
+  });
+}
+
+test('INF: Umlaute werden umschrieben, nur ASCII im Namen', () => {
+  const pat = { threads: [{ hex: '#123456', rgb: [0x12, 0x34, 0x56], name: 'Grün Fläche' }, { hex: '#abcdef', rgb: [0xab, 0xcd, 0xef], name: '' }] };
+  const r = readInf(new Uint8Array(E.toInf(pat)));
+  assert.equal(r.threads[0].name, 'Gruen Flaeche');
+  assert.equal(r.threads[1].name, '#abcdef', 'ohne Namen: Hex-Wert');
+  assert.ok(r.threads.every((t) => /^[\x20-\x7e]*$/.test(t.name + t.chart)), 'nur ASCII in Name und Garnkarte');
+});
+
 /* ---------------- PES / PEC ---------------- */
 
 for (const key of KEYS) {
@@ -213,7 +244,7 @@ test('EXP: Stich bis 12,7 mm je Achse in einem Schritt, 0x80 nie als Stichbyte',
 /* ---------------- Referenzdateien ---------------- */
 
 for (const key of KEYS) {
-  for (const ext of ['pes', 'dst', 'exp']) {
+  for (const ext of ['pes', 'dst', 'exp', 'inf']) {
     test(`${key}.${ext} entspricht der Referenzdatei`, () => {
       const file = path.join(FIXTURES, `${key}.${ext}`);
       assert.ok(fs.existsSync(file), `${file} fehlt – npm run test:fixtures`);
@@ -239,22 +270,27 @@ function findPython() {
   return null;
 }
 
-test('pyembroidery liest PES, DST und EXP wie geplant', (t) => {
+test('pyembroidery liest PES, DST, EXP und INF wie geplant', (t) => {
   const py = findPython();
   if (!py) {
     if (process.env.REQUIRE_PYEMBROIDERY) assert.fail('pyembroidery fehlt (pip install pyembroidery)');
     t.skip('pyembroidery nicht installiert – pip install pyembroidery');
     return;
   }
-  const paths = KEYS.flatMap((k) => ['pes', 'dst', 'exp'].map((e) => path.join(FIXTURES, `${k}.${e}`)));
+  const paths = KEYS.flatMap((k) => ['pes', 'dst', 'exp', 'inf'].map((e) => path.join(FIXTURES, `${k}.${e}`)));
   const out = JSON.parse(execFileSync(py, [path.join(__dirname, 'pyembroidery_dump.py'), ...paths], { maxBuffer: 1 << 28 }).toString());
   const C = { STITCH, JUMP, TRIM, COLOR, END };
   for (const p of paths) {
     const r = out[p];
     assert.ok(r, `pyembroidery kann ${path.basename(p)} nicht lesen`);
+    const [key, ext] = path.basename(p).split('.');
+    if (ext === 'inf') {
+      const want = [...files[key].pat.threads].map((t) => [...t.rgb]); // [...]: vm-Kontext
+      assert.deepEqual(r.colors.map((c) => c.slice(0, 3)), want, `${path.basename(p)}: Farben`);
+      continue;
+    }
     const unknown = r.ops.filter((o) => !(o.c in C));
     assert.equal(unknown.length, 0, `${path.basename(p)}: unbekannte Befehle ${[...new Set(unknown.map((o) => o.c))]}`);
-    const [key, ext] = path.basename(p).split('.');
     sameSeq(normalize(r.ops.map((o) => ({ ...o, c: C[o.c] }))), expected(files[key].pat, ext), `pyembroidery ${path.basename(p)}`);
     if (ext === 'pes') assert.equal(r.threads, files[key].pat.threads.length, `${path.basename(p)}: Zahl der Garne`);
   }
