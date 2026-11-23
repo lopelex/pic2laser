@@ -1,12 +1,12 @@
 'use strict';
 
-/* global Processing, Encoders, Segmentation, Sine */
+/* global Processing, Encoders, Segmentation, Sine, Colors */
 
 /**
  * Web Worker für die rechenintensive Bildverarbeitung, damit die Oberfläche
  * während der Berechnung bedienbar bleibt.
  */
-importScripts('processing.js', 'encoders.js', 'segmentation.js', 'wasm/sine-wasm.js', 'sine.js');
+importScripts('processing.js', 'encoders.js', 'segmentation.js', 'wasm/sine-wasm.js', 'sine.js', 'colors.js');
 
 const handlers = {
   /**
@@ -14,6 +14,7 @@ const handlers = {
    * payload: { source, mask (Freistellen), lineMask (nur für die Motivkontur), s: Einstellungen }
    */
   async render({ source, mask, lineMask, textSource, s }) {
+    if (s.mode === 'color') return renderColor({ source, mask, lineMask, textSource, s });
     let { w, h, bits, gray8, alpha8, alpha } = Processing.process(source, s, mask, textSource);
     if (textSource) textSource.close();
     // Wellen: Sinuswellen als Linien (SVG) plus gerastert (Rasterexporte, Vereinigen, Umrisslinie)
@@ -47,19 +48,7 @@ const handlers = {
       }
     }
 
-    if (s.outline) {
-      let src = bits;
-      if (alpha) {
-        src = new Uint8Array(alpha.length);
-        for (let i = 0; i < alpha.length; i++) src[i] = alpha[i] >= 0.5 ? 1 : 0;
-      } else if (gray8) {
-        src = new Uint8Array(gray8.length);
-        for (let i = 0; i < gray8.length; i++) src[i] = gray8[i] < 250 ? 1 : 0;
-      }
-      const mmPerPx = s.widthMm / w;
-      const sil = Processing.silhouette(src, w, h, s.outlineOffsetMm / mmPerPx, s.outlineCloseMm / mmPerPx);
-      out.sil = { w: sil.w, h: sil.h, pad: sil.pad, bits: sil.bits };
-    }
+    if (s.outline) out.sil = outlineSilhouette(s, w, h, bits, alpha, gray8);
 
     const transfer = [out.bits, out.gray8, out.alpha8, out.imagePng, out.sil && out.sil.bits]
       .filter(Boolean)
@@ -150,6 +139,64 @@ const handlers = {
     return { result: bitmap, transfer: [bitmap] };
   },
 };
+
+/** Silhouette für die Umrisslinie: Freistellmaske, sonst die gravierten bzw. nicht weißen Pixel. */
+function outlineSilhouette(s, w, h, bits, alpha, gray8) {
+  let src = bits;
+  if (alpha) {
+    src = new Uint8Array(alpha.length);
+    for (let i = 0; i < alpha.length; i++) src[i] = alpha[i] >= 0.5 ? 1 : 0;
+  } else if (gray8) {
+    src = new Uint8Array(gray8.length);
+    for (let i = 0; i < gray8.length; i++) src[i] = gray8[i] < 250 ? 1 : 0;
+  }
+  const mmPerPx = s.widthMm / w;
+  const sil = Processing.silhouette(src, w, h, s.outlineOffsetMm / mmPerPx, s.outlineCloseMm / mmPerPx);
+  return { w: sil.w, h: sil.h, pad: sil.pad, bits: sil.bits };
+}
+
+/**
+ * Modus Farben: Bild in Farbflächen zerlegen (Colors.separate) und je sichtbarer Farbe eine
+ * Binärmaske zum Vektorisieren liefern (colorMasks, Reihenfolge = colorLayers, von unten nach oben).
+ * bits: alle sichtbaren Farben zusammen (für die Umrisslinie).
+ */
+function renderColor({ source, mask, lineMask, textSource, s }) {
+  if (textSource) textSource.close();
+  if (lineMask) lineMask.close();
+  const { w, h, rgba, opaque } = Processing.processColor(source, s, mask);
+  source.close();
+  if (mask) mask.close();
+  const mmPerPx = s.widthMm / w;
+  const { labels, layers } = Colors.separate(rgba, opaque, w, h, {
+    count: s.colorCount,
+    palette: s.colorPalette,
+    smoothPasses: (Number(s.colorSmoothMm) || 0) / mmPerPx,
+    minAreaPx: (Number(s.colorMinAreaMm2) || 0) / (mmPerPx * mmPerPx),
+    skipBg: !!s.colorSkipBg,
+    edits: s.colorEdits,
+  });
+  const masks = Colors.layerMasks(labels, w, h, layers, (Number(s.colorOverlapMm) || 0) / mmPerPx, Processing.dilate);
+  const bits = new Uint8Array(w * h);
+  for (const m of masks) for (let i = 0; i < bits.length; i++) if (m.bits[i]) bits[i] = 1;
+  let total = 0;
+  for (const l of layers) total += l.area;
+  const colorLayers = layers.map((l) => ({ ...l, share: total ? l.area / total : 0 }));
+  const out = {
+    w, h, bits, gray8: null, alpha8: null, trace: false, imagePng: null, imageB64: null, sil: null, strokePath: null,
+    colorLayers,
+    colorMasks: s.outline && s.outlineOnly ? [] : masks.map((m) => m.bits),
+  };
+  if (s.outline) {
+    let src = null;
+    if (mask) {
+      src = new Uint8Array(w * h);
+      for (let i = 0; i < src.length; i++) src[i] = opaque[i];
+    }
+    out.sil = outlineSilhouette(s, w, h, src || bits, null, null);
+  }
+  const transfer = [bits, ...out.colorMasks, out.sil && out.sil.bits].filter(Boolean).map((a) => a.buffer);
+  return { result: out, transfer };
+}
 
 /**
  * Gespeichertes Ergebnis-SVG (siehe Encoders.svgDocument) auf w × h zeichnen und als Schwärze

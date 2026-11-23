@@ -28,6 +28,16 @@ const DEFAULTS = Object.freeze({
   fmtPng: false,
   fmtJpg: false,
   fmtBmp: false,
+  fmtPes: false, // Stickdatei Brother
+  fmtDst: false, // Stickdatei Tajima
+  // Stickdatei (PES/DST): Füllstich und Umrisslinie
+  embSpacing: 0.4, // Reihenabstand im Füllstich (mm)
+  embLen: 3.5, // längster Stich im Füllstich (mm)
+  embAngle: 45, // Stichrichtung (Grad)
+  embPull: 0.2, // Zugausgleich je Reihenende (mm)
+  embTrimMm: 3, // längere Sprünge mit Fadenschnitt
+  embUnderlay: true, // Unterlage quer zur Stichrichtung
+  embPreview: false, // Stiche statt Flächen in der Vorschau
   // Freistellen
   bgRemove: 'none',
   maskThreshold: 0.5,
@@ -63,6 +73,14 @@ const DEFAULTS = Object.freeze({
   sineDirection: 'h', // 'h' = waagrecht, 'v' = senkrecht
   sineSkipWhite: false, // weiße Flächen auslassen (keine Linie)
   sineNormalize: true, // Helligkeitsumfang des Bildes auf die Wellendichte strecken
+  // Farben (Farbflächen, z. B. für Stickerei)
+  colorCount: 0, // Anzahl Farben, 0 = automatisch
+  colorPalette: 'image', // 'image' = Bildfarben, 'brother' = Brother-Garnfarben
+  colorSmoothMm: 0.15, // Kanten glätten (Mehrheitsfilter)
+  colorMinAreaMm2: 0.5, // kleinere Flächen gehen in der Nachbarfarbe auf
+  colorOverlapMm: 0.1, // untere Ebenen reichen so weit unter die oberen
+  colorSkipBg: true, // Hintergrundfarbe (überwiegt am Bildrand) weglassen
+  colorEdits: [], // je Bild: [{ from, to?, off?, into? }] – Farben ausblenden, umfärben, zusammenführen
   // Umrisslinie
   outline: false,
   outlineOffsetMm: 2,
@@ -123,6 +141,7 @@ const ZOOM_MAX = 16;
 const MODE_HINTS = {
   vector: 'Ideal für Logos, Schriften, Strichzeichnungen und Silhouetten. Ergebnis sind echte Vektorpfade – in LightBurn als Füllung (Fill) gravieren.',
   edges: 'Zeichnet die Kanten und Randkonturen des Bildes als Linien nach – ergibt eine Strichzeichnung als Vektor. In LightBurn als Füllung (Fill) gravieren.',
+  color: 'Zerlegt das Bild in wenige Farbflächen – je Farbe eine eigene Ebene im SVG. Für Stickerei (Ink/Stitch, Hatch, Wilcom …) und Laser mit mehreren Farben/Ebenen.',
   sine: 'Zeichnet das Bild mit Sinuswellen: dunkle Stellen ergeben dichte Wellen, helle flache Linien. Ergebnis sind Vektorlinien – in LightBurn im Modus Linie (Line) gravieren.',
   relief: 'Erzeugt per KI eine Tiefenkarte des Fotos als Graustufenbild – für 3D-Reliefgravur in Holz (Laserleistung bestimmt die Tiefe).',
   dither: 'Ideal für Fotos. Graustufen werden in Punktmuster umgewandelt. Für LightBurn am besten zusätzlich PNG/BMP exportieren und als Bild im Modus „Passthrough" gravieren.',
@@ -165,6 +184,12 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
  * Standardwerte ergänzen. Ältere Einstellungen/Presets ohne Hauptschalter für die Restaurierung:
  * eingeschaltet, sobald eine Restaurierungsoption aktiv ist.
  */
+/** Exportformate und Stickeinstellungen: ändern das berechnete Ergebnis nicht, bleiben bei Vorlagen erhalten. */
+const isOutputKey = (k) => k.startsWith('fmt') || k.startsWith('emb');
+const outputPrefs = (s) => Object.fromEntries(Object.keys(DEFAULTS).filter(isOutputKey).map((k) => [k, s[k]]));
+const laserFormats = (s) => s.fmtSvg || s.fmtPng || s.fmtJpg || s.fmtBmp;
+const embFormats = (s) => s.fmtPes || s.fmtDst;
+
 function withDefaults(settings = {}) {
   const restoreOn = settings.restoreOn ?? !!(settings.restoreDenoise || settings.restoreScratches || settings.restoreFaces);
   return { ...DEFAULTS, ...settings, restoreOn };
@@ -207,6 +232,15 @@ const FORMATTERS = {
   sineAmplitude: (v) => `${Math.round(Number(v) * 200)} %`,
   sineDensity: (v) => `${Number(v).toFixed(1).replace('.', ',')} / mm`,
   sineMinDensity: (v) => (Number(v) ? `${Number(v).toFixed(1).replace('.', ',')} / mm` : 'gerade'),
+  colorCount: (v) => (Number(v) ? String(v) : 'Auto'),
+  colorSmoothMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
+  colorMinAreaMm2: (v) => (Number(v) ? `${Number(v).toFixed(1).replace('.', ',')} mm²` : 'aus'),
+  colorOverlapMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
+  embSpacing: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
+  embLen: (v) => `${Number(v).toFixed(1).replace('.', ',')} mm`,
+  embAngle: (v) => `${v}°`,
+  embPull: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
+  embTrimMm: (v) => `${Number(v).toFixed(1).replace('.', ',')} mm`,
   sineStrokeMm: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
   outlineOffsetMm: (v) => `${Number(v).toFixed(1)} mm`,
   shapeTolMm: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
@@ -248,6 +282,7 @@ function syncControls() {
   }
   for (const btn of $$('#mode button')) btn.classList.toggle('active', btn.dataset.value === s.mode);
   for (const g of $$('[data-mode]')) g.hidden = !g.dataset.mode.split(' ').includes(s.mode);
+  if (!embFormats(s)) $('#emb-group').hidden = true; // Stickeinstellungen nur mit PES/DST
   for (const el of $$('[data-algo]')) el.hidden = s.ditherAlgo !== el.dataset.algo;
   for (const el of $$('[data-bg]')) el.hidden = !el.dataset.bg.split(' ').includes(s.bgRemove);
   for (const el of $$('[data-edge]')) el.hidden = el.dataset.edge !== s.edgeMethod;
@@ -341,7 +376,9 @@ function setSetting(key, value) {
   syncControls();
   if (key === 'bgSeeds' || key === 'samPoints' || key === 'bgRemove') renderMarkers();
   updatePresetHint();
-  if (!key.startsWith('fmt')) {
+  if (key.startsWith('emb') || key === 'fmtPes' || key === 'fmtDst') {
+    scheduleEmbRefresh(); // Stiche neu planen (Vorschau, Herausziehen) – ohne neue Berechnung
+  } else if (!key.startsWith('fmt')) {
     state.cancelRetries = 0; // neue Eingabe: wieder Neustarts erlauben
     dragReady = false; // bis zum neuen Ergebnis nicht das veraltete herausziehen
     scheduleProcess();
@@ -381,6 +418,7 @@ function bindControls() {
   }
   $('#btn-clear-seeds').addEventListener('click', () => setSetting('bgSeeds', []));
   $('#btn-clear-sam').addEventListener('click', () => setSetting('samPoints', []));
+  $('#btn-color-reset').addEventListener('click', () => setSetting('colorEdits', []));
 
   // Anzeige: entfernten Hintergrund rot markieren oder ausblenden (nur Vorschau)
   $('#bg-hide').checked = ui.hideBackground;
@@ -446,8 +484,9 @@ function bindControls() {
   });
 
   $('#btn-reset').addEventListener('click', () => {
-    const keep = { fmtSvg: state.settings.fmtSvg, fmtPng: state.settings.fmtPng, fmtJpg: state.settings.fmtJpg, fmtBmp: state.settings.fmtBmp };
-    state.settings = { ...DEFAULTS, ...keep, bgSeeds: [], samPoints: [] };
+    const keep = outputPrefs(state.settings);
+    for (const k of Object.keys(keep)) if (k.startsWith('emb')) delete keep[k]; // Stickeinstellungen zurücksetzen
+    state.settings = { ...DEFAULTS, ...keep, bgSeeds: [], samPoints: [], colorEdits: [] };
     state.activePreset = null;
     state.cancelRetries = 0;
     dragReady = false;
@@ -721,10 +760,31 @@ const BUILTIN_PRESETS = [
     desc: 'Dunkle Flächen einer Grafik werden mit gleichmäßigen Wellen gefüllt, Weiß bleibt leer – Wellen-Effekt für Logos und Schattenrisse.',
     settings: { mode: 'sine', sineSkipWhite: true, sineSpacingMm: 1.2, sineAmplitude: 0.45, sineDensity: 1.2, contrast: 40, blur: 0.3 },
   },
+  // ---- Farben (Farbflächen je Ebene) ----
+  {
+    group: 'Farben & Stickerei', name: 'Farbiges Logo – Farbflächen',
+    desc: 'Erkennt die Farben eines Logos automatisch, je Farbe eine Ebene im SVG; weißer Hintergrund entfällt. Für LightBurn mit mehreren Ebenen oder als Vorlage fürs Sticken.',
+    settings: { mode: 'color', colorCount: 0, workRes: 2000 },
+  },
+  {
+    group: 'Farben & Stickerei', name: 'Stickerei – Logo mit Brother-Garnen',
+    desc: 'Farben rasten auf Brother-Garne ein, 0,3 mm Überlappung gegen Lücken durch Stoffverzug, Flächen unter 2 mm² entfallen. SVG in Ink/Stitch, Hatch oder Wilcom öffnen und Sticharten zuweisen.',
+    settings: { mode: 'color', colorCount: 0, colorPalette: 'brother', colorOverlapMm: 0.3, colorMinAreaMm2: 2, colorSmoothMm: 0.3, workRes: 2000, alphaMax: 1.1 },
+  },
+  {
+    group: 'Farben & Stickerei', name: 'Comic / Illustration – 8 Farben',
+    desc: 'Grafiken mit vielen Farben auf 8 Farbflächen reduziert, Rauschen leicht geglättet.',
+    settings: { mode: 'color', colorCount: 8, blur: 0.4, colorSmoothMm: 0.25, colorMinAreaMm2: 1.5, workRes: 2000 },
+  },
+  {
+    group: 'Farben & Stickerei', name: 'Foto als Farbposter – 6 Farben',
+    desc: 'Foto stark vereinfacht zu 6 ruhigen Farbflächen (Poster-Effekt). Mit Freistellen bleibt nur das Motiv.',
+    settings: { mode: 'color', colorCount: 6, colorSkipBg: false, blur: 1.5, colorSmoothMm: 0.5, colorMinAreaMm2: 4, turdSize: 10, alphaMax: 1.2, optTolerance: 0.4 },
+  },
 ];
 
 // Werte, die zum einzelnen Bild gehören und nicht in Presets gespeichert werden
-const PER_IMAGE_KEYS = ['bgSeeds', 'samPoints'];
+const PER_IMAGE_KEYS = ['bgSeeds', 'samPoints', 'colorEdits'];
 
 function presetSettingsFromCurrent() {
   const out = { ...state.settings };
@@ -742,12 +802,13 @@ function applyPreset(key) {
   if (!preset) return;
   const cur = state.settings;
   const keep = kind === 'builtin'
-    ? { widthMm: cur.widthMm, fmtSvg: cur.fmtSvg, fmtPng: cur.fmtPng, fmtJpg: cur.fmtJpg, fmtBmp: cur.fmtBmp }
+    ? { widthMm: cur.widthMm, ...outputPrefs(cur) }
     : {};
   state.settings = {
     ...withDefaults({ ...keep, ...preset.settings }),
     bgSeeds: cur.bgSeeds,
     samPoints: cur.samPoints,
+    colorEdits: cur.colorEdits,
   };
   state.activePreset = { key, settings: presetSettingsFromCurrent() };
   state.cancelRetries = 0;
@@ -898,7 +959,7 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   if (settings) {
     state.settings = withDefaults(settings);
   } else {
-    state.settings = { ...state.settings, bgSeeds: [], samPoints: [] }; // Klickpunkte gelten nur für ein Bild
+    state.settings = { ...state.settings, bgSeeds: [], samPoints: [], colorEdits: [] }; // Klickpunkte und Farbänderungen gelten nur für ein Bild
   }
   persistSettings();
 
@@ -1074,8 +1135,8 @@ const isCancelled = (err) => !!err && (err.cancelled || /cancelled$/.test(String
 
 let processTimer = null;
 
-/** Kennung der Einstellungen ohne Exportformate (die ändern das Ergebnis nicht). */
-const resultSig = (s) => JSON.stringify(Object.keys(s).filter((k) => !k.startsWith('fmt')).sort().map((k) => [k, s[k]]));
+/** Kennung der Einstellungen ohne Exportformate und Stickeinstellungen (die ändern das Ergebnis nicht). */
+const resultSig = (s) => JSON.stringify(Object.keys(s).filter((k) => !isOutputKey(k)).sort().map((k) => [k, s[k]]));
 
 /** Passt das angezeigte Ergebnis noch zu den aktuellen Einstellungen? */
 const resultIsCurrent = (r) => !!r && !!r.settings && resultSig(r.settings) === resultSig(state.settings) && !state.mergePending;
@@ -1250,12 +1311,12 @@ const KEYS = {
   smooth: (up) => `upscale:smooth:${up}`, // „Glatte Konturen“: Vergrößerung nur für die Fläche
 };
 
-const textWanted = (s) => s.textClean && s.mode !== 'relief' && s.mode !== 'sine';
+const textWanted = (s) => s.textClean && s.mode !== 'relief' && s.mode !== 'sine' && s.mode !== 'color';
 
 /** Maske, auf die sich die Texterkennung bezieht (null = ganzes Bild). */
 const textMaskKey = (s) => (s.textOrder === 'after' ? maskKeyFor(s) : null);
 
-const facesWanted = (s) => s.faceBoost && s.mode !== 'relief';
+const facesWanted = (s) => s.faceBoost && s.mode !== 'relief' && s.mode !== 'color';
 const faceMaskKey = (s) => (s.faceOrder === 'after' ? maskKeyFor(s) : null);
 
 /** Schlüssel der Freistellmaske für die aktuellen Einstellungen (null = keine Maske). */
@@ -1481,16 +1542,16 @@ function planSteps(s) {
     const model = AI.depthModel(s.depthModel);
     add('depth', MODEL_NAMES[model], model, (work.w * sc * work.h * sc) / 1e6, DEPTH_SEED_MS[model], KEYS.depth(up, s.depthRes, model));
   }
-  if (s.subjectLine && !maskKey && s.mode !== 'relief' && s.mode !== 'sine') {
+  if (s.subjectLine && !maskKey && s.mode !== 'relief' && s.mode !== 'sine' && s.mode !== 'color') {
     add('contour', 'Motivkontur', `seg:ai`, 1, SEG_SEED_MS.ai, KEYS.seg('ai', up));
   }
 
   const out = Processing.targetSize(src.w, src.h, s);
   const mp = (out.w * out.h) / 1e6;
   const variant = s.mode === 'edges' ? `:${s.edgeMethod}` : s.mode === 'dither' ? `:${s.ditherAlgo}` : '';
-  const renderSeed = { vector: 250, edges: s.edgeMethod === 'ai' ? 300 : 700, dither: 700, relief: 250, sine: 400 }[s.mode] + (s.outline ? 1500 : 0);
+  const renderSeed = { vector: 250, edges: s.edgeMethod === 'ai' ? 300 : 700, dither: 700, relief: 250, sine: 400, color: 900 }[s.mode] + (s.outline ? 1500 : 0);
   add('render', 'Bildverarbeitung', `render:${s.mode}${variant}${s.outline ? '+outline' : ''}`, mp, renderSeed);
-  if (!(s.outline && s.outlineOnly) && (s.mode === 'vector' || s.mode === 'edges')) {
+  if (!(s.outline && s.outlineOnly) && (s.mode === 'vector' || s.mode === 'edges' || s.mode === 'color')) {
     add('trace', 'Vektorisierung', `trace:${s.mode}${variant}`, mp, 1000);
   }
   if (s.outline) add('trace-outline', 'Umrisslinie', 'trace-outline', mp, 300);
@@ -1572,13 +1633,13 @@ async function runProcess() {
 
     // Motivkontur ohne Freistellen: Grenze per schneller KI ermitteln, Hintergrund bleibt erhalten
     let lineMask = null;
-    if (s.subjectLine && !mask && s.mode !== 'relief' && s.mode !== 'sine') {
+    if (s.subjectLine && !mask && s.mode !== 'relief' && s.mode !== 'sine' && s.mode !== 'color') {
       lineMask = await contourMask(s, work);
       if (stale()) return;
     }
 
     // 4. Rasterverarbeitung im Worker (blockiert die Oberfläche nicht)
-    let { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil, strokePath } =
+    let { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil, strokePath, colorLayers, colorMasks } =
       await Run.track('render', Pipeline.render(source, mask, s, lineMask, textSourceFor(s, source, work)));
     if (stale()) return;
     const widthMm = Math.max(0.1, s.widthMm);
@@ -1594,9 +1655,12 @@ async function runProcess() {
     state.dpiWarn = dpiWarn;
 
     // 5. Vektorisierung (Potrace im eigenen Prozess) – Füllung und Umrisslinie parallel
-    const fillJob = trace
-      ? Run.track('trace', window.api.trace({ bits, w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
-      : null;
+    // Modus Farben: alle Farbebenen in einem Auftrag (ein Pfad je Ebene)
+    const fillJob = colorMasks && colorMasks.length
+      ? Run.track('trace', window.api.trace({ layers: colorMasks, w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
+      : trace
+        ? Run.track('trace', window.api.trace({ bits, w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
+        : null;
     const outlineJob = sil
       ? Run.track('trace-outline', window.api.trace({ bits: sil.bits, w: sil.w, h: sil.h }, {
         turdSize: Math.round(sil.w * sil.h * 0.0005), // Kleinteile ignorieren
@@ -1609,7 +1673,13 @@ async function runProcess() {
     if (stale()) return;
     if (fillRes.status === 'rejected') throw fillRes.reason;
     if (outlineRes.status === 'rejected') throw outlineRes.reason;
-    const fillPath = fillRes.value;
+    const colors = colorLayers ? colorSvgLayers(colorLayers, fillRes.value || []) : null;
+    const fillPath = colors ? null : fillRes.value;
+    // Farben: Rasterexporte, Vorschaubild und Herausziehen zeigen genau die vektorisierten Flächen
+    const rgba8 = colors ? rasterizeColors(colors, w, h) : null;
+    if (colorLayers && !colors.some((c) => c.d) && !(s.outline && s.outlineOnly)) {
+      toast(colorLayers.length ? 'Alle Farben sind ausgeblendet – das Ergebnis ist leer.' : 'Keine Farben gefunden – das Bild ist leer oder vollständig freigestellt.', true);
+    }
     // Formen begradigt: Rasterexporte (PNG/JPG/BMP) und Vereinigen sollen dieselben Formen zeigen wie das SVG
     if (s.shapeFit && fillPath && bits) bits = rasterizePath(fillPath, w, h);
     // leere Silhouette (alles unter der Mindestgröße): keine Umrisslinie – sonst hätte das SVG einen Rand, die Rasterbilder nicht
@@ -1618,14 +1688,16 @@ async function runProcess() {
 
     const stroke = strokePath != null ? { d: strokePath, width: s.sineStrokeMm / mmPerPx } : null;
     if (stroke && !stroke.d) toast('Keine Wellen – das Bild ist vollständig weiß.', true);
-    const doc = { w, h, widthMm, fillPath, imageB64, stroke, outline };
+    const doc = { w, h, widthMm, fillPath, imageB64, stroke, colors, outline };
     const svg = Encoders.svgDocument(doc);
     const previewSvg = Encoders.svgDocument({ ...doc, preview: true });
 
     const pad = outline ? outline.pad : 0;
     const totalW = (w + 2 * pad) * mmPerPx, totalH = (h + 2 * pad) * mmPerPx;
     state.baseResult = {
-      w, h, bits, gray8, alpha8, svg, widthMm, heightMm, dpi, mode: s.mode,
+      w, h, bits, gray8, alpha8, rgba8, svg, widthMm, heightMm, dpi, mode: s.mode,
+      colorLayers: colorLayers || null, // Modus Farben: Ebenen für die Farbliste
+      emb: embSource({ mode: s.mode, colors, fillPath, outline, outlineOnly: !!(s.outline && s.outlineOnly), mmPerPx }),
       // Relief: eigene Option „Weißen Hintergrund transparent“ (gilt für PNG/SVG)
       transparent: s.mode === 'relief' ? !!alpha8 : s.transparent,
       mmPerPx, outline, outlineOnly: !!(s.outline && s.outlineOnly), // für Rasterexporte mit Umrisslinie
@@ -1638,6 +1710,7 @@ async function runProcess() {
         : { blob: new Blob([previewSvg], { type: 'image/svg+xml' }), pixelated: false },
     };
     state.cancelRetries = 0;
+    renderColorList();
     await composeMerged(true); // mit Historie-Eintrag vereinigen (falls gewählt) und anzeigen
     if (stale()) return;
 
@@ -1716,6 +1789,154 @@ function rasterizePath(d, w, h) {
   const bits = new Uint8Array(w * h);
   for (let p = 0, i = 3; p < bits.length; p++, i += 4) bits[p] = data[i] >= 128 ? 1 : 0;
   return bits;
+}
+
+/**
+ * Modus Farben: Ebenen fürs SVG (Pfad, Farbe, Name) – Reihenfolge von unten nach oben,
+ * nur sichtbare Farben (paths gehört zu den sichtbaren Ebenen in dieser Reihenfolge).
+ */
+function colorSvgLayers(layers, paths) {
+  const vis = layers.filter((l) => !l.off);
+  return vis.map((l, i) => ({ d: String(paths[i] || '').trim(), hex: l.hex, label: `${i + 1} ${l.name} (${l.hex})` }));
+}
+
+/** Farbebenen (SVG-Pfade) als RGBA-Bild w × h, leere Stellen transparent. */
+function rasterizeColors(colors, w, h) {
+  const canvas = new OffscreenCanvas(w, h);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  for (const c of colors) {
+    if (!c.d) continue;
+    ctx.fillStyle = c.hex;
+    ctx.fill(new Path2D(c.d), 'evenodd');
+  }
+  return ctx.getImageData(0, 0, w, h).data;
+}
+
+/* ---- Stickdateien (PES/DST) ---- */
+
+/**
+ * Vektordaten fürs Sticken: Farbflächen bzw. die Fläche (schwarz) als Füllstich, die Umrisslinie
+ * als Steppstich. Nur Modi mit Vektorflächen (Fläche, Linien, Farben).
+ */
+function embSource({ mode, colors, fillPath, outline, outlineOnly, mmPerPx }) {
+  if (!['vector', 'edges', 'color'].includes(mode)) return null;
+  const layers = [];
+  if (!outlineOnly) {
+    if (colors) {
+      for (const c of colors) if (c.d) layers.push({ d: c.d, hex: c.hex, name: c.label, kind: 'fill', pad: 0 });
+    } else if (fillPath && String(fillPath).trim()) {
+      layers.push({ d: fillPath, hex: '#000000', name: 'Fläche', kind: 'fill', pad: 0 });
+    }
+  }
+  // Umrisslinie: Pfad im Koordinatensystem des erweiterten Bildes (Bild bei pad/pad)
+  if (outline && outline.d) layers.push({ d: outline.d, hex: '#000000', name: 'Umrisslinie', kind: 'run', pad: outline.pad || 0 });
+  return layers.length ? { layers, mmPerPx } : null;
+}
+
+const embOptions = (s) => ({
+  spacing: s.embSpacing, len: s.embLen, angle: s.embAngle, pull: s.embPull, trimMm: s.embTrimMm, underlay: !!s.embUnderlay,
+});
+
+/** Geplante Stiche des Ergebnisses (zwischengespeichert je Stickeinstellungen). */
+function stitchPattern(r, s = state.settings) {
+  if (!r || !r.emb) return null;
+  const opts = embOptions(s);
+  const key = JSON.stringify(opts);
+  if (r.embCache && r.embCache.key === key) return r.embCache.pat;
+  const { layers, mmPerPx } = r.emb;
+  if (!r.emb.rings) {
+    r.emb.rings = layers.map((l) => Embroidery.scaleRings(
+      Embroidery.pathToRings(l.d, 0.3 / mmPerPx), mmPerPx, -l.pad * mmPerPx, -l.pad * mmPerPx,
+    ));
+  }
+  const pat = Embroidery.plan(layers.map((l, i) => ({ rings: r.emb.rings[i], hex: l.hex, kind: l.kind, name: l.name })), opts);
+  pat.widthMm = (pat.bounds[2] - pat.bounds[0]) / 10;
+  pat.heightMm = (pat.bounds[3] - pat.bounds[1]) / 10;
+  r.embCache = { key, pat };
+  return pat;
+}
+
+const EMB_MAX_MM = 400; // größere Motive passen in keinen Stickrahmen (und sprengen PES-Sprünge)
+
+/** PES/DST-Dateien des Ergebnisses (leer, wenn nicht gewählt oder nichts zu sticken). */
+function embroideryFiles(r, s) {
+  if (!embFormats(s) || !r.emb) return [];
+  const pat = stitchPattern(r, s);
+  if (!pat || !pat.stats.stitches || Math.max(pat.widthMm, pat.heightMm) > EMB_MAX_MM) return [];
+  const files = [];
+  if (s.fmtPes) files.push({ ext: 'pes', data: Embroidery.toPes(pat, baseName()) });
+  if (s.fmtDst) files.push({ ext: 'dst', data: Embroidery.toDst(pat, baseName()) });
+  return files;
+}
+
+/** Hinweis, warum keine Stickdatei entsteht (oder null). */
+function embroideryProblem(r, s) {
+  if (!embFormats(s)) return null;
+  if (!r.emb) {
+    return ['vector', 'edges', 'color'].includes(r.mode) || r.merge
+      ? 'Keine Stickdatei – das Ergebnis ist leer.'
+      : 'PES/DST gibt es nur in den Modi Fläche, Linien und Farben.';
+  }
+  const pat = stitchPattern(r, s);
+  if (!pat || !pat.stats.stitches) return 'Keine Stickdatei – die Flächen sind zu klein für Stiche.';
+  if (Math.max(pat.widthMm, pat.heightMm) > EMB_MAX_MM) return `Keine Stickdatei – das Motiv ist größer als ${EMB_MAX_MM} mm. Breite unter „Ausgabegröße“ verringern.`;
+  return null;
+}
+
+/** Stiche als Vorschaubild (Fadenfarben, gleicher Maßstab wie das Ergebnis, höchstens 2400 px). */
+async function stitchPreviewBlob(r, s) {
+  const pat = stitchPattern(r, s);
+  if (!pat || !pat.stats.stitches) return null;
+  const [x0, y0, x1, y1] = pat.bounds;
+  const margin = 12;
+  const scale = Math.min(0.1 / r.emb.mmPerPx, 2400 / Math.max(1, x1 - x0), 2400 / Math.max(1, y1 - y0)); // px je 0,1 mm
+  const c = new OffscreenCanvas(Math.ceil((x1 - x0) * scale) + 2 * margin, Math.ceil((y1 - y0) * scale) + 2 * margin);
+  Embroidery.draw(c.getContext('2d'), pat, scale, margin - x0 * scale, margin - y0 * scale);
+  return c.convertToBlob({ type: 'image/png' });
+}
+
+const fmtInt = (v) => Math.round(v).toLocaleString('de-DE');
+const fmtMm = (v) => (Math.round(v * 10) / 10).toString().replace('.', ',');
+
+/** Kennzahlen der Stickdatei im Abschnitt „Stickdatei“ (nur wenn die Stiche schon geplant sind). */
+function renderEmbInfo(r = state.result) {
+  const el = $('#emb-info');
+  const s = state.settings;
+  if (!r || !embFormats(s)) { el.textContent = ''; return; }
+  const key = JSON.stringify(embOptions(s));
+  const pat = r.embCache && r.embCache.key === key ? r.embCache.pat : null;
+  if (!pat) {
+    el.textContent = r.emb ? 'Stiche werden geplant …' : (embroideryProblem(r, s) || '');
+    return;
+  }
+  const problem = embroideryProblem(r, s);
+  if (problem) { el.textContent = problem; return; }
+  const st = pat.stats;
+  const parts = [
+    `${fmtInt(st.stitches)} Stiche`,
+    `${st.colors} ${st.colors === 1 ? 'Farbe' : 'Farben'}`,
+    `${fmtInt(st.trims)} ${st.trims === 1 ? 'Fadenschnitt' : 'Fadenschnitte'}`,
+    `${fmtMm(pat.widthMm)} × ${fmtMm(pat.heightMm)} mm`,
+  ].map((t) => t.replace(/ /g, '\u00a0')); // Zahl und Einheit nicht trennen
+  // übliche Rahmen bis 130 × 180 mm (in beiden Lagen)
+  const fits = (a, b) => (pat.widthMm <= a && pat.heightMm <= b) || (pat.widthMm <= b && pat.heightMm <= a);
+  const hoop = fits(100, 100) ? 'passt in den Rahmen 100\u00a0×\u00a0100\u00a0mm'
+    : fits(130, 180) ? 'passt in den Rahmen 130\u00a0×\u00a0180\u00a0mm'
+      : 'größer als 130\u00a0×\u00a0180\u00a0mm – großer Stickrahmen nötig';
+  el.textContent = `${parts.join(' · ')} – ${hoop}`;
+}
+
+let embTimer = null;
+
+/** Stickeinstellungen geändert: Stiche neu planen, Vorschau und Herausziehen aktualisieren. */
+function scheduleEmbRefresh() {
+  clearTimeout(embTimer);
+  embTimer = setTimeout(() => {
+    const r = state.result;
+    if (!r) return;
+    showPreview(r);
+    scheduleDragPrepare(0);
+  }, 200);
 }
 
 function showResult(blob, pixelated) {
@@ -2619,7 +2840,9 @@ async function buildRasterFiles(r, formats) {
   if (formats.bmp) {
     let bmp;
     const { canvas, w, h, composed } = rasterCanvas(r, false);
-    if (!composed) {
+    if (r.rgba8) {
+      bmp = Encoders.bmp24(canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data, w, h, r.dpi);
+    } else if (!composed) {
       bmp = r.gray8 ? Encoders.bmp8gray(r.gray8, r.w, r.h, r.dpi) : Encoders.bmp1bit(r.bits, r.w, r.h, r.dpi);
     } else {
       // zusammengesetztes Bild (mit Umrisslinie) wieder in Bits bzw. Graustufen umwandeln
@@ -2653,17 +2876,23 @@ function scheduleDragPrepare(delay = 250) {
   // Info sofort mit den gewählten Formaten aktualisieren (Dateien folgen im Hintergrund)
   const fs0 = state.settings;
   const exts = [];
-  if (fs0.fmtSvg || (!fs0.fmtPng && !fs0.fmtJpg && !fs0.fmtBmp)) exts.push('svg');
+  const embOnly = !laserFormats(fs0) && embFormats(fs0) && state.result && state.result.emb;
+  if (fs0.fmtSvg || (!laserFormats(fs0) && !embOnly)) exts.push('svg');
   if (fs0.fmtPng) exts.push('png');
   if (fs0.fmtJpg) exts.push('jpg');
   if (fs0.fmtBmp) exts.push('bmp');
+  if (state.result && state.result.emb) {
+    if (fs0.fmtPes) exts.push('pes');
+    if (fs0.fmtDst) exts.push('dst');
+  }
   renderResultInfo(exts);
   dragTimer = setTimeout(async () => {
     const r = state.result;
     if (!r) return;
     const s = state.settings;
     try {
-      const files = await handoverFiles(r, s);
+      const files = await handoverFiles(r, s, true);
+      if (r === state.result) renderEmbInfo(r); // Stiche sind jetzt geplant
       const icon = await dragIcon(r);
       if (r !== state.result) return; // inzwischen neu berechnet
       await window.api.dragPrepare({ baseName: baseName(), files, icon });
@@ -2675,11 +2904,16 @@ function scheduleDragPrepare(delay = 250) {
   }, delay);
 }
 
-/** Dateien zum Herausziehen bzw. Senden an LightBurn: gewählte Exportformate, ohne Auswahl das SVG. */
-async function handoverFiles(r, s) {
+/**
+ * Dateien zum Herausziehen bzw. Senden an LightBurn: gewählte Exportformate, ohne Auswahl das SVG.
+ * embroidery: auch PES/DST (nur beim Herausziehen – LightBurn kann damit nichts anfangen).
+ */
+async function handoverFiles(r, s, embroidery = false) {
   const files = [];
-  if (s.fmtSvg || (!s.fmtPng && !s.fmtJpg && !s.fmtBmp)) files.push({ ext: 'svg', data: r.svg });
+  const emb = embroidery ? embroideryFiles(r, s) : [];
+  if (s.fmtSvg || (!laserFormats(s) && !emb.length)) files.push({ ext: 'svg', data: r.svg });
   files.push(...(await buildRasterFiles(r, { png: s.fmtPng, jpg: s.fmtJpg, bmp: s.fmtBmp })));
+  files.push(...emb);
   return files;
 }
 
@@ -2690,7 +2924,7 @@ function renderResultInfo(exts) {
   if (!r || !exts || !exts.length) { el.hidden = true; return; }
   const mm = (v) => (Math.round(v * 10) / 10).toString().replace('.', ',');
   const size = `${mm(r.totalWmm ?? r.widthMm)} × ${mm(r.totalHmm ?? r.heightMm)} mm`;
-  const raster = exts.some((e) => e !== 'svg') ? ` · ${Math.round(r.dpi)} DPI` : '';
+  const raster = exts.some((e) => e === 'png' || e === 'jpg' || e === 'bmp') ? ` · ${Math.round(r.dpi)} DPI` : '';
   el.textContent = `⤴ Herausziehen: ${exts.map((e) => e.toUpperCase()).join(' + ')} · ${size}${raster}`;
   el.title = 'Ergebnis mit der Maus herausziehen, z. B. direkt in LightBurn, den Finder oder Explorer. Formate unter „Exportformate“.';
   el.hidden = false;
@@ -2859,7 +3093,7 @@ async function exportCurrent() {
   const r = state.result;
   if (!r) return toast('Noch kein Ergebnis vorhanden.', true);
   const s = state.settings;
-  if (!s.fmtSvg && !s.fmtPng && !s.fmtJpg && !s.fmtBmp) {
+  if (!laserFormats(s) && !embFormats(s)) {
     return toast('Bitte mindestens ein Exportformat auswählen.', true);
   }
   // Einstellungen geändert, Ergebnis noch nicht neu berechnet → nicht das alte Ergebnis exportieren
@@ -2868,19 +3102,23 @@ async function exportCurrent() {
     if (!$('#busy').classList.contains('on')) scheduleProcess(0);
     return toast('Das Ergebnis wird an die geänderten Einstellungen angepasst – bitte danach noch einmal exportieren.');
   }
+  // PES/DST nicht möglich (falscher Modus, leer, zu groß): melden, die übrigen Formate trotzdem speichern
+  const embProblem = embroideryProblem(r, s);
+  if (embProblem && !laserFormats(s)) return toast(embProblem, true);
 
   let written;
   try {
     const files = [];
     if (s.fmtSvg) files.push({ ext: 'svg', data: r.svg });
     files.push(...(await buildRasterFiles(r, { png: s.fmtPng, jpg: s.fmtJpg, bmp: s.fmtBmp })));
+    files.push(...embroideryFiles(r, s));
     written = await window.api.exportFiles({ baseName: baseName(), files });
   } catch (err) {
     return toast(`Export fehlgeschlagen: ${cleanError(err)}`, true);
   }
   if (!written) return;
 
-  toast(`${written.length} Datei(en) gespeichert`, false, {
+  toast(`${written.length} Datei(en) gespeichert${embProblem ? ` · ${embProblem}` : ''}`, !!embProblem, {
     label: 'Im Ordner zeigen',
     action: () => window.api.showInFolder(written[0]),
   });
@@ -2944,7 +3182,7 @@ async function saveToHistory(silent = false) {
       originalName: src.name,
       original: needsOriginal ? { ext: src.ext, data: src.bytes } : null,
       // Einstellungen, mit denen dieses Ergebnis berechnet wurde (nicht die eventuell schon geänderten)
-      settings: { ...(r.settings || state.settings), fmtSvg: state.settings.fmtSvg, fmtPng: state.settings.fmtPng, fmtJpg: state.settings.fmtJpg, fmtBmp: state.settings.fmtBmp },
+      settings: { ...(r.settings || state.settings), ...outputPrefs(state.settings) },
       merge: r.merge || null, // mit welchem Eintrag dieses Ergebnis vereinigt wurde
       svg: r.svg,
       raster: rasterFiles[0],
@@ -3002,7 +3240,7 @@ function renderHistory() {
     name.textContent = e.name || 'Bild';
     const meta = document.createElement('div');
     meta.className = 'meta';
-    const mode = { dither: 'Foto', edges: 'Linien', relief: 'Relief', sine: 'Wellen' }[e.settings?.mode] || 'Fläche';
+    const mode = { dither: 'Foto', edges: 'Linien', relief: 'Relief', sine: 'Wellen', color: 'Farben' }[e.settings?.mode] || 'Fläche';
     const size = e.settings?.widthMm && e.width ? ` · ${round1(e.settings.widthMm)}×${round1((e.settings.widthMm * e.height) / e.width)} mm` : '';
     meta.textContent = `${mode}${size}`;
     const date = document.createElement('div');
@@ -3108,7 +3346,28 @@ function publishResult(r, rev = mergeRev) {
   state.result = r;
   if (rev === mergeRev) state.mergePending = false;
   scheduleDragPrepare();
+  showPreview(r);
+}
+
+/** Vorschau des Ergebnisses: Flächen bzw. mit „Stiche in der Vorschau zeigen“ die geplanten Stiche. */
+async function showPreview(r) {
+  const s = state.settings;
+  if (s.embPreview && embFormats(s) && r.emb) {
+    try {
+      const blob = await stitchPreviewBlob(r, s);
+      if (r !== state.result) return;
+      if (blob) {
+        showResult(blob, false);
+        renderEmbInfo(r);
+        return;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  if (r !== state.result) return;
   showResult(r.preview.blob, r.preview.pixelated);
+  renderEmbInfo(r);
 }
 
 /**
@@ -3124,6 +3383,17 @@ async function composeMerged(inRun = false) {
   if (!m) {
     publishResult(base, rev);
     if (!inRun && !state.processing) setBusy(false); // evtl. noch laufende Vereinigung ist damit hinfällig
+    return;
+  }
+  if (base.mode === 'color' || m.mode === 'color') {
+    // Farbebenen lassen sich nicht in Schwarz-Weiß überblenden
+    toast('Vereinigen ist mit dem Modus „Farben“ nicht möglich – das Ergebnis wird ohne den Historie-Eintrag gezeigt.', true);
+    state.merge = null;
+    mergeRev++;
+    renderMergePanel();
+    renderHistory();
+    publishResult(base);
+    if (!inRun && !state.processing) setBusy(false);
     return;
   }
   const gen = state.generation;
@@ -3175,6 +3445,8 @@ async function composeMerged(inRun = false) {
       svg: Encoders.svgDocument(doc),
       preview,
       mode: gray ? 'relief' : res.trace ? 'vector' : 'dither',
+      emb: embSource({ mode: res.trace ? 'vector' : 'dither', fillPath, outline: base.outline, outlineOnly: false, mmPerPx: base.mmPerPx }),
+      embCache: null,
       outlineOnly: false, // die vereinigte Ebene ist Inhalt, nicht nur die Umrisslinie
       merge: { id: m.id, name: m.name, top, opacity },
     }, rev);
@@ -3195,6 +3467,99 @@ async function composeMerged(inRun = false) {
     renderHistory();
   } finally {
     if (!inRun && seq === mergeSeq && !state.processing) setBusy(false);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Modus Farben: Farbliste                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Bearbeitung einer Farbe ändern (Schlüssel: from = ursprüngliche Bildfarbe). patch-Werte
+ * undefined entfernen den Eintrag; leere Bearbeitungen fallen weg.
+ */
+function editColor(from, patch) {
+  const edits = (state.settings.colorEdits || []).map((e) => ({ ...e }));
+  let e = edits.find((x) => x.from === from);
+  if (!e) edits.push((e = { from }));
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined || v === null || v === '') delete e[k];
+    else e[k] = v;
+  }
+  setSetting('colorEdits', edits.filter((x) => Object.keys(x).length > 1));
+}
+
+/** Liste der Farbebenen (Reihenfolge = Ebenen im SVG bzw. Stickreihenfolge, von unten nach oben). */
+function renderColorList() {
+  const box = $('#color-list');
+  const r = state.baseResult;
+  const layers = r && r.mode === 'color' ? r.colorLayers || [] : [];
+  box.textContent = '';
+  $('#btn-color-reset').disabled = !(state.settings.colorEdits || []).length;
+  if (!layers.length) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = r && r.mode === 'color' ? 'Keine Farben gefunden.' : 'Die Farben erscheinen nach der Umwandlung.';
+    box.append(p);
+    return;
+  }
+  let n = 0;
+  for (const l of layers) {
+    const row = document.createElement('div');
+    row.className = 'color-row' + (l.off ? ' off' : '');
+
+    const on = document.createElement('input');
+    on.type = 'checkbox';
+    on.checked = !l.off;
+    on.title = l.off ? 'Farbe ausgeben' : 'Farbe weglassen (z. B. Stofffarbe)';
+    on.addEventListener('change', () => editColor(l.from, { off: on.checked ? undefined : true }));
+
+    const pick = document.createElement('input');
+    pick.type = 'color';
+    pick.value = l.hex;
+    pick.title = state.settings.colorPalette === 'image' ? 'Farbe ändern' : 'Farbe ändern (rastet auf das nächste Garn ein)';
+    pick.addEventListener('change', () => editColor(l.from, { to: pick.value }));
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = `${l.off ? '–' : ++n} · ${l.name}`;
+    name.title = `${l.name} ${l.hex}${l.merged.length ? ` – zusammengeführt mit ${l.merged.length} weiteren Farbe(n)` : ''}`;
+
+    const pct = document.createElement('span');
+    pct.className = 'pct';
+    const share = l.share * 100;
+    pct.textContent = share < 0.1 ? '< 0,1 %' : `${share.toFixed(share < 10 ? 1 : 0).replace('.', ',')} %`;
+
+    const into = document.createElement('select');
+    into.title = 'Mit einer anderen Farbe zusammenführen';
+    const opt0 = document.createElement('option');
+    opt0.value = '';
+    opt0.textContent = '⇢';
+    into.append(opt0);
+    for (const o of layers) {
+      if (o === l) continue;
+      const opt = document.createElement('option');
+      opt.value = o.from;
+      opt.textContent = `→ ${o.name}`;
+      into.append(opt);
+    }
+    into.addEventListener('change', () => into.value && editColor(l.from, { into: into.value }));
+
+    const tools = [on, pick, name, pct, into];
+    const edited = l.edited || l.merged.length;
+    if (edited) {
+      const undo = document.createElement('button');
+      undo.className = 'btn btn-small icon';
+      undo.textContent = '↺';
+      undo.title = 'Änderungen an dieser Farbe zurücknehmen (auch Zusammenführen)';
+      undo.addEventListener('click', () => {
+        const all = [l.from, ...l.merged];
+        setSetting('colorEdits', (state.settings.colorEdits || []).filter((e) => !all.includes(e.from)));
+      });
+      tools.push(undo);
+    }
+    row.append(...tools);
+    box.append(row);
   }
 }
 
@@ -3231,6 +3596,9 @@ async function startMerge(e) {
     return toast('Erst ein Bild öffnen und umwandeln – dann lässt sich ein Historie-Eintrag darüberlegen.', true);
   }
   if (e.id === state.historyId) return toast('Ein Eintrag lässt sich nicht mit sich selbst vereinigen.', true);
+  if (state.baseResult.mode === 'color' || e.settings?.mode === 'color') {
+    return toast('Vereinigen ist mit dem Modus „Farben“ nicht möglich.', true);
+  }
   const source = state.source;
   try {
     const layer = await loadMergeLayer(e.id);

@@ -160,7 +160,11 @@ function trace({ bits, w, h }, params) {
 if (process.parentPort) process.parentPort.on('message', (e) => {
   const { id, image, params } = e.data;
   try {
-    process.parentPort.postMessage({ id, ok: true, d: trace(image, params) });
+    // Modus Farben: mehrere Ebenen gleicher Größe in einem Auftrag (Ergebnis: ein Pfad je Ebene)
+    const d = Array.isArray(image && image.layers)
+      ? image.layers.map((bits) => trace({ bits, w: image.w, h: image.h }, params))
+      : trace(image, params);
+    process.parentPort.postMessage({ id, ok: true, d });
   } catch (err) {
     process.parentPort.postMessage({ id, ok: false, error: String((err && err.message) || err) });
   }

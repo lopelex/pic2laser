@@ -44,7 +44,7 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
   (im Ergebnis mit der mittleren Maustaste)
 - **Presets**: mitgelieferte Vorlagen (Logo, Foto, Porträt-Strichzeichnung, Sticker mit Schnittkontur,
   Holz-Relief …) und eigene Presets speichern/überschreiben/löschen (`<userData>/presets.json`)
-- **Fünf Modi**
+- **Sechs Modi**
   - *Fläche*: Schwellwert + Potrace → echte Vektorpfade (Logos, Schrift, Silhouetten)
   - *Linien*: KI-Strichzeichnung (Modelle: Feine Linien, Kräftige Konturen, Zarte Skizze, Tusche-Porträt,
     Feine Kanten) oder klassische Kantenerkennung (Canny) → Strichzeichnung als Vektor
@@ -52,6 +52,9 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
   - *Wellen*: Sinuswellen-Schattierung (nach [img2laser](https://github.com/0not/img2laser)) – dunkle Stellen als
     dichte Wellen, als offene Vektorlinien; waagrecht oder senkrecht, weiße Flächen optional ausgespart.
     Gerechnet in WebAssembly (Rust, `wasm/sine`)
+  - *Farben*: Bild in wenige Farbflächen zerlegt (Auto oder 2–16 Farben, Bildfarben oder Brother-Garne),
+    je Farbe eine SVG-Ebene – für mehrfarbige Gravur und als Vorlage für Stickprogramme (Ink/Stitch, Hatch …);
+    Farben ausblenden, umfärben, zusammenführen
   - *Relief*: KI-Tiefenkarte (Depth Anything V2 Small, wahlweise Base/Large) als Graustufenbild für 3D-Reliefgravur, optional mit transparentem
     weißem/freigestelltem Hintergrund (PNG/SVG)
 - **Freistellen**: Motiv automatisch per KI (schnell / präzise / gut & sparsam / beste Qualität / Porträt & Haare),
@@ -83,6 +86,9 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
 - **Ausgabegröße in mm**: SVGs enthalten `width/height` in mm, Rasterbilder die DPI –
   LightBurn importiert alles direkt in der richtigen Größe.
 - **Export** als SVG, PNG, JPG und/oder 1-Bit-BMP (Strg+S oder Strg+E)
+- **Stickdateien** PES (Brother) und DST (Tajima) direkt für die Stickmaschine: Flächen als Füllstich mit
+  Unterlage und Zugausgleich, Umrisslinie als Steppstich, Wege innerhalb der Flächen statt Fadenschnitten;
+  Stichvorschau in Fadenfarben, Stichzahl und passender Stickrahmen
 - **Herausziehen**: Das Ergebnis lässt sich per Drag & Drop direkt in LightBurn, Explorer oder Finder ziehen
   (in den gewählten Exportformaten). Eine Info im Ergebnisfeld zeigt Formate, Größe in mm und DPI.
 - **An LightBurn senden** (Strg/⌘+L): fügt das Ergebnis direkt ins offene LightBurn-Projekt ein
@@ -191,6 +197,7 @@ Pic2Laser selbst ist Open Source (GPL-2.0-or-later, siehe [Lizenz](#lizenz)). F�
 - `src/renderer/sine.js` – Modus Wellen: lädt das WebAssembly-Modul und rechnet Einstellungen in Pixel um
 - `wasm/sine/` – Rust-Quelltext der Sinuswellen (→ `src/renderer/wasm/sine-wasm.js`, eingebettet als Base64)
 - `src/renderer/encoders.js` – SVG-, PNG-, JPG- und BMP-Ausgabe mit DPI-Angaben
+- `src/renderer/embroidery.js` – Stickdateien: Füll- und Steppstich aus den Vektorpfaden, PES- und DST-Ausgabe
 - `src/renderer/app.js` – Oberfläche, Presets, Vorschau, Zoom, Export, Historie
 - `src/renderer/index.html`, `styles.css` – Oberfläche
 - `models/` – mitgelieferte ONNX-Modelle
