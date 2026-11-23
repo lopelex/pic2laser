@@ -1,12 +1,12 @@
 'use strict';
 
-/* global Processing, Encoders, Segmentation */
+/* global Processing, Encoders, Segmentation, Sine */
 
 /**
  * Web Worker für die rechenintensive Bildverarbeitung, damit die Oberfläche
  * während der Berechnung bedienbar bleibt.
  */
-importScripts('processing.js', 'encoders.js', 'segmentation.js');
+importScripts('processing.js', 'encoders.js', 'segmentation.js', 'wasm/sine-wasm.js', 'sine.js');
 
 const handlers = {
   /**
@@ -14,8 +14,16 @@ const handlers = {
    * payload: { source, mask (Freistellen), lineMask (nur für die Motivkontur), s: Einstellungen }
    */
   async render({ source, mask, lineMask, textSource, s }) {
-    const { w, h, bits, gray8, alpha8, alpha } = Processing.process(source, s, mask, textSource);
+    let { w, h, bits, gray8, alpha8, alpha } = Processing.process(source, s, mask, textSource);
     if (textSource) textSource.close();
+    // Wellen: Sinuswellen als Linien (SVG) plus gerastert (Rasterexporte, Vereinigen, Umrisslinie)
+    let strokePath = null;
+    if (s.mode === 'sine') {
+      const mmPerPx = s.widthMm / w;
+      strokePath = Sine.paths(gray8, w, h, s, mmPerPx);
+      bits = Sine.rasterize(strokePath, w, h, s.sineStrokeMm / mmPerPx);
+      gray8 = null;
+    }
     // Motivkontur (nur Schwarz-Weiß-Modi)
     const contourMask = lineMask || mask;
     if (s.subjectLine && bits && contourMask) {
@@ -26,10 +34,12 @@ const handlers = {
     if (lineMask) lineMask.close();
     const r = { w, h, bits, gray8, alpha8 };
     // trace: Binärbild soll vektorisiert werden (die Bits gehen direkt an Potrace, kein PNG nötig)
-    const out = { w, h, bits, gray8, alpha8: alpha8 || null, trace: false, imagePng: null, imageB64: null, sil: null };
+    const out = { w, h, bits, gray8, alpha8: alpha8 || null, trace: false, imagePng: null, imageB64: null, sil: null, strokePath };
 
     if (!(s.outline && s.outlineOnly)) {
-      if (s.mode === 'dither' || s.mode === 'relief') {
+      if (s.mode === 'sine') {
+        // fertig: die Wellen sind schon Vektorpfade
+      } else if (s.mode === 'dither' || s.mode === 'relief') {
         out.imagePng = await Encoders.canvasBytes(Processing.resultCanvas(r, s.mode === 'relief' ? !!alpha8 : s.transparent), 'image/png');
         out.imageB64 = Encoders.toBase64(out.imagePng); // fürs SVG – teuer bei großen Bildern
       } else {
@@ -155,6 +165,7 @@ async function layerDarkness(layer, w, h) {
   const w0 = Number(vb[3]) - 2 * pad, h0 = Number(vb[4]) - 2 * pad;
   if (!(w0 > 0 && h0 > 0)) throw new Error('Das Ergebnis des Historie-Eintrags ist nicht lesbar.');
   const fill = /<path d="([^"]*)" fill="#000"/.exec(svg);
+  const stroke = /<path d="([^"]*)" fill="none" stroke="#000" stroke-width="([\d.e]+)"/.exec(svg);
   const image = /<image [^>]*xlink:href="data:image\/png;base64,([^"]+)"/.exec(svg);
   const outline = /<path d="([^"]*)" transform="translate\(([-\d.e]+) ([-\d.e]+)\)" fill="none"/.exec(svg);
 
@@ -177,7 +188,14 @@ async function layerDarkness(layer, w, h) {
     ctx.fillStyle = '#000';
     ctx.fill(new Path2D(fill[1]), 'evenodd');
   }
-  if (!fill && !image && outline) {
+  if (stroke) {
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = Math.max(1, Number(stroke[2]));
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke(new Path2D(stroke[1]));
+  }
+  if (!fill && !image && !stroke && outline) {
     ctx.translate(Number(outline[2]), Number(outline[3]));
     ctx.strokeStyle = '#000';
     ctx.lineWidth = Math.max(1, 0.2 / ((layer.widthMm || 100) / w0)); // wie in den Rasterexporten

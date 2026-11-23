@@ -10,7 +10,8 @@
     "dist:mac": "electron-builder --mac --arm64 && electron-builder --mac --x64 --config build/mac-x64.config.js",
     "dist:linux": "electron-builder --linux",
     "dist:all": "npm run dist:win && npm run dist:mac && build/sign-mac-adhoc.sh && npm run dist:linux",
-    "release": "build/release.sh"
+    "release": "build/release.sh",
+    "build:wasm": "node build/build-wasm.js"
   },
   "license": "GPL-2.0-or-later",
   "build": {

@@ -1,0 +1,20 @@
+[package]
+name = "sine"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Sinuswellen-Schattierung für Pic2Laser (nach img2laser von Kyle Larsen, MIT)"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -44,11 +44,14 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
   (im Ergebnis mit der mittleren Maustaste)
 - **Presets**: mitgelieferte Vorlagen (Logo, Foto, Porträt-Strichzeichnung, Sticker mit Schnittkontur,
   Holz-Relief …) und eigene Presets speichern/überschreiben/löschen (`<userData>/presets.json`)
-- **Vier Modi**
+- **Fünf Modi**
   - *Fläche*: Schwellwert + Potrace → echte Vektorpfade (Logos, Schrift, Silhouetten)
   - *Linien*: KI-Strichzeichnung (Modelle: Feine Linien, Kräftige Konturen, Zarte Skizze, Tusche-Porträt,
     Feine Kanten) oder klassische Kantenerkennung (Canny) → Strichzeichnung als Vektor
   - *Foto*: Dithering mit Floyd-Steinberg, Atkinson, Jarvis, Stucki, Bayer, Schwellwert
+  - *Wellen*: Sinuswellen-Schattierung (nach [img2laser](https://github.com/0not/img2laser)) – dunkle Stellen als
+    dichte Wellen, als offene Vektorlinien; waagrecht oder senkrecht, weiße Flächen optional ausgespart.
+    Gerechnet in WebAssembly (Rust, `wasm/sine`)
   - *Relief*: KI-Tiefenkarte (Depth Anything V2 Small, wahlweise Base/Large) als Graustufenbild für 3D-Reliefgravur, optional mit transparentem
     weißem/freigestelltem Hintergrund (PNG/SVG)
 - **Freistellen**: Motiv automatisch per KI (schnell / präzise / gut & sparsam / beste Qualität / Porträt & Haare),
@@ -185,11 +188,17 @@ Pic2Laser selbst ist Open Source (GPL-2.0-or-later, siehe [Lizenz](#lizenz)). F�
 - `src/renderer/ai.js` – Vor-/Nachverarbeitung für alle KI-Modelle
 - `src/renderer/segmentation.js` – Freistellen (Masken, Farbmaske, Klickpunkte)
 - `src/renderer/restore.js` – Altes Foto restaurieren (Entrauschen, Kratzer, Gesichter)
+- `src/renderer/sine.js` – Modus Wellen: lädt das WebAssembly-Modul und rechnet Einstellungen in Pixel um
+- `wasm/sine/` – Rust-Quelltext der Sinuswellen (→ `src/renderer/wasm/sine-wasm.js`, eingebettet als Base64)
 - `src/renderer/encoders.js` – SVG-, PNG-, JPG- und BMP-Ausgabe mit DPI-Angaben
 - `src/renderer/app.js` – Oberfläche, Presets, Vorschau, Zoom, Export, Historie
 - `src/renderer/index.html`, `styles.css` – Oberfläche
 - `models/` – mitgelieferte ONNX-Modelle
-- `build/` – Icon, macOS-Intel-Konfiguration, Ad-hoc-Signierskript, Release-Skript (`release.sh`)
+- `build/` – Icon, macOS-Intel-Konfiguration, Ad-hoc-Signierskript, Release-Skript (`release.sh`), WASM-Build (`build-wasm.js`)
+
+Das erzeugte `src/renderer/wasm/sine-wasm.js` liegt im Repository – `npm start` und Releases brauchen kein
+Rust. Nach Änderungen in `wasm/sine` neu bauen mit `npm run build:wasm` (braucht `cargo` und das Ziel
+`wasm32-unknown-unknown`, z. B. `rustup target add wasm32-unknown-unknown`).
 
 ## Lizenz
 
@@ -202,6 +211,8 @@ direkt darauf auf. Wer Pic2Laser (oder eine geänderte Fassung) weitergibt, muss
 Quellcode unter der GPL bereitstellen.
 
 Die übrigen Abhängigkeiten (Electron, onnxruntime u. a.) stehen unter freien, GPL-kompatiblen Lizenzen
-(MIT, BSD, ISC, Apache-2.0); die KI-Modelle haben eigene Lizenzen, siehe
+(MIT, BSD, ISC, Apache-2.0). Der Modus Wellen ist eine Portierung von
+[img2laser](https://github.com/0not/img2laser) (© 2023 Kyle Larsen, MIT, Lizenztext in
+`wasm/sine/LICENSE-img2laser`). Die KI-Modelle haben eigene Lizenzen, siehe
 [Lizenzen der Modelle](#lizenzen-der-modelle). Mit Pic2Laser erzeugte Bilder und SVGs fallen nicht
 unter die GPL – sie gehören dir.

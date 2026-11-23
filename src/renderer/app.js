@@ -54,6 +54,15 @@ const DEFAULTS = Object.freeze({
   depthRes: '518',
   depthModel: 'small', // 'small' (Apache-2.0), 'base' / 'large' (CC BY-NC 4.0)
   reliefTransparent: false,
+  // Wellen (Sinuswellen-Schattierung)
+  sineSpacingMm: 1.2, // Abstand der Wellen
+  sineAmplitude: 0.4, // Ausschlag als Anteil des Abstands (0,5 = Wellen berühren sich)
+  sineDensity: 1.5, // Wellen je mm bei Schwarz
+  sineMinDensity: 0, // Wellen je mm bei Weiß (0 = gerade Linie)
+  sineStrokeMm: 0.15, // Strichbreite in Vorschau und Rasterexporten
+  sineDirection: 'h', // 'h' = waagrecht, 'v' = senkrecht
+  sineSkipWhite: false, // weiße Flächen auslassen (keine Linie)
+  sineNormalize: true, // Helligkeitsumfang des Bildes auf die Wellendichte strecken
   // Umrisslinie
   outline: false,
   outlineOffsetMm: 2,
@@ -114,6 +123,7 @@ const ZOOM_MAX = 16;
 const MODE_HINTS = {
   vector: 'Ideal für Logos, Schriften, Strichzeichnungen und Silhouetten. Ergebnis sind echte Vektorpfade – in LightBurn als Füllung (Fill) gravieren.',
   edges: 'Zeichnet die Kanten und Randkonturen des Bildes als Linien nach – ergibt eine Strichzeichnung als Vektor. In LightBurn als Füllung (Fill) gravieren.',
+  sine: 'Zeichnet das Bild mit Sinuswellen: dunkle Stellen ergeben dichte Wellen, helle flache Linien. Ergebnis sind Vektorlinien – in LightBurn im Modus Linie (Line) gravieren.',
   relief: 'Erzeugt per KI eine Tiefenkarte des Fotos als Graustufenbild – für 3D-Reliefgravur in Holz (Laserleistung bestimmt die Tiefe).',
   dither: 'Ideal für Fotos. Graustufen werden in Punktmuster umgewandelt. Für LightBurn am besten zusätzlich PNG/BMP exportieren und als Bild im Modus „Passthrough" gravieren.',
 };
@@ -193,6 +203,11 @@ const FORMATTERS = {
   lineRes: (v) => `${v} px`,
   lineBoldMm: (v) => (Number(v) ? `${Number(v).toFixed(2)} mm` : 'aus'),
   lineWidthMm: (v) => `${Number(v).toFixed(2)} mm`,
+  sineSpacingMm: (v) => `${Number(v).toFixed(1).replace('.', ',')} mm`,
+  sineAmplitude: (v) => `${Math.round(Number(v) * 200)} %`,
+  sineDensity: (v) => `${Number(v).toFixed(1).replace('.', ',')} / mm`,
+  sineMinDensity: (v) => (Number(v) ? `${Number(v).toFixed(1).replace('.', ',')} / mm` : 'gerade'),
+  sineStrokeMm: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
   outlineOffsetMm: (v) => `${Number(v).toFixed(1)} mm`,
   shapeTolMm: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
   lineSmoothMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
@@ -670,6 +685,41 @@ const BUILTIN_PRESETS = [
     group: 'Schneiden & Relief', name: 'Relief – maximale Details (nicht kommerziell)',
     desc: 'Plastischste Tiefe mit Depth Anything V2 Large und höchster Auflösung. Download ca. 1,3 GB, braucht ca. 3,5 GB RAM, ca. 30 s. Lizenz CC BY-NC 4.0 – nicht für verkaufte Gravuren.',
     settings: { mode: 'relief', depthModel: 'large', depthRes: '1022', dpi: 254, blur: 0.5, contrast: 10 },
+  },
+  // ---- Wellen (Sinuswellen-Linienkunst) ----
+  // Getestet mit Porträt, Katze, Pavian, S/W-Foto, Kaffeetasse, Bergpanorama, Eiffelturm und Pferde-Silhouette.
+  // Gamma > 1 hellt die Mitteltöne auf – sonst wirken sie fast so dicht wie Schwarz (jede Welle deckt Fläche).
+  // Mit „Weiße Flächen auslassen“ senkt eine leicht negative Helligkeit die Lichter unter Reinweiß, damit nur der
+  // freigestellte Hintergrund (immer 255) leer bleibt und keine Löcher im Motiv entstehen.
+  {
+    group: 'Porträts & Personen', name: 'Porträt – Wellenlinien',
+    desc: 'Porträt als waagrechte Sinuswellen (Linienkunst): Person freigestellt, Hintergrund bleibt leer. Ab ca. 100 mm Breite, in LightBurn als Linie gravieren.',
+    settings: { mode: 'sine', bgRemove: 'modnet', maskLargest: true, sineSkipWhite: true, sineSpacingMm: 1, sineAmplitude: 0.45, sineDensity: 2, brightness: -6, contrast: 10, gamma: 1.3, blur: 0.5, faceBoost: true, faceStrength: 0.8, mouthStrength: 0.5, noseStrength: 0.3, chinStrength: 0.3 },
+  },
+  {
+    group: 'Porträts & Personen', name: 'Porträt – Wellen senkrecht (fein)',
+    desc: 'Feinere, senkrechte Wellen – mehr Gesichtsdetails, aber längere Gravur. Am besten ab ca. 150 mm Breite.',
+    settings: { mode: 'sine', bgRemove: 'modnet', maskLargest: true, sineSkipWhite: true, sineDirection: 'v', sineSpacingMm: 0.8, sineAmplitude: 0.5, sineDensity: 2.5, sineStrokeMm: 0.12, brightness: -8, contrast: 15, gamma: 1.4, blur: 0.4, faceBoost: true, faceStrength: 0.8, mouthStrength: 0.5, noseStrength: 0.3, chinStrength: 0.3 },
+  },
+  {
+    group: 'Fotos & Landschaft', name: 'Foto – Wellenlinien',
+    desc: 'Ganzes Foto als waagrechte Sinuswellen – helle Flächen (Himmel) werden ruhige, fast gerade Linien. Liniengravur statt Punktraster.',
+    settings: { mode: 'sine', sineSpacingMm: 1, sineAmplitude: 0.45, sineDensity: 1.6, contrast: 20, gamma: 1.8, blur: 0.5 },
+  },
+  {
+    group: 'Fotos & Landschaft', name: 'Landschaft – Wellen, Himmel frei',
+    desc: 'Für Berge, Gebäude und Landschaften: Himmel entfernt (Motiv per BEN2 geschützt, Download ca. 131 MB, ca. 3 GB RAM), das Motiv in ruhigen, breiten Wellen. Schnee und helle Flächen bleiben erhalten.',
+    settings: { mode: 'sine', bgRemove: 'skyai', bgTolerance: 20, sineSkipWhite: true, sineSpacingMm: 1.4, sineAmplitude: 0.45, sineDensity: 1.4, brightness: -8, contrast: 10, gamma: 1.3, blur: 0.8 },
+  },
+  {
+    group: 'Tiere', name: 'Haustier – Wellenlinien',
+    desc: 'Tier freigestellt (BEN2, Download ca. 131 MB, ca. 3 GB RAM) in feinen Wellen – Augen, Nase und Fellzeichnung treten hervor, der Hintergrund bleibt leer.',
+    settings: { mode: 'sine', bgRemove: 'ben2', maskLargest: true, sineSkipWhite: true, sineSpacingMm: 1, sineAmplitude: 0.42, sineDensity: 2, brightness: -10, contrast: 15, gamma: 2, sharpen: 0.4 },
+  },
+  {
+    group: 'Logos, Schrift & Grafik', name: 'Silhouette / Logo – mit Wellen gefüllt',
+    desc: 'Dunkle Flächen einer Grafik werden mit gleichmäßigen Wellen gefüllt, Weiß bleibt leer – Wellen-Effekt für Logos und Schattenrisse.',
+    settings: { mode: 'sine', sineSkipWhite: true, sineSpacingMm: 1.2, sineAmplitude: 0.45, sineDensity: 1.2, contrast: 40, blur: 0.3 },
   },
 ];
 
@@ -1200,7 +1250,7 @@ const KEYS = {
   smooth: (up) => `upscale:smooth:${up}`, // „Glatte Konturen“: Vergrößerung nur für die Fläche
 };
 
-const textWanted = (s) => s.textClean && s.mode !== 'relief';
+const textWanted = (s) => s.textClean && s.mode !== 'relief' && s.mode !== 'sine';
 
 /** Maske, auf die sich die Texterkennung bezieht (null = ganzes Bild). */
 const textMaskKey = (s) => (s.textOrder === 'after' ? maskKeyFor(s) : null);
@@ -1431,14 +1481,14 @@ function planSteps(s) {
     const model = AI.depthModel(s.depthModel);
     add('depth', MODEL_NAMES[model], model, (work.w * sc * work.h * sc) / 1e6, DEPTH_SEED_MS[model], KEYS.depth(up, s.depthRes, model));
   }
-  if (s.subjectLine && !maskKey && s.mode !== 'relief') {
+  if (s.subjectLine && !maskKey && s.mode !== 'relief' && s.mode !== 'sine') {
     add('contour', 'Motivkontur', `seg:ai`, 1, SEG_SEED_MS.ai, KEYS.seg('ai', up));
   }
 
   const out = Processing.targetSize(src.w, src.h, s);
   const mp = (out.w * out.h) / 1e6;
   const variant = s.mode === 'edges' ? `:${s.edgeMethod}` : s.mode === 'dither' ? `:${s.ditherAlgo}` : '';
-  const renderSeed = { vector: 250, edges: s.edgeMethod === 'ai' ? 300 : 700, dither: 700, relief: 250 }[s.mode] + (s.outline ? 1500 : 0);
+  const renderSeed = { vector: 250, edges: s.edgeMethod === 'ai' ? 300 : 700, dither: 700, relief: 250, sine: 400 }[s.mode] + (s.outline ? 1500 : 0);
   add('render', 'Bildverarbeitung', `render:${s.mode}${variant}${s.outline ? '+outline' : ''}`, mp, renderSeed);
   if (!(s.outline && s.outlineOnly) && (s.mode === 'vector' || s.mode === 'edges')) {
     add('trace', 'Vektorisierung', `trace:${s.mode}${variant}`, mp, 1000);
@@ -1522,13 +1572,13 @@ async function runProcess() {
 
     // Motivkontur ohne Freistellen: Grenze per schneller KI ermitteln, Hintergrund bleibt erhalten
     let lineMask = null;
-    if (s.subjectLine && !mask && s.mode !== 'relief') {
+    if (s.subjectLine && !mask && s.mode !== 'relief' && s.mode !== 'sine') {
       lineMask = await contourMask(s, work);
       if (stale()) return;
     }
 
     // 4. Rasterverarbeitung im Worker (blockiert die Oberfläche nicht)
-    let { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil } =
+    let { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil, strokePath } =
       await Run.track('render', Pipeline.render(source, mask, s, lineMask, textSourceFor(s, source, work)));
     if (stale()) return;
     const widthMm = Math.max(0.1, s.widthMm);
@@ -1537,7 +1587,7 @@ async function runProcess() {
     // Immer die tatsächliche Auflösung: wurde das Bild wegen der Pixelgrenze verkleinert, stimmt s.dpi
     // nicht mehr – Rasterdateien wären in LightBurn sonst kleiner als das SVG
     const dpi = w / (widthMm / 25.4);
-    const dpiWarn = (s.mode === 'dither' || s.mode === 'relief') && dpi < s.dpi * 0.98 ? `${Math.round(dpi)}/${s.dpi}` : null;
+    const dpiWarn = (s.mode === 'dither' || s.mode === 'relief' || s.mode === 'sine') && dpi < s.dpi * 0.98 ? `${Math.round(dpi)}/${s.dpi}` : null;
     if (dpiWarn && state.dpiWarn !== dpiWarn) {
       toast(`Auflösung auf ${Math.round(dpi)} DPI begrenzt (Arbeitsspeicher). Die Größe in mm bleibt korrekt.`);
     }
@@ -1566,7 +1616,9 @@ async function runProcess() {
     const outline = sil && String(outlineRes.value || '').trim() ? { d: outlineRes.value, pad: sil.pad } : null;
     if (sil && !outline && s.outlineOnly) toast('Kein Motiv für die Umrisslinie gefunden – das Ergebnis ist leer.', true);
 
-    const doc = { w, h, widthMm, fillPath, imageB64, outline };
+    const stroke = strokePath != null ? { d: strokePath, width: s.sineStrokeMm / mmPerPx } : null;
+    if (stroke && !stroke.d) toast('Keine Wellen – das Bild ist vollständig weiß.', true);
+    const doc = { w, h, widthMm, fillPath, imageB64, stroke, outline };
     const svg = Encoders.svgDocument(doc);
     const previewSvg = Encoders.svgDocument({ ...doc, preview: true });
 
@@ -2783,7 +2835,7 @@ function renderHistory() {
     name.textContent = e.name || 'Bild';
     const meta = document.createElement('div');
     meta.className = 'meta';
-    const mode = { dither: 'Foto', edges: 'Linien', relief: 'Relief' }[e.settings?.mode] || 'Fläche';
+    const mode = { dither: 'Foto', edges: 'Linien', relief: 'Relief', sine: 'Wellen' }[e.settings?.mode] || 'Fläche';
     const size = e.settings?.widthMm && e.width ? ` · ${round1(e.settings.widthMm)}×${round1((e.settings.widthMm * e.height) / e.width)} mm` : '';
     meta.textContent = `${mode}${size}`;
     const date = document.createElement('div');
