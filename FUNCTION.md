@@ -249,6 +249,7 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 - **Exportieren** (Strg/Cmd+S): SVG (Maße in mm) und optional PNG, JPG, BMP (mit DPI; 1-Bit-BMP
   bzw. 8-Bit-Graustufen beim Relief, 24 Bit im Modus Farben) – alle Dateien mit gleichem Namen in einem Ordner.
+  Nur eine bekannte Endung im eingegebenen Namen wird ersetzt, Punkte im Namen bleiben („Version 1.2“).
 - **SVG im Modus Farben:** je Farbe eine Gruppe als Inkscape-Ebene (`inkscape:groupmode="layer"`,
   Name „Nr. Farbname (#rrggbb)“) mit gefülltem Pfad in der Farbe, Reihenfolge von unten nach oben.
   LightBurn legt je Farbe eine Ebene an; Stickprogramme (Ink/Stitch, Hatch, Wilcom, Embrilliance

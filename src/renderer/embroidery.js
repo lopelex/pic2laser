@@ -1238,7 +1238,17 @@ const Embroidery = (() => {
     return out;
   }
 
+  /** Bricht ab, wenn eine Koordinate keine endliche Zahl ist (sonst entstünde still eine kaputte Datei). */
+  function checkPattern(pat) {
+    for (const p of pat.ops) {
+      if ((p.c === STITCH || p.c === JUMP) && !(Number.isFinite(p.x) && Number.isFinite(p.y))) {
+        throw new Error('Stickmuster enthält ungültige Koordinaten');
+      }
+    }
+  }
+
   function toDst(pat, name) {
+    checkPattern(pat);
     const rec = [];
     let x = 0, y = 0, colors = 0;
     for (const p of pat.ops) {
@@ -1285,6 +1295,7 @@ const Embroidery = (() => {
    * 0x80 0x80 0x07 0x00 = Fadenschnitt.
    */
   function toExp(pat) {
+    checkPattern(pat);
     const out = [];
     let x = 0, y = 0;
     for (const p of pat.ops) {
@@ -1450,6 +1461,7 @@ const Embroidery = (() => {
           if (dx !== 0 && dy !== 0) { val(0); val(0); }
           jumping = false;
         }
+        trim = false;
         for (const [sx, sy] of splitMove(dx, dy, 2047)) { val(sx); val(sy); }
         x = p.x;
         y = p.y;
@@ -1487,6 +1499,7 @@ const Embroidery = (() => {
    * Programme), danach der PEC-Teil, den die Maschine liest.
    */
   function toPes(pat, name) {
+    checkPattern(pat);
     const codes = pecIndices(pat.threads);
     const b = makeBuf();
     const [bx0, by0, bx1, by1] = pat.bounds;
@@ -1540,9 +1553,15 @@ const Embroidery = (() => {
       if (c === JUMP) {
         section(1, [sx, sy, ops[e - 1].x, ops[e - 1].y]);
       } else if (c === STITCH) {
-        const pts = [];
-        for (let j = k; j < e; j++) pts.push(ops[j].x, ops[j].y);
-        section(0, pts);
+        // Stichzahl je Abschnitt ist 16 Bit: lange Stichfolgen auf mehrere Abschnitte verteilen,
+        // jeder weitere beginnt am letzten Punkt des vorigen
+        for (let j0 = k; ;) {
+          const end = Math.min(e, j0 + 65535), pts = [];
+          for (let j = j0; j < end; j++) pts.push(ops[j].x, ops[j].y);
+          section(0, pts);
+          if (end >= e) break;
+          j0 = end - 1;
+        }
         sx = ops[e - 1].x;
         sy = ops[e - 1].y;
       } else if (c === COLOR) {

@@ -224,6 +224,46 @@ test('lange Sprünge und Stiche werden in allen Formaten zerlegt und kommen gena
   sameSeq(normalize(readPes(new Uint8Array(E.toPes(pat, 'grenze'))).pec.ops), expected(pat, 'pes'), 'PEC');
 });
 
+test('PES: über 65535 Stiche ohne Sprung werden auf mehrere Stichgruppen verteilt', () => {
+  const n = 140000;
+  const ops = [{ c: JUMP, x: 0, y: 0 }];
+  for (let k = 0; k < n; k++) ops.push({ c: STITCH, x: (k % 200) * 10 - 1000, y: Math.floor(k / 200) * 2 - 700 + (k % 2) });
+  ops.push({ c: TRIM }, { c: END });
+  const pat = { ops, bounds: [-1000, -700, 990, 700], threads: [{ hex: '#000000', rgb: [0, 0, 0] }] };
+  const r = readPes(new Uint8Array(E.toPes(pat, 'gross')));
+  const stitchSecs = r.sections.filter((s) => s.flag === 0);
+  assert.equal(r.sectionCount, r.sections.length);
+  assert.ok(stitchSecs.length >= 3 && stitchSecs.every((s) => s.pts.length <= 65535));
+  // jede weitere Gruppe beginnt am letzten Punkt der vorigen, zusammen genau die Stiche
+  const pts = stitchSecs[0].pts.slice();
+  for (const s of stitchSecs.slice(1)) {
+    assert.deepEqual(s.pts[0], pts[pts.length - 1]);
+    pts.push(...s.pts.slice(1));
+  }
+  assert.equal(pts.length, n);
+  sameSeq(normalize(r.pec.ops), expected(pat, 'pes'), 'PEC');
+});
+
+test('PEC: Fadenschnitt ohne folgenden Sprung wirkt nicht auf einen späteren Sprung', () => {
+  const ops = [
+    { c: JUMP, x: 0, y: 0 }, { c: STITCH, x: 0, y: 0 }, { c: STITCH, x: 20, y: 0 },
+    { c: TRIM }, { c: COLOR },
+    { c: STITCH, x: 40, y: 0 }, { c: JUMP, x: 60, y: 0 }, { c: STITCH, x: 60, y: 0 }, { c: STITCH, x: 80, y: 0 },
+    { c: TRIM }, { c: END },
+  ];
+  const pat = { ops, bounds: [0, 0, 80, 0], threads: [{ hex: '#000000', rgb: [0, 0, 0] }, { hex: '#ff0000', rgb: [255, 0, 0] }] };
+  const got = normalize(readPes(new Uint8Array(E.toPes(pat, 'schnitt'))).pec.ops);
+  assert.equal(got.filter((o) => o === 'TRIM').length, 0, `unerwarteter Fadenschnitt: ${JSON.stringify(got)}`);
+});
+
+test('ungültige Koordinaten (NaN) führen in allen Formaten zu einem Fehler statt einer kaputten Datei', () => {
+  const ops = [{ c: JUMP, x: 0, y: 0 }, { c: STITCH, x: 0, y: 0 }, { c: STITCH, x: 10, y: NaN }, { c: STITCH, x: 20, y: 20 }, { c: END }];
+  const pat = { ops, bounds: [0, 0, 20, 20], threads: [{ hex: '#000000', rgb: [0, 0, 0] }] };
+  assert.throws(() => E.toDst(pat, 'x'), /ungültige Koordinaten/);
+  assert.throws(() => E.toExp(pat), /ungültige Koordinaten/);
+  assert.throws(() => E.toPes(pat, 'x'), /ungültige Koordinaten/);
+});
+
 test('EXP: Stich bis 12,7 mm je Achse in einem Schritt, 0x80 nie als Stichbyte', () => {
   const ops = [
     { c: JUMP, x: 0, y: 0 }, { c: STITCH, x: 0, y: 0 },
