@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const models = require('./models');
 const lightburn = require('./lightburn');
 const updater = require('./updater');
+const prefs = require('./prefs');
 
 const HISTORY_DIR = () => path.join(app.getPath('userData'), 'history');
 const ID_PATTERN = /^[a-f0-9-]{36}$/;
@@ -276,11 +277,15 @@ ipcMain.handle('open-image', async () => {
 ipcMain.handle('export-files', async (_e, { baseName, files }) => {
   if (!files || files.length === 0) return null;
   const first = files[0];
-  exportExt(first.ext);
+  files.forEach((f) => exportExt(f.ext));
+  // zuletzt benutzter Ordner, sonst „Bilder“
+  const lastDir = prefs.get().exportDir;
+  const dir = lastDir && (await fs.stat(lastDir).then((st) => st.isDirectory(), () => false)) ? lastDir : app.getPath('pictures');
   const res = await dialog.showSaveDialog(mainWindow, {
     title: 'Exportieren',
-    defaultPath: path.join(app.getPath('pictures'), `${sanitize(baseName)}.${first.ext}`),
-    filters: [{ name: first.ext.toUpperCase(), extensions: [first.ext] }],
+    defaultPath: path.join(dir, `${sanitize(baseName)}.${first.ext}`),
+    // nennt alle Formate, die mit gleichem Namen daneben entstehen
+    filters: [{ name: [...new Set(files.map((f) => f.ext.toUpperCase()))].join(' + '), extensions: [first.ext] }],
   });
   if (res.canceled || !res.filePath) return null;
 
@@ -294,7 +299,9 @@ ipcMain.handle('export-files', async (_e, { baseName, files }) => {
   // erste Datei hat der Dialog schon bestätigt – außer der Name wurde ohne/mit anderer Endung eingegeben
   const samePath = (a, b) => (process.platform === 'linux' ? a === b : a.toLowerCase() === b.toLowerCase());
   for (const { target } of targets.filter((t) => !samePath(t.target, res.filePath))) {
-    if (await fs.access(target).then(() => true, () => false)) existing.push(path.basename(target));
+    const st = await fs.stat(target).catch(() => null);
+    if (st && st.isDirectory()) throw new Error(`„${path.basename(target)}“ ist ein Ordner`);
+    if (st) existing.push(path.basename(target));
   }
   if (existing.length) {
     const answer = await dialog.showMessageBox(mainWindow, {
@@ -307,12 +314,38 @@ ipcMain.handle('export-files', async (_e, { baseName, files }) => {
     });
     if (answer.response !== 1) return null;
   }
-  const written = [];
-  for (const { f, target } of targets) {
-    await fs.writeFile(target, typeof f.data === 'string' ? f.data : Buffer.from(f.data));
-    written.push(target);
+  // Alles oder nichts: erst alle Dateien als Hilfsdateien schreiben, vorhandene beiseitelegen, dann umbenennen.
+  // Schlägt ein Schritt fehl (Platte voll, Datei unter Windows in einem anderen Programm geöffnet), wird alles
+  // zurückgedreht – keine halbe Gruppe (etwa EXP ohne INF), vorhandene Dateien bleiben unverändert.
+  const id = crypto.randomUUID();
+  const tmps = [], backups = [], placed = [];
+  try {
+    for (const { f, target } of targets) {
+      const tmp = `${target}.${id}.tmp`;
+      tmps.push(tmp);
+      await fs.writeFile(tmp, typeof f.data === 'string' ? f.data : Buffer.from(f.data));
+    }
+    for (const { target } of targets) {
+      const st = await fs.stat(target).catch(() => null);
+      if (!st) continue;
+      if (st.isDirectory()) throw new Error(`„${path.basename(target)}“ ist ein Ordner`);
+      const bak = `${target}.${id}.bak.tmp`;
+      await fs.rename(target, bak);
+      backups.push([bak, target]);
+    }
+    for (let k = 0; k < targets.length; k++) {
+      await fs.rename(tmps[k], targets[k].target);
+      placed.push(targets[k].target);
+    }
+  } catch (err) {
+    for (const p of placed) await fs.rm(p, { force: true }).catch(() => {});
+    for (const [bak, target] of backups) await fs.rename(bak, target).catch(() => {});
+    await Promise.all(tmps.map((t) => fs.rm(t, { force: true })));
+    throw err;
   }
-  return written;
+  await Promise.all(backups.map(([bak]) => fs.rm(bak, { force: true }).catch(() => {})));
+  prefs.set({ exportDir: parsed.dir });
+  return targets.map((t) => t.target);
 });
 
 ipcMain.handle('show-in-folder', (_e, filePath) => {

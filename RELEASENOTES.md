@@ -5,6 +5,31 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.17.2 – 24.11.2026
+
+### Geändert
+- **Breite = Motivbreite bei Stickdateien:** „Breite (mm)“ gilt für PES, DST und EXP jetzt für das gestickte
+  Motiv, nicht für das Bild mit Rand und Hintergrund. Vorher wurden z. B. „10 Farben“ (90 mm) nur 55 mm und
+  „16 Farben“ (100 mm) nur 61 mm breit gestickt. SVG und Rasterbilder behalten die Bildbreite.
+- **Stencil-Porträt (Sticken):** 80 statt 100 mm breit, damit es hochkant in den 130 × 180-mm-Rahmen passt.
+- **Export-Dialog:** öffnet im zuletzt benutzten Ordner und nennt alle Formate, die entstehen.
+
+### Behoben
+- **Export alles oder nichts:** Schlug eine Datei fehl (Platte voll, unter Windows eine Datei im Stickprogramm
+  geöffnet), blieben die übrigen liegen – etwa EXP ohne INF. Jetzt wird alles zurückgedreht, vorhandene Dateien
+  bleiben unverändert.
+- **DST: Schnitt bei langen Sprüngen:** Sprünge über 24 mm werden immer geschnitten, auch bei größerer
+  Schnittlänge. DST braucht dafür 3 und mehr Sprünge, was Maschinen ohnehin als Schnitt werten – jetzt
+  stimmen alle Formate überein.
+- **PES:** leeres Muster und mehr als 256 Farbwechsel werden mit einer Meldung abgewiesen statt eine
+  unlesbare Datei zu schreiben.
+
+### Intern
+- Zwei neue Tests (langer Sprung mit großer Schnittlänge, PES-Grenzen); geprüft im laufenden Programm mit allen
+  Stick-Vorlagen.
+
+---
+
 ## 1.17.1 – 23.11.2026
 
 ### Behoben

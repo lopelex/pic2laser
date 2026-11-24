@@ -20,6 +20,7 @@
  */
 const Embroidery = (() => {
   const STITCH = 0, JUMP = 1, TRIM = 2, COLOR = 3, END = 4;
+  const MAX_UNCUT_MM = 24; // längster Sprung ohne Schnitt: in DST 2 Sprünge à 12,1 mm
 
   /* ---------------- SVG-Pfad → Polygone ---------------- */
 
@@ -599,7 +600,8 @@ const Embroidery = (() => {
           return;
         }
         tieOff();
-        if (stitched && d >= o.trimMm) ops.push({ x: px, y: py, c: TRIM, l: layer });
+        // längere Sprünge immer schneiden: DST braucht dafür 3+ Sprünge, das werten Maschinen als Schnitt
+        if (stitched && d >= Math.min(o.trimMm, MAX_UNCUT_MM)) ops.push({ x: px, y: py, c: TRIM, l: layer });
         push(x, y, JUMP);
         tie = true;
       },
@@ -1500,7 +1502,10 @@ const Embroidery = (() => {
    */
   function toPes(pat, name) {
     checkPattern(pat);
+    if (!pat.ops.some((p) => p.c === STITCH)) throw new Error('Stickmuster ist leer');
     const codes = pecIndices(pat.threads);
+    // PEC speichert die Zahl der Farbblöcke in einem Byte
+    if (codes.length > 256) throw new Error('PES: höchstens 256 Farbwechsel möglich');
     const b = makeBuf();
     const [bx0, by0, bx1, by1] = pat.bounds;
     const width = bx1 - bx0, height = by1 - by0;
