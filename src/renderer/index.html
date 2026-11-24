@@ -503,7 +503,7 @@
         </div>
       </section>
 
-      <section class="group" data-mode="vector edges dither sine">
+      <section class="group" data-mode="vector edges dither sine color">
         <h3>Gesichter</h3>
         <label class="check"><input type="checkbox" data-key="faceBoost" /> Gesichtszüge hervorheben</label>
         <div data-show="faceBoost">
@@ -542,12 +542,12 @@
             <span>Wangen <output data-for="cheekStrength"></output></span>
             <input type="range" data-key="cheekStrength" min="0" max="2" step="0.1" />
           </label>
-          <p class="hint info">Erkennt Gesichter per KI und betont Augen, Brauen, Nase und Mund. „Mund“, „Nase“, „Kinn“ und „Wangen“ verstärken diese Bereiche zusätzlich (0 = aus). Im Modus <b>Linien</b> wird jedes Gesicht zusätzlich in hoher Auflösung nachgezeichnet.</p>
+          <p class="hint info">Erkennt Gesichter per KI und betont Augen, Brauen, Nase und Mund. „Mund“, „Nase“, „Kinn“ und „Wangen“ verstärken diese Bereiche zusätzlich (0 = aus). Im Modus <b>Linien</b> wird jedes Gesicht zusätzlich in hoher Auflösung nachgezeichnet, im Modus <b>Farben</b> wirkt die Betonung auf die Helligkeit (der Farbton bleibt).</p>
           <p class="hint status" id="face-info"></p>
         </div>
       </section>
 
-      <section class="group" data-mode="vector edges dither">
+      <section class="group" data-mode="vector edges dither sine color">
         <h3>Motivkontur</h3>
         <label class="check"><input type="checkbox" data-key="subjectLine" /> Dünne Linie zwischen Motiv und Hintergrund</label>
         <div data-show="subjectLine">
@@ -555,7 +555,7 @@
             <span>Linienstärke <output data-for="subjectLineMm"></output></span>
             <input type="range" data-key="subjectLineMm" min="0.1" max="2" step="0.05" />
           </label>
-          <p class="hint info">Setzt das Motiv dort ab, wo es mit dem Hintergrund verschwimmt (z.&nbsp;B. helle Haut vor hellem Hintergrund). Nutzt die Freistell-Maske – ist Freistellen aus, wird die Kontur per KI ermittelt und der Hintergrund bleibt erhalten.</p>
+          <p class="hint info">Setzt das Motiv dort ab, wo es mit dem Hintergrund verschwimmt (z.&nbsp;B. helle Haut vor hellem Hintergrund). Nutzt die Freistell-Maske – ist Freistellen aus, wird die Kontur per KI ermittelt und der Hintergrund bleibt erhalten. Im Modus <b>Farben</b> wird sie eine eigene schwarze Ebene „Motivkontur“, bei <b>Wellen</b> eine gefüllte Fläche zusätzlich zu den Wellenlinien.</p>
         </div>
       </section>
 

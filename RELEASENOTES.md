@@ -5,6 +5,23 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.18.0 – 24.11.2026
+
+### Neu
+- **Farben: Gesichtszüge hervorheben.** Mund, Nase, Kinn und Wangen werden über die Helligkeit betont,
+  der Farbton bleibt erhalten. Alle Regler wie in den anderen Modi.
+- **Farben: Motivkontur.** Eigene schwarze Ebene „Motivkontur“ ganz oben (eigene LightBurn-Ebene,
+  eigener Garnwechsel in der Stickdatei); die Farbflächen darunter sparen den Ring aus.
+- **Wellen: Motivkontur.** Im SVG als gefüllte Fläche zusätzlich zu den Wellenlinien, in PNG/JPG/BMP
+  enthalten, in der Stickdatei als Steppstich.
+- In beiden Modi gilt: Ist Freistellen aus, wird die Kontur per KI ermittelt und der Hintergrund bleibt.
+
+### Intern
+- **Dev-Modus `npm run dev`:** Änderungen in `src/renderer` laden das Fenster neu, Änderungen in
+  `src/main` starten die App neu; Strg+R/F5 lädt neu, F12/Strg+Umschalt+I öffnet die DevTools.
+
+---
+
 ## 1.17.1 – 23.11.2026
 
 ### Behoben
