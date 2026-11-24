@@ -211,8 +211,8 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 ## Presets
 
-- **78 Vorlagen**, getrennt nach **Lasern** und **Sticken** (Umschalter über der Preset-Liste, die Wahl
-  bleibt gespeichert). Jede Vorlage hat eine kurze Beschreibung.
+- **78 Vorlagen**, getrennt nach **Lasern** und **Sticken** (Umschalter über der Preset-Liste; die App
+  startet immer mit *Lasern*). Jede Vorlage hat eine kurze Beschreibung.
   - *Lasern* (51), gegliedert nach Eingangsbild: Logos, Schrift & Grafik · Porträts & Personen · Tiere ·
     Fotos & Landschaft · Material (Holz, Schiefer/Glas/Alu, Leder, Acryl) · Schneiden & Relief · Farben.
   - *Sticken* (29): nach Stoff · Linien, Tusche & Skizze · Fläche & Wellen · Farben (4–16) – der Vorsatz
@@ -253,7 +253,7 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 ## Export & Weitergabe
 
-- **Exportieren** (Strg/Cmd+S): SVG (Maße in mm) und optional PNG, JPG, BMP (mit DPI; 1-Bit-BMP
+- **Exportieren** (Strg/Cmd+E): SVG (Maße in mm) und optional PNG, JPG, BMP (mit DPI; 1-Bit-BMP
   bzw. 8-Bit-Graustufen beim Relief, 24 Bit im Modus Farben) – alle Dateien mit gleichem Namen in einem Ordner.
   Nur eine bekannte Endung im eingegebenen Namen wird ersetzt, Punkte im Namen bleiben („Version 1.2“).
   Der Dialog öffnet im zuletzt benutzten Ordner und nennt alle Formate (z. B. „SVG + PES + EXP + INF“).
@@ -324,7 +324,8 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   - **Dialog „Stickparameter je Farbe“:** links Stoff, Schnittlänge und die Farben in Stickreihenfolge
     (Häkchen = sticken, Kurzfassung und Stichzahl je Farbe, „von Hand“-Markierung), Mitte die
     Stichvorschau (Mausrad = Zoom, Ziehen = Verschieben, Doppelklick = Einpassen, andere Farben
-    abblenden), rechts die gewählte Farbe: Begründung der Automatik, Stichart (Füllstich, Kontur als
+    abblenden, „Auf gewählte Farbe zoomen“: beim Auswählen sanfter Zoom auf die Stiche der Farbe, mindestens
+    15 mm Ausschnitt, nie kleiner als das ganze Motiv, Einstellung in `pic2laser.ui` gemerkt), rechts die gewählte Farbe: Begründung der Automatik, Stichart (Füllstich, Kontur als
     Steppstich oder Dreifachstich, nicht sticken), Stichwinkel, Reihenabstand, Stichlänge, Zugausgleich,
     Unterlage, „Schmale Stellen als Kontur“. Geänderte Werte gelten nur für dieses Bild (`embLayers`,
     Schlüssel = ursprüngliche Bildfarbe, bleiben beim Umfärben erhalten); Doppelklick auf einen Regler,
@@ -351,6 +352,7 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 - Jede exportierte oder herausgezogene Umwandlung wird mit Original, Einstellungen, SVG, PNG
   und Vorschaubild gespeichert.
+- **In Historie speichern** (Knopf oder Strg/Cmd+S): sichert das aktuelle Ergebnis ohne Export.
 - Ein Klick öffnet sie mit allen Einstellungen wieder. Das gespeicherte Ergebnis wird sofort
   angezeigt, während im Hintergrund neu gerechnet wird (KI-Schritte kommen aus dem
   Festplatten-Cache); Export und Herausziehen stehen bereit, sobald die Berechnung fertig ist. Suche, SVG erneut speichern,
@@ -369,6 +371,28 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
     vom aktuellen Ergebnis, die des Eintrags entfällt (außer bei „nur Umrisslinie“).
   - Beim Speichern merkt sich der Eintrag die Vereinigung (`merge` in `meta.json`); beim Öffnen
     wird sie wiederhergestellt, solange der andere Eintrag noch existiert. „Aufheben“ löst sie.
+
+## Einführungstour
+
+- Läuft beim **ersten Start** automatisch und erklärt in 16 Schritten Funktionen und Ablauf
+  (Bild laden → Modus → Feinschliff → Größe & Formate → Exportieren, dazu Lasern oder Sticken (Vergleich), Presets, Modus Farben,
+  Freistellen, Vorschau, Sticken, Dialog „Je Farbe einstellen…“ als nummerierte Skizze mit Erklärung je Bereich, Historie und KI-Modelle). Das jeweilige Bedienelement wird hervorgehoben.
+  Liegt es weiter unten in der Einstellungsspalte, scrollt die Spalte langsam dorthin (0,6–2 s, sanft an- und
+  auslaufend), der Rahmen wandert mit; bei „Bewegung reduzieren“ im System springt die Ansicht sofort.
+- **Abbrechen** jederzeit über ×, „Tour beenden“ oder Esc; Pfeiltasten blättern.
+- **Neu starten** über „Tour starten“ im Handbuch (? oben rechts oder F1). Bei späteren Starts erscheint sie nicht mehr
+  (gilt ab dem Anzeigen als gesehen, auch bei Abbruch).
+- Am Ende lädt „Beispielbild laden“ eine Beispiel-Plakette (SVG, 80 mm breit) zum Ausprobieren.
+- Alle Illustrationen und das Beispielbild sind im Code selbst gezeichnet (`tour.js`) – keine
+  fremden Bilder, keine Lizenzfragen.
+
+## Handbuch (F1)
+
+- **?** oben rechts öffnet das Handbuch, **F1** öffnet und schließt es ([HANDBUCH.md](HANDBUCH.md), wird mit der App ausgeliefert) als
+  Dialog: links Inhaltsverzeichnis (folgt beim Scrollen), rechts der Text; Abschnittslinks springen im Dialog.
+- **Suche** mit Markierung aller Treffer, Enter/Umschalt+Enter = nächster/voriger, Strg/Cmd+F = Suchfeld.
+- „Tour starten“ startet die Einführungstour. Eigener kleiner Markdown-Renderer (`manual.js`), keine
+  zusätzliche Abhängigkeit.
 
 ## Bedienkomfort & Leistung
 
@@ -536,7 +560,8 @@ laufende KI-Jobs (nur wenn der Prozess rechnet) und Downloads ab.
 ## Zustand und Einstellungen
 
 - `DEFAULTS` (Anfang von app.js) enthält alle Einstellungen mit Standardwerten. Sie werden in
-  `localStorage` (`pic2laser.settings`) gespeichert, UI-Zustand unter `pic2laser.ui`.
+  `localStorage` (`pic2laser.settings`) gespeichert, UI-Zustand unter `pic2laser.ui`, ob die
+  Einführungstour schon lief unter `pic2laser.tourSeen` (`tour.js`).
 - Bedienelemente in `index.html` mit `data-key="<einstellung>"` werden von `bindControls`
   automatisch angebunden (Checkbox → bool, Range/Number → Zahl, sonst Text).
   Anzeige-Formatierung der Regler in `FORMATTERS`.

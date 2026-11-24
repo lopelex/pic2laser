@@ -241,6 +241,8 @@ const makeTracer = (name) => ({
 const tracers = { fill: makeTracer('Füllung'), outline: makeTracer('Umriss') };
 
 ipcMain.handle('app-version', () => app.getVersion());
+// Handbuch (F1): liegt im App-Verzeichnis bzw. im asar-Paket
+ipcMain.handle('manual-read', () => fs.readFile(path.join(app.getAppPath(), 'HANDBUCH.md'), 'utf8'));
 
 ipcMain.handle('update-state', () => updater.getState());
 ipcMain.handle('update-check', () => updater.check({ manual: true }));
