@@ -109,7 +109,10 @@ Alle KI-Funktionen laufen lokal und offline.
     („Linien glätten“ in mm) und mit gleichmäßiger Breite (Median je Strich) neu gezeichnet –
     vor „Linien verstärken“ bzw. der Linienstärke.
 - **Ausgabegröße:** Breite oder Höhe in mm (Seitenverhältnis bleibt erhalten); Weiß optional
-  transparent.
+  transparent. Für die **Stickdateien** (PES, DST, EXP) gilt die Breite für das gestickte Motiv ohne Rand
+  und Hintergrund – die Stiche werden auf genau diese Breite gebracht (Zugausgleich kann bis ca. 0,6 mm
+  dazugeben); SVG und Rasterbilder behalten die Bildbreite. Die Größe der Stickdatei steht unter
+  „Stickdatei“, die Höhe ergibt sich aus dem Motiv.
 
 ## Freistellen (Hintergrund entfernen)
 
@@ -253,6 +256,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 - **Exportieren** (Strg/Cmd+S): SVG (Maße in mm) und optional PNG, JPG, BMP (mit DPI; 1-Bit-BMP
   bzw. 8-Bit-Graustufen beim Relief, 24 Bit im Modus Farben) – alle Dateien mit gleichem Namen in einem Ordner.
   Nur eine bekannte Endung im eingegebenen Namen wird ersetzt, Punkte im Namen bleiben („Version 1.2“).
+  Der Dialog öffnet im zuletzt benutzten Ordner und nennt alle Formate (z. B. „SVG + PES + EXP + INF“).
+  Geschrieben wird alles oder nichts: schlägt eine Datei fehl (Platte voll, Datei in einem anderen Programm
+  geöffnet), bleiben vorhandene Dateien unverändert und es entsteht keine halbe Gruppe.
 - **SVG im Modus Farben:** je Farbe eine Gruppe als Inkscape-Ebene (`inkscape:groupmode="layer"`,
   Name „Nr. Farbname (#rrggbb)“) mit gefülltem Pfad in der Farbe, Reihenfolge von unten nach oben.
   LightBurn legt je Farbe eine Ebene an; Stickprogramme (Ink/Stitch, Hatch, Wilcom, Embrilliance

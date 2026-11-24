@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { E, CMD, MOTIFS, FIXTURES, motifFiles, normalize, readDst, readExp, readInf, readPes } = require('./embroidery-helpers');
+const { E, CMD, MOTIFS, FIXTURES, motifFiles, motifPattern, normalize, readDst, readExp, readInf, readPes } = require('./embroidery-helpers');
 
 const { STITCH, JUMP, TRIM, COLOR, END } = CMD;
 const KEYS = Object.keys(MOTIFS);
@@ -262,6 +262,36 @@ test('ungültige Koordinaten (NaN) führen in allen Formaten zu einem Fehler sta
   assert.throws(() => E.toDst(pat, 'x'), /ungültige Koordinaten/);
   assert.throws(() => E.toExp(pat), /ungültige Koordinaten/);
   assert.throws(() => E.toPes(pat, 'x'), /ungültige Koordinaten/);
+});
+
+test('Sprünge über 24 mm werden auch bei großer Schnittlänge geschnitten (DST: höchstens 2 Sprünge ohne Schnitt)', () => {
+  // zwei Quadrate mit 35 mm Abstand, Schnitt erst ab 50 mm eingestellt
+  const rings = E.pathToRings('M0,0 h10 v10 h-10 Z M45,0 h10 v10 h-10 Z', 0.3, false);
+  const an = E.analyze(rings);
+  const pat = E.plan([{ rings, an, hex: '#000000', kind: 'fill', name: 'Schwarz', p: E.autoParams(an, 'woven', null, 'fill').params }], { trimMm: 50 });
+  let x = null, y = null, trimmed = false, long = 0;
+  for (const p of pat.ops) {
+    if (p.c === TRIM) trimmed = true;
+    if (p.c === JUMP && x !== null) {
+      const d = Math.hypot(p.x - x, p.y - y) / 10;
+      if (d > 24.2) { long++; assert.ok(trimmed, `Sprung über ${d.toFixed(1)} mm ohne Schnitt`); }
+    }
+    if (p.c === STITCH || p.c === JUMP) { x = p.x; y = p.y; if (p.c === STITCH) trimmed = false; }
+  }
+  assert.ok(long > 0, 'Testmotiv hat keinen langen Sprung');
+});
+
+test('PES: leeres Muster und mehr als 256 Farbblöcke werden abgewiesen', () => {
+  assert.throws(() => E.toPes({ ops: [{ c: END }], bounds: [0, 0, 0, 0], threads: [] }, 'x'), /leer/);
+  const ops = [];
+  const threads = [];
+  for (let k = 0; k < 257; k++) {
+    if (k) ops.push({ c: COLOR });
+    ops.push({ c: JUMP, x: k, y: 0 }, { c: STITCH, x: k, y: 0 }, { c: STITCH, x: k, y: 10 });
+    threads.push({ hex: '#000000', rgb: [k % 256, 0, 0] });
+  }
+  ops.push({ c: END });
+  assert.throws(() => E.toPes({ ops, bounds: [0, 0, 256, 10], threads }, 'x'), /256/);
 });
 
 test('EXP: Stich bis 12,7 mm je Achse in einem Schritt, 0x80 nie als Stichbyte', () => {

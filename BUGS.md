@@ -229,20 +229,25 @@ App nicht auszulösen; jetzt bricht jedes Format mit einer Fehlermeldung ab.
 **Ort:** `src/main/main.js`, `export-files`. Ohne Endung eingegeben (vor allem unter Linux) wurde aus
 „Version 1.2 Entwurf“ „Version 1.*“. Jetzt wird nur eine bekannte Endung ersetzt.
 
-### S5. Breite in Farben-Vorlagen meint die Bildbreite – offen
+### S5. Breite in Farben-Vorlagen meint die Bildbreite – ✅ behoben (1.18.1)
 Bei „10 Farben“ (90 mm), „16 Farben“ (100 mm), „Stencil“ (100 mm) und „Logos“ (100 mm) gilt die Breite für
 das ganze Bild mit Hintergrund und Rand; das Motiv wird kleiner gestickt (z. B. 54,6 mm statt 90 mm). Die
-Ergebnis-Info zeigt die echte Größe.
+Ergebnis-Info zeigt die echte Größe. Seit 1.18.1 gilt die Breite für Stickdateien als Motivbreite (Stiche
+werden skaliert), z. B. 10 Farben 90,4 mm, 16 Farben 100,4 mm. Die Höhe-Eingabe und die Größe beim
+Herausziehen beziehen sich weiter auf das Bild (SVG); die Stickgröße steht unter „Stickdatei“.
+Offen: Maße in mm aus den Einstellungen (Motivkontur, Überlappung, Glätten) gelten für das Bild und wachsen
+beim Skalieren mit – z. B. 16 Farben: Faktor ca. 1,65, eine Motivkontur von 0,5 mm wird ca. 0,8 mm breit und
+dann als schmale Füllung statt als Linie gestickt.
 
-### Weitere Hinweise (nicht behoben, geringe Bedeutung)
+### Weitere Hinweise (geringe Bedeutung)
 - **DST:** Ein Sprung über 24,2 mm ohne Schnitt wird zu 3 und mehr Sprung-Datensätzen; Maschinen mit
-  „Jump Count For Trim“ = 3 schneiden dort. Der Stichplan schneidet vor Sprüngen über der Schnittlänge,
-  das tritt nur mit sehr großer Schnittlänge auf.
+  „Jump Count For Trim“ = 3 schneiden dort. – ✅ 1.18.1: Sprünge über 24 mm werden immer geschnitten.
 - **DST-Kopf:** `ST` zählt auch die Sprünge eines Schnitts (pyembroidery nicht); Maschinen werten das Feld
   nicht aus. `+Y`/`-Y` nach Tajima (pyembroidery vertauscht sie).
-- **PES:** leeres Muster und mehr als 256 Farbblöcke sind nicht abgefangen (die App lässt beides nicht zu).
-- **Export:** Schlägt eine spätere Datei fehl (Platte voll), bleiben die schon geschriebenen liegen. Der
-  Speichern-Dialog öffnet immer in „Bilder“ und nennt nur das erste Format.
+- **PES:** leeres Muster und mehr als 256 Farbblöcke – ✅ 1.18.1: werden mit Meldung abgewiesen.
+- **Export:** Schlug eine spätere Datei fehl (Platte voll), blieben die schon geschriebenen liegen; der
+  Speichern-Dialog öffnete immer in „Bilder“ und nannte nur das erste Format. – ✅ 1.18.1: alles oder nichts
+  (mit Zurückdrehen), letzter Ordner, alle Formate im Dialog.
 - **Nicht geprüft:** echte Maschinen, PE-Design, DesignShop 12 (EXP-Schnittcode `80 80 07 00` wie
   pyembroidery) – dafür die Prüfdateien in `test/fixtures/` und die Checkliste.
 

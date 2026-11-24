@@ -886,8 +886,8 @@ const BUILTIN_PRESETS = [
   },
   {
     group: 'Stickerei – Fläche & Wellen', name: 'Stickerei – Porträt als Schablone (Stencil)',
-    desc: 'Porträt als flächige Schwarz-Weiß-Grafik (Stencil), 100 mm breit: große, zusammenhängende Flächen, kleine Inseln entfernt – einfarbig gestickt.',
-    settings: { mode: 'vector', bgRemove: 'modnet', maskLargest: true, contrast: 25, blur: 2, gamma: 1.25, threshold: 100, turdSize: 60, alphaMax: 1.2, optTolerance: 0.4, faceBoost: true, faceStrength: 1, mouthStrength: 1, noseStrength: 0.6, chinStrength: 0.6, cheekStrength: 0.3, widthMm: 100, fmtPes: true },
+    desc: 'Porträt als flächige Schwarz-Weiß-Grafik (Stencil), 80 mm breit (passt hochkant in den 130 × 180-mm-Rahmen): große, zusammenhängende Flächen, kleine Inseln entfernt – einfarbig gestickt.',
+    settings: { mode: 'vector', bgRemove: 'modnet', maskLargest: true, contrast: 25, blur: 2, gamma: 1.25, threshold: 100, turdSize: 60, alphaMax: 1.2, optTolerance: 0.4, faceBoost: true, faceStrength: 1, mouthStrength: 1, noseStrength: 0.6, chinStrength: 0.6, cheekStrength: 0.3, widthMm: 80, fmtPes: true },
   },
   {
     group: 'Stickerei – Fläche & Wellen', name: 'Stickerei – Kleiner Schriftzug / Monogramm (Cap)',
@@ -2128,16 +2128,37 @@ function embGeometry(r) {
 }
 
 /**
+ * Stickgeometrie in Motivgröße: „Breite (mm)“ gilt bei Stickdateien für das gestickte Motiv, nicht für das
+ * Bild mit Rand und Hintergrund. Ergebnis { rings, an, f } (f = Faktor gegenüber der Bildgröße).
+ */
+function embScaled(r, s = state.settings) {
+  const e = embGeometry(r);
+  const target = Number(s.widthMm) || 0;
+  if (e.scaled && e.scaled.target === target) return e.scaled;
+  let x0 = Infinity, x1 = -Infinity;
+  for (const rs of e.rings) for (const ring of rs) for (let k = 0; k < ring.length; k += 2) {
+    if (ring[k] < x0) x0 = ring[k];
+    if (ring[k] > x1) x1 = ring[k];
+  }
+  const f = target > 0 && x1 > x0 ? target / (x1 - x0) : 1;
+  const rings = f === 1 ? e.rings : e.rings.map((rs) => Embroidery.scaleRings(rs, f));
+  const an = f === 1 ? e.an : e.layers.map((l, i) => (l.kind === 'fill' ? Embroidery.analyze(rings[i]) : null));
+  e.scaled = { target, f, rings, an };
+  return e.scaled;
+}
+
+/**
  * Stickparameter je Ebene: Automatik aus Stoff und Form (Winkel abhängig von der Fläche darunter),
  * darüber die von Hand gesetzten Werte (s.embLayers[key]).
  * Ergebnis: [{ key, name, hex, kind, auto: {params, why}, manual, params }]
  */
 function embLayerParams(r, s = state.settings) {
   const e = embGeometry(r);
+  const sc = embScaled(r, s);
   const manualAll = s.embLayers || {};
   let prevAngle = null;
   return e.layers.map((l, i) => {
-    const auto = Embroidery.autoParams(e.an[i], s.embFabric, prevAngle, l.kind);
+    const auto = Embroidery.autoParams(sc.an[i], s.embFabric, prevAngle, l.kind);
     const manual = manualAll[l.key] || {};
     const params = { ...auto.params, ...manual };
     if (params.type === 'fill') prevAngle = Number(params.angle);
@@ -2145,17 +2166,18 @@ function embLayerParams(r, s = state.settings) {
   });
 }
 
-const embKey = (s) => JSON.stringify([s.embFabric, s.embTrimMm, s.embLayers || {}]);
+const embKey = (s) => JSON.stringify([s.embFabric, s.embTrimMm, s.embLayers || {}, s.widthMm]);
 
-/** Geplante Stiche des Ergebnisses (zwischengespeichert je Stoff, Schnittlänge und Handeinstellungen). */
+/** Geplante Stiche des Ergebnisses (zwischengespeichert je Stoff, Schnittlänge, Handeinstellungen und Breite). */
 function stitchPattern(r, s = state.settings) {
   if (!r || !r.emb) return null;
   const key = embKey(s);
   if (r.embCache && r.embCache.key === key) return r.embCache.pat;
   const e = embGeometry(r);
+  const sc = embScaled(r, s);
   const lp = embLayerParams(r, s);
   const pat = Embroidery.plan(e.layers.map((l, i) => ({
-    rings: e.rings[i], an: e.an[i], hex: l.hex, kind: l.kind, name: l.name, p: lp[i].params,
+    rings: sc.rings[i], an: sc.an[i], hex: l.hex, kind: l.kind, name: l.name, p: lp[i].params,
   })), { trimMm: s.embTrimMm });
   pat.widthMm = (pat.bounds[2] - pat.bounds[0]) / 10;
   pat.heightMm = (pat.bounds[3] - pat.bounds[1]) / 10;
@@ -2199,7 +2221,7 @@ async function stitchPreviewBlob(r, s) {
   if (!pat || !pat.stats.stitches) return null;
   const [x0, y0, x1, y1] = pat.bounds;
   const margin = 12;
-  const scale = Math.min(0.1 / r.emb.mmPerPx, 2400 / Math.max(1, x1 - x0), 2400 / Math.max(1, y1 - y0)); // px je 0,1 mm
+  const scale = Math.min(0.1 / (r.emb.mmPerPx * embScaled(r, s).f), 2400 / Math.max(1, x1 - x0), 2400 / Math.max(1, y1 - y0)); // px je 0,1 mm
   const c = new OffscreenCanvas(Math.ceil((x1 - x0) * scale) + 2 * margin, Math.ceil((y1 - y0) * scale) + 2 * margin);
   Embroidery.draw(c.getContext('2d'), pat, scale, margin - x0 * scale, margin - y0 * scale);
   return c.convertToBlob({ type: 'image/png' });
