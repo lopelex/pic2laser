@@ -555,6 +555,18 @@ const Processing = (() => {
       c = adjust(sharpen(c, w, h, s.sharpen), s);
       for (let p = 0; p < n; p++) rgba[p * 4 + ch] = c[p];
     }
+    // Gesichtszüge hervorheben: auf der Helligkeit rechnen und die Änderung auf alle drei Kanäle
+    // übertragen – Farbton bleibt, Lippen, Augen und Nase heben sich deutlicher ab
+    if (s.faceBoost && s.faces && s.faces.length) {
+      const gray = new Float32Array(n);
+      for (let p = 0, i = 0; p < n; p++, i += 4) gray[p] = 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
+      const orig = Float32Array.from(gray);
+      enhanceFaces(gray, w, h, s.faces, s.faceStrength, faceFeatureLevels(s));
+      for (let p = 0, i = 0; p < n; p++, i += 4) {
+        const d = gray[p] - orig[p];
+        if (d) { rgba[i] += d; rgba[i + 1] += d; rgba[i + 2] += d; }
+      }
+    }
     const srcA = maskAlpha(bitmap, w, h);
     const m = maskCanvas ? maskAlpha(maskCanvas, w, h) : null;
     const opaque = new Uint8Array(n);

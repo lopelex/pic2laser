@@ -1579,7 +1579,7 @@ const textWanted = (s) => s.textClean && s.mode !== 'relief' && s.mode !== 'sine
 /** Maske, auf die sich die Texterkennung bezieht (null = ganzes Bild). */
 const textMaskKey = (s) => (s.textOrder === 'after' ? maskKeyFor(s) : null);
 
-const facesWanted = (s) => s.faceBoost && s.mode !== 'relief' && s.mode !== 'color';
+const facesWanted = (s) => s.faceBoost && s.mode !== 'relief';
 const faceMaskKey = (s) => (s.faceOrder === 'after' ? maskKeyFor(s) : null);
 
 /** Schlüssel der Freistellmaske für die aktuellen Einstellungen (null = keine Maske). */
@@ -1805,7 +1805,7 @@ function planSteps(s) {
     const model = AI.depthModel(s.depthModel);
     add('depth', MODEL_NAMES[model], model, (work.w * sc * work.h * sc) / 1e6, DEPTH_SEED_MS[model], KEYS.depth(up, s.depthRes, model));
   }
-  if (s.subjectLine && !maskKey && s.mode !== 'relief' && s.mode !== 'sine' && s.mode !== 'color') {
+  if (s.subjectLine && !maskKey && s.mode !== 'relief') {
     add('contour', 'Motivkontur', `seg:ai`, 1, SEG_SEED_MS.ai, KEYS.seg('ai', up));
   }
 
@@ -1896,13 +1896,13 @@ async function runProcess() {
 
     // Motivkontur ohne Freistellen: Grenze per schneller KI ermitteln, Hintergrund bleibt erhalten
     let lineMask = null;
-    if (s.subjectLine && !mask && s.mode !== 'relief' && s.mode !== 'sine' && s.mode !== 'color') {
+    if (s.subjectLine && !mask && s.mode !== 'relief') {
       lineMask = await contourMask(s, work);
       if (stale()) return;
     }
 
     // 4. Rasterverarbeitung im Worker (blockiert die Oberfläche nicht)
-    let { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil, strokePath, colorLayers, colorMasks } =
+    let { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil, strokePath, colorLayers, colorMasks, colorContour, contourBits } =
       await Run.track('render', Pipeline.render(source, mask, s, lineMask, textSourceFor(s, source, work)));
     if (stale()) return;
     const widthMm = Math.max(0.1, s.widthMm);
@@ -1923,7 +1923,10 @@ async function runProcess() {
       ? Run.track('trace', window.api.trace({ layers: colorMasks, w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
       : trace
         ? Run.track('trace', window.api.trace({ bits, w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
-        : null;
+        : contourBits && !(s.outline && s.outlineOnly)
+          // Wellen mit Motivkontur: der Ring als gefüllte Fläche (die Wellen sind schon Vektorpfade)
+          ? Run.track('trace', window.api.trace({ bits: contourBits, w, h }, { turdSize: 2, alphaMax: 1, optTolerance: 0.2 }, 'fill'))
+          : null;
     const outlineJob = sil
       ? Run.track('trace-outline', window.api.trace({ bits: sil.bits, w: sil.w, h: sil.h }, {
         turdSize: Math.round(sil.w * sil.h * 0.0005), // Kleinteile ignorieren
@@ -1936,7 +1939,7 @@ async function runProcess() {
     if (stale()) return;
     if (fillRes.status === 'rejected') throw fillRes.reason;
     if (outlineRes.status === 'rejected') throw outlineRes.reason;
-    const colors = colorLayers ? colorSvgLayers(colorLayers, fillRes.value || []) : null;
+    const colors = colorLayers ? colorSvgLayers(colorLayers, fillRes.value || [], colorContour) : null;
     const fillPath = colors ? null : fillRes.value;
     // Farben: Rasterexporte, Vorschaubild und Herausziehen zeigen genau die vektorisierten Flächen
     const rgba8 = colors ? rasterizeColors(colors, w, h) : null;
@@ -1944,7 +1947,7 @@ async function runProcess() {
       toast(colorLayers.length ? 'Alle Farben sind ausgeblendet – das Ergebnis ist leer.' : 'Keine Farben gefunden – das Bild ist leer oder vollständig freigestellt.', true);
     }
     // Formen begradigt: Rasterexporte (PNG/JPG/BMP) und Vereinigen sollen dieselben Formen zeigen wie das SVG
-    if (s.shapeFit && fillPath && bits) bits = rasterizePath(fillPath, w, h);
+    if (s.shapeFit && fillPath && bits && !strokePath) bits = rasterizePath(fillPath, w, h);
     // leere Silhouette (alles unter der Mindestgröße): keine Umrisslinie – sonst hätte das SVG einen Rand, die Rasterbilder nicht
     const outline = sil && String(outlineRes.value || '').trim() ? { d: outlineRes.value, pad: sil.pad } : null;
     if (sil && !outline && s.outlineOnly) toast('Kein Motiv für die Umrisslinie gefunden – das Ergebnis ist leer.', true);
@@ -2058,12 +2061,20 @@ function rasterizePath(d, w, h) {
  * Modus Farben: Ebenen fürs SVG (Pfad, Farbe, Name) – Reihenfolge von unten nach oben,
  * nur sichtbare Farben (paths gehört zu den sichtbaren Ebenen in dieser Reihenfolge).
  */
-function colorSvgLayers(layers, paths) {
+function colorSvgLayers(layers, paths, contour = false) {
   const vis = layers.filter((l) => !l.off);
-  return vis.map((l, i) => ({
+  const out = vis.map((l, i) => ({
     d: String(paths[i] || '').trim(), hex: l.hex, label: `${i + 1} ${l.name} (${l.hex})`,
     name: l.name, key: `c${l.from}`, // Schlüssel für die Stickparameter: ursprüngliche Bildfarbe
   }));
+  // Motivkontur: letzte Maske, eigene schwarze Ebene ganz oben
+  if (contour) {
+    out.push({
+      d: String(paths[vis.length] || '').trim(), hex: '#000000', label: `${vis.length + 1} Motivkontur (#000000)`,
+      name: 'Motivkontur', key: 'contour',
+    });
+  }
+  return out;
 }
 
 /** Farbebenen (SVG-Pfade) als RGBA-Bild w × h, leere Stellen transparent. */
@@ -2091,6 +2102,8 @@ function embSource({ mode, colors, fillPath, stroke = null, outline, outlineOnly
     if (mode === 'sine') {
       // Wellen: offene Linien als Steppstich
       if (stroke && stroke.d) layers.push({ d: stroke.d, hex: '#000000', name: 'Wellen', key: 'sine', kind: 'line', pad: 0 });
+      // Motivkontur (schmaler Ring) als Steppstich entlang seiner Ränder
+      if (fillPath && String(fillPath).trim()) layers.push({ d: fillPath, hex: '#000000', name: 'Motivkontur', key: 'contour', kind: 'run', pad: 0 });
     } else if (colors) {
       for (const c of colors) if (c.d) layers.push({ d: c.d, hex: c.hex, name: c.name || c.label, key: c.key || c.hex, kind: 'fill', pad: 0 });
     } else if (fillPath && String(fillPath).trim()) {

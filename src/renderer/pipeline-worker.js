@@ -34,17 +34,25 @@ const handlers = {
       bits = Sine.rasterize(strokePath, w, h, s.sineStrokeMm / mmPerPx);
       gray8 = null;
     }
-    // Motivkontur (nur Schwarz-Weiß-Modi)
+    // Motivkontur. Wellen: der Ring geht zusätzlich einzeln zurück – er wird als gefüllte Fläche
+    // vektorisiert (die Wellen selbst sind Linien ohne Füllung)
     const contourMask = lineMask || mask;
+    let contourBits = null;
     if (s.subjectLine && bits && contourMask) {
-      Processing.addSubjectLine(bits, contourMask, w, h, s.subjectLineMm / (s.widthMm / w));
+      const widthPx = s.subjectLineMm / (s.widthMm / w);
+      if (s.mode === 'sine') {
+        contourBits = Processing.addSubjectLine(new Uint8Array(w * h), contourMask, w, h, widthPx);
+        for (let i = 0; i < bits.length; i++) if (contourBits[i]) bits[i] = 1;
+      } else {
+        Processing.addSubjectLine(bits, contourMask, w, h, widthPx);
+      }
     }
     source.close();
     if (mask) mask.close();
     if (lineMask) lineMask.close();
     const r = { w, h, bits, gray8, alpha8 };
     // trace: Binärbild soll vektorisiert werden (die Bits gehen direkt an Potrace, kein PNG nötig)
-    const out = { w, h, bits, gray8, alpha8: alpha8 || null, trace: false, imagePng: null, imageB64: null, sil: null, strokePath };
+    const out = { w, h, bits, gray8, alpha8: alpha8 || null, trace: false, imagePng: null, imageB64: null, sil: null, strokePath, contourBits };
 
     if (!(s.outline && s.outlineOnly)) {
       if (s.mode === 'sine') {
@@ -59,7 +67,7 @@ const handlers = {
 
     if (s.outline) out.sil = outlineSilhouette(s, w, h, bits, alpha, gray8);
 
-    const transfer = [out.bits, out.gray8, out.alpha8, out.imagePng, out.sil && out.sil.bits]
+    const transfer = [out.bits, out.gray8, out.alpha8, out.imagePng, out.sil && out.sil.bits, out.contourBits]
       .filter(Boolean)
       .map((a) => a.buffer);
     return { result: out, transfer };
@@ -171,11 +179,18 @@ function outlineSilhouette(s, w, h, bits, alpha, gray8) {
  */
 function renderColor({ source, mask, lineMask, textSource, s }) {
   if (textSource) textSource.close();
-  if (lineMask) lineMask.close();
   const { w, h, rgba, opaque } = Processing.processColor(source, s, mask);
   source.close();
-  if (mask) mask.close();
   const mmPerPx = s.widthMm / w;
+  // Motivkontur: eigene schwarze Ebene ganz oben; die Farbflächen darunter sparen sie aus
+  const contourMask = lineMask || mask;
+  let contourBits = null;
+  if (s.subjectLine && contourMask) {
+    contourBits = Processing.addSubjectLine(new Uint8Array(w * h), contourMask, w, h, s.subjectLineMm / mmPerPx);
+    if (!contourBits.some(Boolean)) contourBits = null;
+  }
+  if (mask) mask.close();
+  if (lineMask) lineMask.close();
   const { labels, layers } = Colors.separate(rgba, opaque, w, h, {
     count: s.colorCount,
     palette: s.colorPalette,
@@ -187,6 +202,10 @@ function renderColor({ source, mask, lineMask, textSource, s }) {
   const masks = Colors.layerMasks(labels, w, h, layers, (Number(s.colorOverlapMm) || 0) / mmPerPx, Processing.dilate);
   const bits = new Uint8Array(w * h);
   for (const m of masks) for (let i = 0; i < bits.length; i++) if (m.bits[i]) bits[i] = 1;
+  if (contourBits) {
+    for (const m of masks) for (let i = 0; i < bits.length; i++) if (contourBits[i]) m.bits[i] = 0;
+    for (let i = 0; i < bits.length; i++) if (contourBits[i]) bits[i] = 1;
+  }
   let total = 0;
   for (const l of layers) total += l.area;
   const colorLayers = layers.map((l) => ({ ...l, share: total ? l.area / total : 0 }));
@@ -194,7 +213,10 @@ function renderColor({ source, mask, lineMask, textSource, s }) {
     w, h, bits, gray8: null, alpha8: null, trace: false, imagePng: null, imageB64: null, sil: null, strokePath: null,
     colorLayers,
     colorMasks: s.outline && s.outlineOnly ? [] : masks.map((m) => m.bits),
+    // Motivkontur als letzte Maske (wird im Hauptprozess zur Ebene „Motivkontur“)
+    colorContour: !!contourBits && !(s.outline && s.outlineOnly),
   };
+  if (out.colorContour) out.colorMasks.push(contourBits);
   if (s.outline) {
     let src = null;
     if (mask) {

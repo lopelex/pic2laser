@@ -87,8 +87,9 @@ Alle KI-Funktionen laufen lokal und offline.
     bleiben beim Verstellen der Regler erhalten, solange die Farbe ähnlich bleibt (ΔE < 12).
   - Vektorisierung je Farbe mit Potrace (Regler unter „Vektorisierung“, auch „Formen begradigen“),
     alle Ebenen in einem Auftrag. Rasterexporte zeigen genau die vektorisierten Flächen (BMP 24 Bit).
-  - „Vereinigen“ ist mit dem Modus Farben nicht möglich; Gesichter, Schrift & Logos und Motivkontur
-    sind ausgeblendet.
+  - „Vereinigen“ ist mit dem Modus Farben nicht möglich; Schrift & Logos ist ausgeblendet.
+  - Gesichtszüge hervorheben wirkt auf die Helligkeit (Änderung gleich auf R, G, B – Farbton bleibt).
+  - Motivkontur: eigene schwarze Ebene „Motivkontur“ ganz oben; die Farbflächen sparen den Ring aus.
 - **Formen verbessern** (Abschnitt unter „Vektorisierung“). Mit „Schrift & Logos“ wählbar:
   *Reihenfolge* nach der Schrift-/Logoerkennung (Standard: die Verbesserungen gelten auch für die
   erkannte Schrift – sie wird aus dem KI-vergrößerten Bild gerechnet, mitbegradigt bzw. bei „Ruhige
@@ -201,6 +202,8 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 
 - **Motivkontur:** dünne Linie innen entlang der Grenze zwischen Motiv und Hintergrund – dort,
   wo beide ineinander verschwimmen (z. B. helle Haut vor hellem Hintergrund). Linienstärke in mm.
+  Auch in Wellen (Ring als gefüllte Fläche im SVG, Steppstich in der Stickdatei) und Farben
+  (eigene schwarze Ebene).
 - **Umrisslinie (Randkontur):** Kontur um das ganze Motiv mit Abstand in mm, „Lücken
   schließen“, optional nur die Umrisslinie ohne Gravur.
   - im SVG als **rote Linie** (eigene Ebene in LightBurn, z. B. zum Ausschneiden)

@@ -15,6 +15,60 @@ const ID_PATTERN = /^[a-f0-9-]{36}$/;
 
 let mainWindow;
 
+/* ------------------------------------------------------------------ */
+/* Dev-Modus (npm run dev): Hot Reload, Strg+R, F12                   */
+/* ------------------------------------------------------------------ */
+
+const DEV = process.argv.includes('--dev');
+
+/** Strg+R/F5 lädt neu, F12/Strg+Umschalt+I öffnet die DevTools (ohne Menü sonst nicht erreichbar). */
+function devTools(win) {
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return;
+    const mod = input.control || input.meta;
+    const key = input.key.toLowerCase();
+    if (input.key === 'F5' || (mod && key === 'r')) {
+      e.preventDefault();
+      win.webContents.reloadIgnoringCache();
+    } else if (input.key === 'F12' || (mod && input.shift && key === 'i')) {
+      e.preventDefault();
+      win.webContents.toggleDevTools();
+    }
+  });
+}
+
+/**
+ * Dateien beobachten: Änderungen in src/renderer laden das Fenster neu,
+ * Änderungen in src/main starten die App neu (Hauptprozess, Vektorisierung, KI-Prozess).
+ */
+function watchSources() {
+  const fsSync = require('fs');
+  const timers = {};
+  const later = (kind, fn) => {
+    clearTimeout(timers[kind]);
+    timers[kind] = setTimeout(fn, 200); // Editoren speichern oft in mehreren Schritten
+  };
+  const watch = (dir, kind, fn) => {
+    try {
+      fsSync.watch(path.join(__dirname, '..', dir), { recursive: true }, (_ev, file) => {
+        if (!file || /(^|[\\/])\.|~$|\.swp$/.test(file)) return; // versteckte und Editor-Hilfsdateien
+        later(kind, () => fn(file));
+      });
+    } catch (err) {
+      console.error(`[dev] ${dir} kann nicht beobachtet werden:`, err.message);
+    }
+  };
+  watch('renderer', 'renderer', (file) => {
+    console.log(`[dev] ${file} geändert – Fenster wird neu geladen`);
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reloadIgnoringCache();
+  });
+  watch('main', 'main', (file) => {
+    console.log(`[dev] ${file} geändert – App wird neu gestartet`);
+    app.relaunch();
+    app.quit(); // regulär beenden: räumt Prozesse und den GPU-Vermerk auf
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -51,6 +105,8 @@ function createWindow() {
       });
     }
   });
+
+  if (DEV) devTools(mainWindow);
 
   // Links nie im App-Fenster öffnen
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -92,6 +148,7 @@ if (!app.requestSingleInstanceLock()) {
     cleanupHistoryTmp();
     if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
     createWindow();
+    if (DEV) watchSources();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
