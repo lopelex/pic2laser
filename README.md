@@ -68,9 +68,9 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
   Tonwerte vom Original)
 - **KI-Vergrößerung 4×** für kleine oder unscharfe Bilder
 - **Gesichtszüge hervorheben**: erkennt Gesichter und betont Augen, Brauen, Nase und Mund
-  (Linien: Gesicht zusätzlich hochaufgelöst nachgezeichnet; Fläche/Foto: lokaler Kontrast).
+  (Linien: Gesicht zusätzlich hochaufgelöst nachgezeichnet; Fläche/Foto/Wellen: lokaler Kontrast; Farben: auf der Helligkeit).
   Mund, Nase, Kinn und Wangen werden aus dem Gesichtsrahmen geschätzt oder genau per Face Parsing gefunden
-- **Motivkontur**: dünne Linie dort, wo Motiv und Hintergrund ineinander verschwimmen
+- **Motivkontur**: dünne Linie dort, wo Motiv und Hintergrund ineinander verschwimmen (auch in Wellen und Farben – dort als eigene schwarze Ebene)
 - **Schrift & Logos**: erkennt Schriftzüge und angrenzende Logo-Elemente und stellt sie scharf und gefüllt dar,
   statt sie zu rastern oder nachzuzeichnen (Bereiche werden im Original blau markiert)
 - **Umrisslinie**: Randkontur um das Motiv mit Abstand in mm (rote Linie → eigene LightBurn-Ebene,
