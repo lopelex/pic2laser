@@ -2,7 +2,7 @@
 
 Electron-App, die Bilder in Schwarz-Weiß-SVGs (und optional PNG/JPG/BMP) für die Lasergravur mit LightBurn umwandelt.
 
-Aktuelle Version: **1.10.0**. Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
+Aktuelle Version: **1.19.0**. Bedienung Schritt für Schritt (Lasern und Sticken): [HANDBUCH.md](HANDBUCH.md). Ausführliche Beschreibung aller Funktionen: [FUNCTION.md](FUNCTION.md),
 bekannte und behobene Fehler: [BUGS.md](BUGS.md).
 
 ## Starten
@@ -85,7 +85,7 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
   Doppelklick auf einen Regler setzt ihn zurück.
 - **Ausgabegröße in mm**: SVGs enthalten `width/height` in mm, Rasterbilder die DPI –
   LightBurn importiert alles direkt in der richtigen Größe.
-- **Export** als SVG, PNG, JPG und/oder 1-Bit-BMP (Strg+S oder Strg+E)
+- **Export** als SVG, PNG, JPG und/oder 1-Bit-BMP (Strg+E)
 - **Stickdateien** PES (Brother), DST (Tajima) und EXP (Melco, z. B. für Melco DesignShop, mit INF-Datei für die Farben) direkt für die Stickmaschine: Flächen als Füllstich mit
   Unterlage und Zugausgleich, Umrisslinie als Steppstich, Wege innerhalb der Flächen statt Fadenschnitten;
   Stickparameter je Farbe automatisch aus Stoff und Form (Winkel, Unterlage, schmale Stellen als Kontur),
@@ -114,7 +114,8 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
 |---|---|
 | Strg/⌘+O | Bild öffnen |
 | Strg/⌘+V | Bild aus der Zwischenablage einfügen |
-| Strg/⌘+S, Strg/⌘+E | Exportieren |
+| Strg/⌘+E | Exportieren |
+| Strg/⌘+S | In Historie speichern |
 | Strg/⌘+L | An LightBurn senden |
 | Esc | Laufende Berechnung abbrechen |
 | Doppelklick auf Regler | Regler zurücksetzen |

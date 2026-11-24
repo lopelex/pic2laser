@@ -133,6 +133,8 @@ const ui = (() => {
 function saveUi() {
   try { localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(ui)); } catch { /* ignorieren */ }
 }
+// Die App startet immer im Bereich „Lasern“; „Sticken“ gilt nur bis zum Beenden
+ui.presetTab = 'laser';
 const ZOOM_STEPS = [1, 1.5, 2, 3, 4, 6, 8, 12, 16];
 const ZOOM_MAX = 16;
 
@@ -2446,6 +2448,10 @@ function scheduleEmbDialog(delay = 120) {
     renderEmbLayerList(lp, pat);
     renderEmbEdit(lp);
     drawEmbCanvas();
+    if (embDlg.refocus) {
+      embDlg.refocus = false;
+      if ($('#emb-zoom').checked) animateEmbView(embFitView(true));
+    }
     const sel = lp[embDlg.sel];
     const selText = sel && pat.layers && pat.layers[embDlg.sel]
       ? ` · gewählt: ${embDlg.sel + 1} ${sel.name} – ${fmtInt(pat.layers[embDlg.sel].stitches)} Stiche` : '';
@@ -2454,14 +2460,87 @@ function scheduleEmbDialog(delay = 120) {
   }, delay);
 }
 
-function fitEmbView() {
+/** Umriss der Stiche einer Farbe (0,1 mm), je Stichmuster zwischengespeichert; null = keine Stiche. */
+const embLayerBoundsCache = new WeakMap();
+function embLayerBounds(pat, layer) {
+  let all = embLayerBoundsCache.get(pat);
+  if (!all) {
+    all = new Map();
+    for (const p of pat.ops) {
+      if (p.c !== Embroidery.CMD.STITCH) continue;
+      const l = p.l || 0;
+      const b = all.get(l);
+      if (!b) all.set(l, [p.x, p.y, p.x, p.y]);
+      else {
+        if (p.x < b[0]) b[0] = p.x;
+        if (p.y < b[1]) b[1] = p.y;
+        if (p.x > b[2]) b[2] = p.x;
+        if (p.y > b[3]) b[3] = p.y;
+      }
+    }
+    embLayerBoundsCache.set(pat, all);
+  }
+  return all.get(layer) || null;
+}
+
+/**
+ * Ansicht, die das ganze Motiv zeigt – oder mit focus und „Auf gewählte Farbe zoomen“ die Stiche der
+ * gewählten Farbe (mindestens 15 mm Ausschnitt, damit kleine Farben nicht riesig werden).
+ */
+function embFitView(focus = false) {
   const pat = embDlg.pat;
   const view = $('#emb-view');
   const W = view.clientWidth, H = view.clientHeight;
-  if (!pat || !W || !H) return;
-  const [x0, y0, x1, y1] = pat.bounds;
-  const scale = Math.min(W / Math.max(1, x1 - x0), H / Math.max(1, y1 - y0)) * 0.92;
-  embDlg.view = { scale, ox: W / 2 - ((x0 + x1) / 2) * scale, oy: H / 2 - ((y0 + y1) / 2) * scale };
+  if (!pat || !W || !H) return null;
+  const fit = ([x0, y0, x1, y1], margin) => Math.min(W / Math.max(1, x1 - x0), H / Math.max(1, y1 - y0)) * margin;
+  let box = pat.bounds;
+  let scale = fit(box, 0.92);
+  const lb = focus && $('#emb-zoom').checked ? embLayerBounds(pat, embDlg.sel) : null;
+  if (lb) {
+    const MIN = 150; // 15 mm
+    const cx = (lb[0] + lb[2]) / 2, cy = (lb[1] + lb[3]) / 2;
+    const w = Math.max(MIN, lb[2] - lb[0]), h = Math.max(MIN, lb[3] - lb[1]);
+    box = [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2];
+    // Rand für die Werkzeugleiste oben; nie kleiner als das ganze Motiv
+    scale = Math.max(scale, fit(box, 0.78));
+  }
+  return { scale, ox: W / 2 - ((box[0] + box[2]) / 2) * scale, oy: H / 2 - ((box[1] + box[3]) / 2) * scale };
+}
+
+function fitEmbView(focus = false) {
+  const v = embFitView(focus);
+  if (v) embDlg.view = v;
+}
+
+/** Sanft zur neuen Ansicht zoomen (0,35 s); bei „Bewegung reduzieren“ sofort. */
+let embAnim = 0;
+function animateEmbView(target) {
+  if (!target) return;
+  const from = embDlg.view;
+  const run = ++embAnim;
+  if (!from || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    embDlg.view = target;
+    drawEmbCanvas();
+    return;
+  }
+  // im logarithmischen Maßstab überblenden, Bildpunkt unter der Mitte gleitet mit
+  const view = $('#emb-view');
+  const W = view.clientWidth, H = view.clientHeight;
+  const c0 = { x: (W / 2 - from.ox) / from.scale, y: (H / 2 - from.oy) / from.scale };
+  const c1 = { x: (W / 2 - target.ox) / target.scale, y: (H / 2 - target.oy) / target.scale };
+  const t0 = performance.now();
+  const ease = (k) => 1 - (1 - k) ** 3;
+  const frame = (now) => {
+    if (run !== embAnim || !$('#emb-dialog').open) return;
+    const k = Math.min(1, (now - t0) / 350);
+    const e = ease(k);
+    const scale = Math.exp(Math.log(from.scale) + (Math.log(target.scale) - Math.log(from.scale)) * e);
+    const cx = c0.x + (c1.x - c0.x) * e, cy = c0.y + (c1.y - c0.y) * e;
+    embDlg.view = { scale, ox: W / 2 - cx * scale, oy: H / 2 - cy * scale };
+    drawEmbCanvas();
+    if (k < 1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 function drawEmbCanvas() {
@@ -2479,7 +2558,7 @@ function drawEmbCanvas() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const pat = embDlg.pat;
   if (!pat || !pat.stats.stitches) return;
-  if (!embDlg.view) fitEmbView();
+  if (!embDlg.view) fitEmbView(true);
   const v = embDlg.view;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   Embroidery.draw(ctx, pat, v.scale, v.ox, v.oy, $('#emb-dim').checked ? embDlg.sel : -1);
@@ -2488,6 +2567,8 @@ function drawEmbCanvas() {
 function bindEmbDialog() {
   $('#btn-emb-dialog').addEventListener('click', openEmbDialog);
   $('#emb-dialog').addEventListener('close', () => {
+    // „close“ kommt verzögert – wurde der Dialog inzwischen wieder geöffnet, nicht dessen Planung abbrechen
+    if ($('#emb-dialog').open) return;
     clearTimeout(embDlg.timer);
     if (embDlg.dirty) {
       embDlg.dirty = false;
@@ -2505,6 +2586,7 @@ function bindEmbDialog() {
       // einschalten: zurück zur automatischen Stichart (bzw. Füllstich, falls die Automatik „aus“ hätte)
       setEmbManual(l.key, { type: on ? (l.auto.params.type !== 'off' ? undefined : 'fill') : 'off' });
     }
+    if (embDlg.sel !== i) embDlg.refocus = true;
     embDlg.sel = i;
     renderEmbDialog();
   });
@@ -2555,11 +2637,18 @@ function bindEmbDialog() {
     renderEmbDialog();
   });
   $('#emb-dim').addEventListener('change', drawEmbCanvas);
-  $('#emb-fit').addEventListener('click', () => { embDlg.view = null; drawEmbCanvas(); });
+  $('#emb-zoom').checked = !!ui.embZoom;
+  $('#emb-zoom').addEventListener('change', (e) => {
+    ui.embZoom = e.target.checked;
+    saveUi();
+    animateEmbView(embFitView(e.target.checked));
+  });
+  $('#emb-fit').addEventListener('click', () => animateEmbView(embFitView(false))); // immer das ganze Motiv
   // Zoom und Verschieben
   const view = $('#emb-view');
   view.addEventListener('wheel', (e) => {
     e.preventDefault();
+    embAnim++; // laufende Zoom-Animation abbrechen
     if (!embDlg.view) return;
     const rect = view.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
@@ -2573,6 +2662,7 @@ function bindEmbDialog() {
   let drag = null;
   view.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || e.target.closest('.emb-view-tools') || !embDlg.view) return;
+    embAnim++;
     drag = { x: e.clientX, y: e.clientY, ox: embDlg.view.ox, oy: embDlg.view.oy };
     view.setPointerCapture(e.pointerId);
     view.classList.add('dragging');
@@ -2587,8 +2677,7 @@ function bindEmbDialog() {
   view.addEventListener('pointercancel', end);
   view.addEventListener('dblclick', (e) => {
     if (e.target.closest('.emb-view-tools')) return;
-    embDlg.view = null;
-    drawEmbCanvas();
+    animateEmbView(embFitView(false));
   });
   new ResizeObserver(() => { if ($('#emb-dialog').open) drawEmbCanvas(); }).observe(view);
 }
@@ -4438,7 +4527,8 @@ function bindView() {
     if (!mod) return;
     if (e.key === 'o') { e.preventDefault(); $('#btn-open').click(); }
     if (e.key === 'k') { e.preventDefault(); $('#btn-camera').click(); }
-    if (e.key === 'e' || e.key === 's') { e.preventDefault(); if (state.result) exportCurrent(); }
+    if (e.key === 'e') { e.preventDefault(); if (state.result) exportCurrent(); }
+    if (e.key === 's') { e.preventDefault(); if (state.result) saveToHistory(false); } // nur sichern, keine Datei
     if (e.key === 'l') { e.preventDefault(); if (state.result) sendToLightBurn(); }
   });
 }
@@ -4747,3 +4837,19 @@ refreshHistory();
 refreshSystem().then(renderModels);
 refreshModels();
 refreshPresets();
+bindTour();
+
+/** Hilfe: „?“ und F1 öffnen das Handbuch, darin „Tour starten“. Die Einführungstour läuft automatisch beim ersten Start. */
+function bindTour() {
+  $('#btn-help').addEventListener('click', () => Manual.open());
+  $('#manual-tour').addEventListener('click', () => { $('#manual-dialog').close(); Tour.start(); });
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'F1') return;
+    e.preventDefault();
+    if (Tour.isOpen()) return;
+    const open = document.querySelector('dialog[open]');
+    if (open && open.id !== 'manual-dialog') return; // nicht über einen anderen Dialog legen
+    Manual.toggle();
+  });
+  Tour.init({ loadDemo: (bytes) => loadImage('beispiel-plakette.svg', bytes) });
+}

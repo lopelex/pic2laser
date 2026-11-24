@@ -20,10 +20,11 @@
     <div class="topbar-actions">
       <button id="btn-open" class="btn">Bild öffnen…</button>
       <button id="btn-camera" class="btn" title="Foto mit der Webcam aufnehmen (Strg/Cmd+K)">Kamera…</button>
-      <button id="btn-save-history" class="btn" disabled>In Historie speichern</button>
+      <button id="btn-save-history" class="btn" disabled title="Ergebnis mit allen Einstellungen in der Historie sichern, ohne Datei (Strg/Cmd+S)">In Historie speichern</button>
       <button id="btn-lightburn" class="btn" disabled title="Ergebnis ins offene LightBurn-Projekt einfügen (Strg/Cmd+L). LightBurn muss geöffnet sein.">An LightBurn</button>
-      <button id="btn-export" class="btn btn-primary" disabled>Exportieren</button>
+      <button id="btn-export" class="btn btn-primary" disabled title="Alle gewählten Formate speichern (Strg/Cmd+E)">Exportieren</button>
       <button id="btn-toggle-history" class="btn btn-ghost" title="Historie ein-/ausblenden">Historie</button>
+      <button id="btn-help" class="btn btn-ghost btn-help" title="Hilfe: Handbuch mit allen Funktionen, Dialogen und Tastenkürzeln (F1) – dort auch die Einführungstour" aria-label="Hilfe öffnen">?</button>
     </div>
   </header>
 
@@ -656,8 +657,8 @@
       <div class="preview-toolbar">
         <div class="segmented small" id="view-mode">
           <button data-value="split" class="active">Geteilt</button>
-          <button data-value="result">Ergebnis</button>
           <button data-value="original">Original</button>
+          <button data-value="result">Ergebnis</button>
         </div>
         <div class="zoom">
           <button class="btn btn-small" id="zoom-out" title="Verkleinern">−</button>
@@ -794,6 +795,7 @@
           <canvas id="emb-canvas"></canvas>
           <div class="emb-view-tools">
             <label class="check"><input type="checkbox" id="emb-dim" checked /> Andere Farben abblenden</label>
+            <label class="check" title="Beim Auswählen einer Farbe sanft auf deren Stiche zoomen"><input type="checkbox" id="emb-zoom" /> Auf gewählte Farbe zoomen</label>
             <button class="btn btn-small" id="emb-fit" title="Ganzes Motiv zeigen (Doppelklick)">Einpassen</button>
           </div>
           <p class="emb-view-hint">Mausrad = Zoom · Ziehen = Verschieben · Doppelklick = Einpassen</p>
@@ -862,6 +864,25 @@
     </div>
   </dialog>
 
+  <dialog class="dialog manual-dialog" id="manual-dialog" aria-labelledby="manual-title">
+    <div class="dialog-head">
+      <div>
+        <h2 id="manual-title">Handbuch</h2>
+        <p class="dialog-sub">Alle Funktionen und Dialoge – Lasern und Sticken (F1)</p>
+      </div>
+      <div class="manual-tools">
+        <input type="search" id="manual-search" placeholder="Im Handbuch suchen…" aria-label="Im Handbuch suchen" />
+        <span class="manual-hits" id="manual-hits"></span>
+        <button class="btn btn-small" id="manual-tour" title="Einführungstour starten">Tour starten</button>
+        <button class="icon-btn dialog-close" data-close title="Schließen (Esc)" aria-label="Schließen">✕</button>
+      </div>
+    </div>
+    <div class="manual-body">
+      <nav class="manual-nav" id="manual-nav" aria-label="Inhalt"></nav>
+      <article class="manual-content" id="manual-content"></article>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast"></div>
 
   <script src="processing.js"></script>
@@ -870,6 +891,8 @@
   <script src="segmentation.js"></script>
   <script src="encoders.js"></script>
   <script src="embroidery.js"></script>
+  <script src="tour.js"></script>
+  <script src="manual.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

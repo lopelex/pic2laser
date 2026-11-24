@@ -5,6 +5,31 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.19.0 – 24.11.2026
+
+### Neu
+- **Einführungstour:** Beim ersten Start erklärt eine Tour in 16 Schritten Funktionen und Ablauf –
+  vom Bild laden über den Unterschied zwischen Lasern und Sticken, Modus, Farben, Freistellen und Feinschliff bis zu Größe, Sticken (mit Erklärung des Dialogs „Je Farbe einstellen…“), Export, Historie und
+  KI-Modellen. Das
+  jeweilige Bedienelement wird hervorgehoben; liegt es weiter unten, scrollt die Einstellungsspalte langsam
+  dorthin, damit man sieht, wo es zu finden ist. Abbrechen mit ×, „Tour beenden“ oder Esc; neu starten über
+  „Tour starten“ im Handbuch. Bei späteren Starts erscheint sie nicht mehr.
+- **Beispielbild:** Am Ende der Tour lässt sich eine Beispiel-Plakette (80 mm) laden. Illustrationen und
+  Beispielbild sind selbst gezeichnet (SVG im Code), ohne fremde Bildrechte.
+- **Stichvorschau „Auf gewählte Farbe zoomen“:** Im Dialog „Je Farbe einstellen…“ zoomt die Vorschau beim
+  Anklicken einer Farbe sanft auf deren Stiche – neben „Andere Farben abblenden“, die Einstellung wird gemerkt.
+  „Einpassen“ und Doppelklick zeigen weiter das ganze Motiv.
+- **Handbuch (F1):** [HANDBUCH.md](HANDBUCH.md) beschreibt alle Funktionen und Dialoge aus Sicht der Anwendung,
+  getrennt nach Lasern und Sticken. **?** oben rechts oder **F1** öffnet es in der App – mit Inhaltsverzeichnis, Sprungmarken und Suche.
+
+### Geändert
+- **Strg/Cmd+S speichert in die Historie** (wie „In Historie speichern“, ohne Datei). Exportieren geht weiter
+  mit **Strg/Cmd+E**.
+- **Start immer mit „Lasern“:** Der Umschalter Lasern/Sticken über den Presets steht beim Programmstart immer auf
+  Lasern, auch wenn zuletzt „Sticken“ gewählt war. Die übrigen Einstellungen bleiben wie zuletzt.
+
+---
+
 ## 1.18.1 – 24.11.2026
 
 ### Geändert
