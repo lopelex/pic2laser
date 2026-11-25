@@ -3669,8 +3669,8 @@ function renderResultInfo(exts) {
   const mm = (v) => (Math.round(v * 10) / 10).toString().replace('.', ',');
   const size = `${mm(r.totalWmm ?? r.widthMm)} × ${mm(r.totalHmm ?? r.heightMm)} mm`;
   const raster = exts.some((e) => e === 'png' || e === 'jpg' || e === 'bmp') ? ` · ${Math.round(r.dpi)} DPI` : '';
-  el.textContent = `⤴ Herausziehen: ${exts.map((e) => e.toUpperCase()).join(' + ')} · ${size}${raster}`;
-  el.title = 'Ergebnis mit der Maus herausziehen, z. B. direkt in LightBurn, den Finder oder Explorer. Formate unter „Exportformate“.';
+  el.textContent = `⤴ ${MOD_KEY} + Ziehen: ${exts.map((e) => e.toUpperCase()).join(' + ')} · ${size}${raster}`;
+  el.title = `Mit gedrückter ${MOD_KEY}-Taste das Ergebnis herausziehen, z. B. direkt in LightBurn, den Finder oder Explorer. Formate unter „Exportformate“.`;
   el.hidden = false;
 }
 
@@ -3794,16 +3794,18 @@ function bindCancel() {
 
 function bindOriginalDrag() {
   const img = $('#img-original');
-  // Strg (Mac: auch Cmd) gedrückt → Originalbild wird zur Drag-Quelle statt zum Verschieben/Punkte setzen
+  const result = $('#img-result');
+  // Strg (Mac: auch Cmd) gedrückt → Original und Ergebnis werden zur Drag-Quelle statt zum Verschieben/Punkte setzen
   const setCtrl = (on) => {
-    on = on && !!state.source;
     document.body.classList.toggle('ctrl-drag', on);
-    img.draggable = on;
+    img.draggable = on && !!state.source;
+    result.draggable = on && !!state.result;
   };
   window.addEventListener('keydown', (e) => { if (e.key === 'Control' || e.key === 'Meta') setCtrl(true); });
   window.addEventListener('keyup', (e) => { if (e.key === 'Control' || e.key === 'Meta') setCtrl(false); });
   window.addEventListener('blur', () => setCtrl(false));
   img.addEventListener('pointerdown', (e) => setCtrl(e.ctrlKey || e.metaKey), true);
+  result.addEventListener('pointerdown', (e) => setCtrl(e.ctrlKey || e.metaKey), true);
   img.addEventListener('dragstart', (e) => {
     e.preventDefault(); // eigenes System-Drag mit echter Datei statt Bild-URL
     if (!(e.ctrlKey || e.metaKey) || !state.source) return;
@@ -3822,7 +3824,7 @@ function bindOriginalDrag() {
 function bindResultDrag() {
   $('#img-result').addEventListener('dragstart', (e) => {
     e.preventDefault(); // eigenes System-Drag mit echten Dateien statt Bild-URL
-    if (!state.result) return;
+    if (!(e.ctrlKey || e.metaKey) || !state.result) return; // nur Strg/Cmd + Ziehen, sonst wird verschoben
     if (!dragReady || !resultIsCurrent(state.result)) {
       if (!resultIsCurrent(state.result) && !$('#busy').classList.contains('on')) scheduleProcess(0);
       toast('Die Dateien werden noch vorbereitet – bitte gleich noch einmal ziehen.');
@@ -4456,10 +4458,8 @@ function bindView() {
   for (const scroller of $$('.pane-scroll')) {
     scroller.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 && e.button !== 1) return;
-      // Im Ergebnis startet Linksziehen Drag & Drop der Datei – verschoben wird dort mit der mittleren Taste
-      if (e.button === 0 && scroller.closest('#pane-result')) return;
-      // Strg + Ziehen im Original = Bild herausziehen statt verschieben
-      if (e.button === 0 && (e.ctrlKey || e.metaKey) && scroller.closest('#pane-original')) return;
+      // Strg/Cmd + Ziehen = Datei herausziehen statt verschieben (Original und Ergebnis)
+      if (e.button === 0 && (e.ctrlKey || e.metaKey)) return;
       if (e.button === 1) e.preventDefault(); // kein Auto-Scroll-Modus
       drag = { scroller, x: e.clientX, y: e.clientY, left: scroller.scrollLeft, top: scroller.scrollTop, moved: false, id: e.pointerId };
     });
