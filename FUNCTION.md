@@ -357,6 +357,10 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   angezeigt, während im Hintergrund neu gerechnet wird (KI-Schritte kommen aus dem
   Festplatten-Cache); Export und Herausziehen stehen bereit, sobald die Berechnung fertig ist. Suche, SVG erneut speichern,
   Speicherordner öffnen, Eintrag duplizieren, einzelne Einträge oder alles löschen.
+- **Umbenennen:** ✎ oder Doppelklick auf den Namen; Enter oder Klick daneben übernimmt, Esc bricht ab.
+  Nur der Name in `meta.json` ändert sich (Datum bleibt); beim erneuten Speichern bleibt er erhalten.
+- **Sortieren:** neueste oder älteste zuerst (zuletzt gespeichert) bzw. Name A–Z / Z–A (natürliche
+  Reihenfolge, „Bild 2“ vor „Bild 10“). Die Wahl wird gemerkt.
 - **Vereinigen (⊕):** legt das gespeicherte Ergebnis eines Eintrags über das aktuelle Ergebnis,
   z. B. „Linien“ über „Foto“ desselben Bildes. Oben in der Seitenleiste erscheint dann der Bereich
   „Vereinigt mit“:

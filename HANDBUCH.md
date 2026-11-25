@@ -66,7 +66,7 @@ Beim ersten Start erklärt eine **Einführungstour** diesen Ablauf. Dieses Handb
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Pic2Laser v…  [Fortschritt]   Bild öffnen… Kamera… In Historie speichern    │
+│ v…            [Fortschritt]   Bild öffnen… Kamera… In Historie speichern    │
 │                               An LightBurn  Exportieren  Historie  ?        │
 ├──────────────┬──────────────────────────────────────────┬──────────────────┤
 │ Presets      │  Geteilt | Original | Ergebnis   − + Einp. │ Historie         │
@@ -93,6 +93,9 @@ Beim ersten Start erklärt eine **Einführungstour** diesen Ablauf. Dieses Handb
 | **Exportieren** | speichert alle gewählten Formate (Strg/Cmd+E). |
 | **Historie** | blendet die Historie-Spalte ein und aus. |
 | **?** | Hilfe: öffnet dieses Handbuch (wie F1); darin „Tour starten“ für die Einführungstour. |
+
+Die Knöpfe tragen ein Icon vor der Beschriftung. In schmalen Fenstern (unter ca. 1100 px) bleiben nur die
+Icons, die Beschriftung steht dann im Tooltip; **Exportieren** bleibt immer beschriftet.
 
 ### Seitenleiste (links)
 
@@ -470,8 +473,11 @@ besser. Statt einer Datei erscheint ein Hinweis bei Foto/Relief, leerem Ergebnis
 
 - Jeder Eintrag enthält Original, Einstellungen, SVG, PNG und Vorschaubild.
 - **Klick** öffnet den Eintrag mit allen Einstellungen; das gespeicherte Ergebnis erscheint sofort.
-- **Suchen…** filtert die Liste. Je Eintrag: SVG erneut speichern, Speicherordner öffnen, duplizieren,
-  löschen. **Leeren** löscht die ganze Historie.
+- **Suchen…** filtert die Liste. Daneben wird sortiert: **Neueste zuerst**, **Älteste zuerst**, **Name A–Z**
+  oder **Name Z–A** (Datum = zuletzt gespeichert; die Wahl wird gemerkt).
+- Je Eintrag: **umbenennen** (✎ oder Doppelklick auf den Namen, Enter übernimmt, Esc bricht ab), SVG
+  erneut speichern, Speicherordner öffnen, duplizieren, löschen. Der neue Name bleibt auch beim erneuten
+  Speichern erhalten. **Leeren** löscht die ganze Historie.
 - **Vereinigen (⊕):** legt einen Eintrag über das aktuelle Ergebnis, z. B. „Linien“ über „Foto“ desselben
   Bildes. Oben in der Seitenleiste erscheint **Vereinigt mit**:
   - **Oben liegt:** Historie-Eintrag oder aktuelles Ergebnis.
