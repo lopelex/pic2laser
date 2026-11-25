@@ -458,7 +458,7 @@ besser. Statt einer Datei erscheint ein Hinweis bei Foto/Relief, leerem Ergebnis
 - **Exportieren** (Strg/Cmd+E): Speichern-Dialog im zuletzt benutzten Ordner; er nennt alle
   Formate, die entstehen (z. B. „SVG + PES + EXP + INF“). Geschrieben wird **alles oder nichts** – schlägt
   eine Datei fehl, bleiben vorhandene Dateien unverändert. Jeder Export landet in der Historie.
-- **Herausziehen:** das Ergebnisbild mit der Maus in LightBurn, den Explorer/Finder oder ein Stickprogramm
+- **Herausziehen:** mit gedrückter Strg-Taste (Mac: Cmd) das Ergebnisbild in LightBurn, den Explorer/Finder oder ein Stickprogramm
   ziehen – es kommen alle gewählten Formate mit (auch PES/DST/EXP).
 - **An LightBurn** (Strg/Cmd+L): fügt das Ergebnis in der Mitte der Arbeitsfläche des offenen
   LightBurn-Projekts ein (ohne Stickformate). LightBurn muss laufen; Meldungen, wenn es nicht erreichbar
@@ -600,8 +600,8 @@ offen, gelten dessen eigene Tasten (siehe unten).
 | **Strg + Mausrad** | Zoom | auch für Mäuse mit fein rastendem Rad |
 | **Pinch** (zwei Finger spreizen) | Zoom | Trackpad |
 | **Zwei Finger wischen** | Verschieben | Trackpad |
-| **Linke Maustaste ziehen** im Original | Verschieben | erst ab einigen Pixeln Bewegung – ein einfacher Klick setzt weiterhin Klickpunkte |
-| **Mittlere Maustaste ziehen** | Verschieben | im Original und im Ergebnis (links ziehen im Ergebnis zieht die Datei heraus) |
+| **Linke Maustaste ziehen** | Verschieben | im Original und im Ergebnis; erst ab einigen Pixeln Bewegung – ein einfacher Klick ins Original setzt weiterhin Klickpunkte |
+| **Mittlere Maustaste ziehen** | Verschieben | im Original und im Ergebnis |
 | Knöpfe **−**, **+**, **Einpassen** | Zoomstufen | nächste Stufe bzw. zurück auf 100 % |
 
 ### Vorschau: Klicken und Herausziehen
@@ -611,7 +611,7 @@ offen, gelten dessen eigene Tasten (siehe unten).
 | **Klick ins Original** | Klickpunkt setzen | Freistellen „Nach Farbe“ und „Himmel entfernen“: weitere Fläche entfernen; „Objekt anklicken“: Motiv markieren (+) |
 | **Rechtsklick** oder **Alt+Klick** ins Original | Bereich ausschließen (−) | nur bei „Objekt anklicken“ (MobileSAM, SAM 2.1) |
 | **Klick auf einen Klickpunkt** | Punkt entfernen | der Mauszeiger wird über einem Punkt zur Hand |
-| **Ergebnis mit der linken Maustaste ziehen** | Dateien herausziehen | in LightBurn, Explorer/Finder oder ein Stickprogramm – mit allen gewählten Formaten |
+| **Strg/Cmd gedrückt halten + Ergebnis ziehen** | Dateien herausziehen | in LightBurn, Explorer/Finder oder ein Stickprogramm – mit allen gewählten Formaten |
 | **Strg/Cmd gedrückt halten + Original ziehen** | Original herausziehen | aufbereitetes Original als PNG (restauriert, vergrößert, freigestellt) |
 
 ### Seitenleiste

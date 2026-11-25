@@ -331,7 +331,7 @@ const Tour = (() => {
         <path d="M24 46 H64" stroke="${C.accent2}" stroke-width="3" stroke-linecap="round"/>
         ${t(44, 68, 'LightBurn', { size: 10, fill: C.text })}
       </g>
-      ${t(160, 122, 'Exportieren · An LightBurn · Ergebnis ziehen', { fill: C.text })}
+      ${t(160, 122, 'Exportieren · An LightBurn · Strg/Cmd + Ziehen', { fill: C.text })}
       ${t(160, 140, 'Strg/Cmd+E   ·   Strg/Cmd+L   ·   Historie: Strg/Cmd+S')}
     `),
 

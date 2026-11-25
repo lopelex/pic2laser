@@ -447,13 +447,9 @@ body.has-image .dropzone:not(.dragging) { display: none; }
 body.panning, body.panning * { cursor: grabbing !important; user-select: none; }
 .pane-scroll img { -webkit-user-drag: none; }
 
-/* Ergebnis lässt sich herausziehen (Drag & Drop, z. B. in LightBurn) */
-#img-result { cursor: grab; -webkit-user-drag: element; }
-#img-result:active { cursor: grabbing; }
-
-/* Optimiertes Original: mit gedrückter Strg-Taste herausziehen */
-body.ctrl-drag #img-original { cursor: grab !important; -webkit-user-drag: element; }
-body.ctrl-drag #img-original:active { cursor: grabbing !important; }
+/* Original und Ergebnis: mit gedrückter Strg-Taste herausziehen (Drag & Drop, z. B. in LightBurn) */
+body.ctrl-drag #img-original, body.ctrl-drag #img-result { cursor: grab !important; -webkit-user-drag: element; }
+body.ctrl-drag #img-original:active, body.ctrl-drag #img-result:active { cursor: grabbing !important; }
 
 /* Kleine Info im Ergebnis- und Originalfeld (Herausziehen, Formate, Größe) */
 .pane-info {

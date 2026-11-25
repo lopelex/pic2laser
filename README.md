@@ -41,7 +41,7 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
 - **Drag & Drop**, Datei-Dialog (Strg+O), Einfügen aus der Zwischenablage (Strg+V) oder Aufnahme mit der Webcam (Strg+K)
 - **Live-Vorschau** Original/Ergebnis nebeneinander, synchrones Scrollen.
   Mausrad bzw. Strg+Mausrad/Pinch zoomt auf die Mausposition, Verschieben durch Ziehen
-  (im Ergebnis mit der mittleren Maustaste)
+  (Strg/Cmd + Ziehen zieht die Datei heraus)
 - **Presets**: mitgelieferte Vorlagen (Logo, Foto, Porträt-Strichzeichnung, Sticker mit Schnittkontur,
   Holz-Relief, Stickerei auf T-Shirt, Polo, Fleece, Handtuch, Jeans und Leder …) und eigene Presets speichern/überschreiben/löschen (`<userData>/presets.json`)
 - **Sechs Modi**
@@ -90,7 +90,7 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
   Unterlage und Zugausgleich, Umrisslinie als Steppstich, Wege innerhalb der Flächen statt Fadenschnitten;
   Stickparameter je Farbe automatisch aus Stoff und Form (Winkel, Unterlage, schmale Stellen als Kontur),
   im Dialog „Je Farbe einstellen…“ mit Stichvorschau von Hand anpassbar; Stichzahl und passender Stickrahmen
-- **Herausziehen**: Das Ergebnis lässt sich per Drag & Drop direkt in LightBurn, Explorer oder Finder ziehen
+- **Herausziehen**: Das Ergebnis lässt sich mit Strg/Cmd + Ziehen direkt in LightBurn, Explorer oder Finder ziehen
   (in den gewählten Exportformaten). Eine Info im Ergebnisfeld zeigt Formate, Größe in mm und DPI.
 - **An LightBurn senden** (Strg/⌘+L): fügt das Ergebnis direkt ins offene LightBurn-Projekt ein
   (über die UDP-Schnittstelle von LightBurn, in den gewählten Exportformaten) – ohne Export und Herausziehen.
