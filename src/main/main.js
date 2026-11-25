@@ -589,7 +589,8 @@ ipcMain.handle('history-save', async (_e, entry) => {
   meta = {
     ...meta,
     id,
-    name: entry.name || meta.name || 'Bild',
+    // umbenannte Einträge behalten ihren Namen, wenn sie erneut gespeichert werden
+    name: (!isNew && meta.name) || entry.name || 'Bild',
     originalName: entry.originalName || meta.originalName || '',
     settings: entry.settings || {},
     // vereinigt mit einem anderen Eintrag: { id, name, top, opacity } – sonst null
@@ -643,6 +644,15 @@ ipcMain.handle('history-duplicate', async (_e, id) => {
   const copy = { ...meta, id: newId, name: `${meta.name || 'Bild'} (Kopie)`, created: now, updated: now };
   await writeAtomic(path.join(dir, 'meta.json'), JSON.stringify(copy, null, 2));
   return copy;
+});
+
+// Eintrag umbenennen (nur der Name, Datum und Inhalt bleiben)
+ipcMain.handle('history-rename', async (_e, id, name) => {
+  const newName = String(name || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 200);
+  if (!newName) throw new Error('Name fehlt');
+  const meta = { ...(await readMeta(id)), name: newName };
+  await writeAtomic(path.join(entryDir(id), 'meta.json'), JSON.stringify(meta, null, 2));
+  return meta;
 });
 
 ipcMain.handle('history-delete', async (_e, id) => {

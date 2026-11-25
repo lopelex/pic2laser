@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld('api', {
     loadResult: (id) => ipcRenderer.invoke('history-load-result', id),
     loadPreview: (id) => ipcRenderer.invoke('history-load-preview', id),
     duplicate: (id) => ipcRenderer.invoke('history-duplicate', id),
+    rename: (id, name) => ipcRenderer.invoke('history-rename', id, name),
     remove: (id) => ipcRenderer.invoke('history-delete', id),
     clear: () => ipcRenderer.invoke('history-clear'),
     exportSvg: (id) => ipcRenderer.invoke('history-export-svg', id),

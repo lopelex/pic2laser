@@ -3955,11 +3955,74 @@ async function refreshHistory() {
 }
 
 const dateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+const nameCollator = new Intl.Collator('de', { numeric: true, sensitivity: 'base' });
+const HISTORY_SORTS = ['date-desc', 'date-asc', 'name-asc', 'name-desc'];
+
+/** Historie nach der gewählten Reihenfolge sortieren (Datum = zuletzt gespeichert, wie angezeigt). */
+function sortHistory(items) {
+  const sort = HISTORY_SORTS.includes(ui.historySort) ? ui.historySort : 'date-desc';
+  const date = (e) => e.updated || e.created || 0;
+  const byName = (a, b) => nameCollator.compare(a.name || '', b.name || '');
+  const cmp = {
+    'date-desc': (a, b) => date(b) - date(a),
+    'date-asc': (a, b) => date(a) - date(b),
+    'name-asc': (a, b) => byName(a, b) || date(b) - date(a),
+    'name-desc': (a, b) => byName(b, a) || date(b) - date(a),
+  }[sort];
+  return [...items].sort(cmp);
+}
+
+// Eintrag, dessen Name gerade bearbeitet wird – übersteht ein Neuzeichnen der Liste
+let historyRename = null; // { id, value, fresh }
+
+function startRename(e) {
+  historyRename = { id: e.id, value: e.name || '', fresh: true };
+  renderHistory();
+}
+
+/** Eingabefeld für den Namen (Enter oder Klick daneben übernimmt, Esc bricht ab). */
+function renameInput(e) {
+  const r = historyRename;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'name-edit';
+  input.value = r.value;
+  input.maxLength = 200;
+  const finish = async (save) => {
+    if (historyRename !== r) return; // schon erledigt
+    historyRename = null;
+    const name = input.value.trim();
+    if (!save || !name || name === e.name) { renderHistory(); return; }
+    try {
+      await window.api.history.rename(e.id, name);
+      if (state.merge?.id === e.id) { state.merge.name = name; renderMergePanel(); }
+      await refreshHistory();
+    } catch (err) {
+      toast(`Umbenennen fehlgeschlagen: ${cleanError(err)}`, true);
+      renderHistory();
+    }
+  };
+  input.addEventListener('input', () => { r.value = input.value; });
+  input.addEventListener('keydown', (ev) => {
+    ev.stopPropagation(); // keine Tastenkürzel der App beim Tippen
+    if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+    if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => { if (input.isConnected) finish(true); });
+  for (const type of ['click', 'dblclick', 'pointerdown']) input.addEventListener(type, (ev) => ev.stopPropagation());
+  requestAnimationFrame(() => {
+    if (!input.isConnected) return;
+    input.focus();
+    if (r.fresh) input.select();
+    r.fresh = false;
+  });
+  return input;
+}
 
 function renderHistory() {
   const list = $('#history-list');
   const q = $('#history-search').value.trim().toLowerCase();
-  const items = state.history.filter((e) => !q || (e.name || '').toLowerCase().includes(q) || (e.originalName || '').toLowerCase().includes(q));
+  const items = sortHistory(state.history).filter((e) => !q || (e.name || '').toLowerCase().includes(q) || (e.originalName || '').toLowerCase().includes(q));
   list.replaceChildren();
   $('#history-empty').hidden = state.history.length > 0;
 
@@ -3981,7 +4044,13 @@ function renderHistory() {
     info.className = 'info';
     const name = document.createElement('div');
     name.className = 'name';
-    name.textContent = e.name || 'Bild';
+    if (historyRename?.id === e.id) {
+      name.append(renameInput(e));
+    } else {
+      name.textContent = e.name || 'Bild';
+      name.title = 'Doppelklick zum Umbenennen';
+      name.addEventListener('dblclick', (ev) => { ev.stopPropagation(); startRename(e); });
+    }
     const meta = document.createElement('div');
     meta.className = 'meta';
     const mode = { dither: 'Foto', edges: 'Linien', relief: 'Relief', sine: 'Wellen', color: 'Farben' }[e.settings?.mode] || 'Fläche';
@@ -3999,6 +4068,7 @@ function renderHistory() {
         const p = await window.api.history.exportSvg(e.id);
         if (p) toast('SVG gespeichert', false, { label: 'Im Ordner zeigen', action: () => window.api.showInFolder(p) });
       }),
+      iconButton('✎', 'Umbenennen', () => startRename(e)),
       iconButton('⧉', 'Duplizieren', async () => {
         try {
           await window.api.history.duplicate(e.id);
@@ -4019,7 +4089,10 @@ function renderHistory() {
     );
 
     li.append(thumb, info, actions);
-    li.addEventListener('click', () => openHistoryEntry(e.id));
+    li.addEventListener('click', (ev) => {
+      if (ev.detail > 1 || historyRename) return; // Doppelklick (Umbenennen) öffnet nicht ein zweites Mal
+      openHistoryEntry(e.id);
+    });
     list.append(li);
   }
 }
@@ -4510,6 +4583,9 @@ function bindView() {
     document.body.classList.toggle('history-hidden');
   });
   $('#history-search').addEventListener('input', renderHistory);
+  const sortSel = $('#history-sort');
+  sortSel.value = HISTORY_SORTS.includes(ui.historySort) ? ui.historySort : 'date-desc';
+  sortSel.addEventListener('change', () => { ui.historySort = sortSel.value; saveUi(); renderHistory(); });
   $('#btn-clear-history').addEventListener('click', async () => {
     if (await window.api.history.clear()) {
       state.historyId = null;
