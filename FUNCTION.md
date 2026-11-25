@@ -334,7 +334,7 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   - Nicht möglich (Hinweis statt Datei): andere Modi, leeres Ergebnis, Motiv größer als 400 mm.
   - Grenzen: schmale Linien und kleine Schrift (unter ca. 1 mm) werden ebenfalls als Füllstich gestickt –
     dafür ist Satinstich im Stickprogramm besser.
-- **Drag & Drop:** Ergebnisbild mit der Maus herausziehen – direkt in LightBurn, Finder oder
+- **Drag & Drop:** Ergebnisbild mit gedrückter Strg-Taste (Mac: Cmd) herausziehen – direkt in LightBurn, Finder oder
   Explorer. Mitgezogen werden die gewählten Exportformate (auch PES/DST/EXP).
 - **An LightBurn senden** (Strg/Cmd+L): fügt das Ergebnis direkt ins offene LightBurn-Projekt ein
   (Mitte der Arbeitsfläche) – über die UDP-Schnittstelle von LightBurn (`PING`, dann `IMPORT:<pfad>`
