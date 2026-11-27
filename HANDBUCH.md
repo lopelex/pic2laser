@@ -295,6 +295,23 @@ schwarz, in Stickdateien als schwarzer Steppstich.
 Status der Modelle und des Rechners, Knöpfe **Verwalten…** und **Einstellungen…** – siehe
 [Dialoge](#10-dialoge).
 
+### KI-Assistent (MCP)
+
+Mit **MCP-Server einschalten** kann ein KI-Assistent wie Claude Pic2Laser bedienen: Bild öffnen, ein Preset wählen,
+alle Einstellungen ändern, das Ergebnis als Bild ansehen und beurteilen, nachbessern, exportieren oder an LightBurn
+senden. Jeder Schritt passiert sichtbar in der App; der Punkt neben dem Schalter blinkt, solange der Assistent
+arbeitet. Der Server ist standardmäßig aus, nur auf diesem Rechner erreichbar und braucht einen Schlüssel.
+
+**Einrichten…** zeigt, wie sich der Assistent verbindet – jeweils mit Knopf zum Kopieren:
+
+- **Claude Code:** den angezeigten Befehl `claude mcp add …` einmal im Terminal ausführen.
+- **Claude Desktop:** den angezeigten Eintrag in die Konfiguration übernehmen (Einstellungen → Entwickler →
+  Konfiguration bearbeiten) und Claude Desktop neu starten. Läuft Pic2Laser nicht, startet es sich dann selbst.
+- **Andere Programme:** Adresse und Schlüssel für eine HTTP-Verbindung.
+
+**Neuer Schlüssel** macht den alten ungültig – danach den Assistenten neu einrichten. Danach z. B. in Claude:
+„Öffne ~/Bilder/hund.jpg in Pic2Laser und mach daraus eine saubere Gravurvorlage für Holz, 80 mm breit.“
+
 ---
 
 ## 6. Lasern

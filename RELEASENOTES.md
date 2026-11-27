@@ -5,6 +5,17 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## Unveröffentlicht
+
+### Neu
+- **KI-Assistent (MCP-Server):** Claude und andere MCP-Clients können Pic2Laser bedienen – Bild öffnen, Presets und
+  alle Einstellungen setzen, das Ergebnis als Bild ansehen und beurteilen, nachbessern, exportieren und an LightBurn
+  senden. Alles passiert sichtbar in der App. Standardmäßig aus; einschalten unter „KI-Assistent (MCP)“ unterhalb von
+  „Leistung“, dort zeigt **Einrichten…** den Befehl für Claude Code und die Konfiguration für Claude Desktop zum
+  Kopieren. Nur auf diesem Rechner erreichbar, mit Schlüssel.
+
+---
+
 ## 1.22.0 – 27.11.2026
 
 ### Neu

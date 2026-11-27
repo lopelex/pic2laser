@@ -9,6 +9,7 @@ const models = require('./models');
 const lightburn = require('./lightburn');
 const updater = require('./updater');
 const prefs = require('./prefs');
+const mcp = require('./mcp');
 
 const HISTORY_DIR = () => path.join(app.getPath('userData'), 'history');
 const ID_PATTERN = /^[a-f0-9-]{36}$/;
@@ -107,6 +108,7 @@ function createWindow() {
   });
 
   if (DEV) devTools(mainWindow);
+  mcp.attachWindow(mainWindow);
 
   // Links nie im App-Fenster öffnen
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -136,6 +138,7 @@ if (!app.requestSingleInstanceLock()) {
   // GPU-Berechnung beim nächsten Start als Absturz) und Drag-Dateien aufräumen
   app.on('before-quit', () => models.setQuitting());
   app.on('will-quit', () => {
+    mcp.stop();
     models.clearGpuInFlight();
     for (const dir of ['pic2laser-drag', 'pic2laser-lightburn']) {
       try { require('fs').rmSync(path.join(app.getPath('temp'), dir), { recursive: true, force: true }); } catch { /* egal */ }
@@ -147,6 +150,8 @@ if (!app.requestSingleInstanceLock()) {
     models.cleanupPartials();
     cleanupHistoryTmp();
     if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
+    // MCP-Server für KI-Assistenten (standardmäßig aus, in den Einstellungen einschaltbar)
+    mcp.init({ getWindow: () => mainWindow });
     createWindow();
     if (DEV) watchSources();
     app.on('activate', () => {

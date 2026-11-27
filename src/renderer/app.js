@@ -184,6 +184,9 @@ const state = {
   resultUrl: null,
 };
 
+// Letzte Meldungen – der MCP-Server gibt die während eines Werkzeugaufrufs gezeigten mit zurück
+const toastLog = [];
+
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -1426,7 +1429,10 @@ const resultIsCurrent = (r) => !!r && !!r.settings && resultSig(r.settings) === 
 function scheduleProcess(delay = 120) {
   if (!state.source) return;
   clearTimeout(processTimer);
-  processTimer = setTimeout(runProcess, delay);
+  processTimer = setTimeout(() => {
+    processTimer = null; // null = keine Berechnung mehr angesetzt (MCP wartet darauf)
+    runProcess();
+  }, delay);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1894,6 +1900,7 @@ async function runProcess() {
   Object.defineProperty(s, 'source', { value: state.source, enumerable: false }); // Bild dieses Durchlaufs
   setBusy(true);
   state.processing = true;
+  state.lastError = null;
 
   // UI erst neu zeichnen lassen, bevor gerechnet wird
   await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
@@ -2051,11 +2058,13 @@ async function runProcess() {
         state.cancelRetries++;
         scheduleProcess(0);
       } else {
+        state.lastError = 'Die Berechnung wurde mehrfach unterbrochen.';
         toast('Die Berechnung wurde mehrfach unterbrochen – bitte eine Einstellung ändern oder neu laden.', true);
       }
       return;
     }
     console.error(err);
+    state.lastError = cleanError(err);
     toast(`Umwandlung fehlgeschlagen: ${cleanError(err)}`, true);
   } finally {
     if (gen === state.generation) {
@@ -4962,6 +4971,8 @@ function renderMarkers() {
 
 let toastTimer = null;
 function toast(msg, isError = false, action = null) {
+  toastLog.push({ at: Date.now(), msg, isError });
+  if (toastLog.length > 50) toastLog.shift();
   const el = $('#toast');
   el.replaceChildren(document.createTextNode(msg));
   if (action) {

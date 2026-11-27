@@ -442,6 +442,35 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 - „Tour starten“ startet die Einführungstour. Eigener kleiner Markdown-Renderer (`manual.js`), keine
   zusätzliche Abhängigkeit.
 
+## KI-Assistent (MCP-Server)
+
+Abschnitt „KI-Assistent (MCP)“ unter „Leistung“: **MCP-Server einschalten** (Standard aus) startet einen
+[MCP](https://modelcontextprotocol.io)-Server, über den KI-Assistenten (Claude Code, Claude Desktop, andere
+MCP-Clients) die laufende App bedienen. Die Werkzeuge nutzen dieselben Funktionen wie die Bedienung von Hand –
+alles ist in der App sichtbar, Aufrufe laufen nacheinander.
+
+| Werkzeug | Wirkung |
+|---|---|
+| `get_status` | Bild, Modus, Preset, vom Standard abweichende Einstellungen, Kennzahlen |
+| `get_settings_schema` | alle Einstellungen aus der Oberfläche: Typ, Bereich bzw. Auswahl, Standard, Beschriftung, Tooltip, Sichtbarkeitsbedingungen |
+| `list_presets` / `apply_preset` | Presets auflisten bzw. anwenden |
+| `open_image` | Bilddatei öffnen (absoluter Pfad) |
+| `set_settings` | beliebige Einstellungen auf einmal (geprüft, Zahlen auf den Reglerbereich begrenzt), optional vorher zurücksetzen |
+| `get_result` | Ergebnis (und Original-Ansicht) als Bild, optional vergrößerter Ausschnitt (`region`) |
+| `export_result` | ohne Dialog in einen Ordner speichern (Formate wählbar, vorhandene Dateien nur mit `overwrite`) |
+| `send_to_lightburn`, `save_preset`, `list_history`, `open_history`, `save_to_history` | wie die Knöpfe der App |
+
+Jede Antwort, die ein Ergebnis liefert, wartet auf die Neuberechnung (Standard bis 50 s, `max_wait_s`) und enthält
+Kennzahlen (Größe in px/mm, DPI, SVG-Größe, Zahl der Teilpfade, Schwärzungsgrad in %, Farben), die Infozeilen der
+App, die währenddessen gezeigten Meldungen und das Ergebnisbild (längste Seite 1024 px, `max_size` bis 2048).
+
+**Transport:** Streamable HTTP ohne SSE auf `127.0.0.1` (Port 39017, bei Belegung der nächste freie), nur mit
+`Authorization: Bearer <Schlüssel>`; Anfragen mit fremdem `Host`/`Origin` werden abgelehnt (DNS-Rebinding).
+Für stdio-Clients (Claude Desktop) gibt es die Brücke `mcp-bridge.js`: Sie läuft mit der App selbst als Node
+(`ELECTRON_RUN_AS_NODE=1`), liest Adresse und Schlüssel aus `mcp-endpoint.json` und startet die App, wenn sie nicht
+läuft. Beim Ausschalten wird `mcp-endpoint.json` gelöscht – die Brücke meldet dann „ausgeschaltet“. Läuft der Server,
+wird die Hintergrund-Drosselung des Fensters abgeschaltet, damit es auch minimiert weiterrechnet.
+
 ## Bedienkomfort & Leistung
 
 - **Nicht blockierend:** Bildverarbeitung im Hintergrund-Thread, KI und Vektorisierung in
@@ -559,9 +588,12 @@ Main-Prozess (src/main/main.js)
  ├─ prefs.js                          App-Vorlieben: GPU, Cache, auf der GPU gescheiterte Modelle
  ├─ resources.js                      RAM/CPU → Leistungsstufe und Grenzen
  ├─ updater.js                        Update-Prüfung (GitHub-Releases), Download, Installation je System
+ ├─ mcp.js                            MCP-Server (HTTP auf 127.0.0.1) für KI-Assistenten, Werkzeugliste
+ ├─ mcp-bridge.js                     stdio-Brücke für Claude Desktop (wird nach <userData> kopiert)
  └─ preload.js                        window.api (contextIsolation + sandbox)
 Renderer (src/renderer/index.html, klassische <script>-Tags, globale Module)
  ├─ app.js            Oberfläche, Zustand, Ablauf eines Durchlaufs, Export, Historie
+ ├─ mcp.js            Werkzeuge des MCP-Servers (Einstellungen prüfen, Ergebnis abwarten und als Bild liefern)
  ├─ processing.js     Bildverarbeitung (Anpassungen, Schwellwert, Dithering, Kanten, Umriss)
  ├─ segmentation.js   Masken, Freistellen nach Farbe, Himmel entfernen, Klickpunkte
  ├─ colors.js         Modus Farben: Farbreduktion, Garnpalette, Aufräumen, Ebenenmasken (nur im Worker)
@@ -625,7 +657,8 @@ laufende KI-Jobs (nur wenn der Prozess rechnet) und Downloads ab.
 | `models/` | heruntergeladene Modelle (`.part` während des Downloads) |
 | `ai-cache/` | Festplatten-Cache der KI-Ergebnisse (`<sha256>.bin`) |
 | `updates/` | geladenes Update bis zur Installation (beim nächsten Start gelöscht) |
-| `prefs.json` | GPU an/aus, Cache an/aus, Modelle, die nur auf der CPU laufen, Zeit der letzten Update-Prüfung |
+| `prefs.json` | GPU an/aus, Cache an/aus, Modelle, die nur auf der CPU laufen, Zeit der letzten Update-Prüfung, MCP-Server (an/aus, Port, Schlüssel) |
+| `mcp-endpoint.json`, `mcp-bridge.js` | Adresse/Schlüssel des laufenden MCP-Servers und die stdio-Brücke (nur solange er eingeschaltet ist) |
 | `<temp>/pic2laser-drag/` | vorbereitete Dateien für Drag & Drop |
 | `<temp>/pic2laser-lightburn/` | zuletzt an LightBurn gesendete Dateien (beim nächsten Senden und beim Beenden gelöscht) |
 

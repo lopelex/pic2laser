@@ -450,6 +450,21 @@ body.has-image .dropzone:not(.dragging) { display: none; }
   padding: 14px;
 }
 
+/* KI-Assistent (MCP-Server) */
+.mcp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex: none; }
+.mcp-dot.on { background: #4ade80; }
+.mcp-dot.error { background: var(--danger); }
+.mcp-dot.on.busy { background: var(--accent); animation: mcp-pulse 1s ease-in-out infinite; }
+@keyframes mcp-pulse { 50% { opacity: .35; } }
+.mcp-status { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mcp-code {
+  margin: 8px 0; padding: 8px 10px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 11px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
+  user-select: text; max-height: 180px; overflow-y: auto;
+}
+.mcp-dialog .hint code { font-size: 11px; overflow-wrap: anywhere; }
+
 
 /* ---------- Klickpunkte (Plus/Minus) über dem Original ---------- */
 .marker-layer { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }

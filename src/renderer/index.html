@@ -695,6 +695,19 @@
         </div>
       </section>
 
+      <!-- MCP-Server für KI-Assistenten (standardmäßig aus) -->
+      <section class="group">
+        <h3>KI-Assistent (MCP)</h3>
+        <label class="check" title="MCP-Server: KI-Assistenten wie Claude können Pic2Laser bedienen – Bild öffnen, Einstellungen optimieren, Ergebnis ansehen und exportieren. Nur auf diesem Rechner erreichbar.">
+          <input type="checkbox" id="mcp-enabled" /> MCP-Server einschalten
+        </label>
+        <div class="row">
+          <span class="mcp-dot" id="mcp-dot" aria-hidden="true"></span>
+          <span class="hint grow mcp-status" id="mcp-status">aus</span>
+          <button class="btn btn-small" id="btn-mcp-setup" title="Claude Code, Claude Desktop oder andere MCP-Clients verbinden">Einrichten…</button>
+        </div>
+      </section>
+
       </div>
     </aside>
 
@@ -807,6 +820,53 @@
         </div>
         <p class="hint">Der Cache speichert KI-Ergebnisse (max. 2&nbsp;GB), damit ein erneut geöffnetes Bild oder ein
           Historie-Eintrag nicht neu berechnet werden muss.</p>
+      </section>
+    </div>
+    <div class="dialog-foot">
+      <span></span>
+      <button class="btn" data-close>Schließen</button>
+    </div>
+  </dialog>
+
+  <!-- MCP-Server: Verbindung für KI-Assistenten -->
+  <dialog class="dialog dialog-narrow mcp-dialog" id="mcp-dialog" aria-labelledby="mcp-title">
+    <div class="dialog-head">
+      <div>
+        <h2 id="mcp-title">MCP-Server</h2>
+        <p class="dialog-sub">Claude &amp; andere KI-Assistenten bedienen Pic2Laser</p>
+      </div>
+      <button class="icon-btn dialog-close" data-close title="Schließen (Esc)" aria-label="Schließen">✕</button>
+    </div>
+    <div class="dialog-body">
+      <section class="dialog-section">
+        <p class="perf-status" id="mcp-dialog-state"></p>
+        <p class="hint">Der Assistent kann Bilder öffnen, Presets und alle Einstellungen setzen, das Ergebnis als Bild
+          ansehen und beurteilen, exportieren und an LightBurn senden. Alles passiert sichtbar hier in der App.
+          Der Server ist nur auf diesem Rechner erreichbar und braucht den Schlüssel unten.</p>
+      </section>
+      <section class="dialog-section">
+        <h3>Claude Code</h3>
+        <p class="hint">Im Terminal ausführen:</p>
+        <pre class="mcp-code" id="mcp-code-cmd"></pre>
+        <div class="row"><button class="btn btn-small" data-copy="#mcp-code-cmd">Befehl kopieren</button></div>
+      </section>
+      <section class="dialog-section">
+        <h3>Claude Desktop</h3>
+        <p class="hint">Einstellungen → Entwickler → Konfiguration bearbeiten, den Eintrag unter <code>mcpServers</code>
+          einfügen und Claude Desktop neu starten. Läuft Pic2Laser nicht, startet es sich dann selbst.</p>
+        <pre class="mcp-code" id="mcp-desktop-json"></pre>
+        <div class="row"><button class="btn btn-small" data-copy="#mcp-desktop-json">Konfiguration kopieren</button></div>
+        <p class="hint" id="mcp-portable-hint" hidden>Hinweis: Die portable Version entpackt sich bei jedem Start neu –
+          das Starten über Claude Desktop dauert damit einige Sekunden länger. Mit der installierten Version geht es schneller.</p>
+      </section>
+      <section class="dialog-section">
+        <h3>Andere Clients (HTTP)</h3>
+        <p class="hint">Adresse <code id="mcp-url"></code>, Kopfzeile <code>Authorization: Bearer &lt;Schlüssel&gt;</code></p>
+        <pre class="mcp-code" id="mcp-token"></pre>
+        <div class="row">
+          <button class="btn btn-small" data-copy="#mcp-token">Schlüssel kopieren</button>
+          <button class="btn btn-small btn-ghost" id="btn-mcp-token" title="Neuen Schlüssel erzeugen – der alte gilt dann nicht mehr">Neuer Schlüssel</button>
+        </div>
       </section>
     </div>
     <div class="dialog-foot">
@@ -948,5 +1008,6 @@
   <script src="tour.js"></script>
   <script src="manual.js"></script>
   <script src="app.js"></script>
+  <script src="mcp.js"></script>
 </body>
 </html>
