@@ -78,6 +78,10 @@ const DEFAULTS = Object.freeze({
   colorMinAreaMm2: 0.5, // kleinere Flächen gehen in der Nachbarfarbe auf
   colorOverlapMm: 0.1, // untere Ebenen reichen so weit unter die oberen
   colorSkipBg: true, // Hintergrundfarbe (überwiegt am Bildrand) weglassen
+  colorBlend: 'auto', // Kantensäume (Mischfarben) entfernen: 'auto' = nur an geschlossenen Flächen, 'logo' = immer, 'off' = nie
+  colorGradients: false, // Echtfarben: größere Flächen mit Farbverlauf (SVG linearGradient)
+  colorGradientMerge: 0.5, // Stufen glätten: Flächen über kontrastarme Grenzen zu einem Verlauf vereinen (0 = aus)
+  colorTrueRaster: false, // Rasterexporte (PNG/JPG/BMP) mit den Bildpixeln statt der Vektorflächen
   colorEdits: [], // je Bild: [{ from, to?, off?, into? }] – Farben ausblenden, umfärben, zusammenführen
   // Umrisslinie
   outline: false,
@@ -254,6 +258,7 @@ const FORMATTERS = {
   colorSmoothMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
   colorMinAreaMm2: (v) => (Number(v) ? `${Number(v).toFixed(1).replace('.', ',')} mm²` : 'aus'),
   colorOverlapMm: (v) => (Number(v) ? `${Number(v).toFixed(2).replace('.', ',')} mm` : 'aus'),
+  colorGradientMerge: (v) => (Number(v) ? `${Math.round(Number(v) * 100)} %` : 'aus'),
   embTrimMm: (v) => `${Number(v).toFixed(1).replace('.', ',')} mm`,
   sineStrokeMm: (v) => `${Number(v).toFixed(2).replace('.', ',')} mm`,
   outlineOffsetMm: (v) => `${Number(v).toFixed(1)} mm`,
@@ -545,7 +550,7 @@ function bindControls() {
 // Mitgelieferte Vorlagen, gegliedert nach Art des Eingangsbilds
 // (nur die Abweichungen von den Standardwerten; Ausgabegröße und Exportformate bleiben erhalten)
 /** Gemeinsame Einstellungen der Stickerei-Vorlagen: Farbflächen auf Brother-Garne, PES-Export. */
-const EMB_LOGO = { mode: 'color', colorCount: 0, colorPalette: 'brother', colorSmoothMm: 0.3, colorSkipBg: true, workRes: 2000, alphaMax: 1.1, fmtPes: true };
+const EMB_LOGO = { mode: 'color', colorCount: 0, colorPalette: 'brother', colorSmoothMm: 0.3, colorSkipBg: true, colorBlend: 'logo', workRes: 2000, alphaMax: 1.1, fmtPes: true };
 
 const BUILTIN_PRESETS = [
   // ---- Logos, Schrift & Grafik ----
@@ -1960,7 +1965,7 @@ async function runProcess() {
     }
 
     // 4. Rasterverarbeitung im Worker (blockiert die Oberfläche nicht)
-    let { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil, strokePath, colorLayers, colorMasks, colorContour, contourBits } =
+    let { w, h, bits, gray8, alpha8, trace, imagePng, imageB64, sil, strokePath, colorLayers, colorMasks, colorContour, contourBits, colorGrads, colorTrueRgba } =
       await Run.track('render', Pipeline.render(source, mask, s, lineMask, textSourceFor(s, source, work)));
     if (stale()) return;
     const widthMm = Math.max(0.1, s.widthMm);
@@ -1976,9 +1981,11 @@ async function runProcess() {
     state.dpiWarn = dpiWarn;
 
     // 5. Vektorisierung (Potrace im eigenen Prozess) – Füllung und Umrisslinie parallel
-    // Modus Farben: alle Farbebenen in einem Auftrag (ein Pfad je Ebene)
+    // Modus Farben: alle Farbebenen in einem Auftrag (ein Pfad je Ebene), danach die Verlaufsflächen
+    // (Ausschnitte mit Lage im Bild)
+    const gradCrops = colorGrads ? colorGrads.flat().map((g) => ({ bits: g.bits, w: g.w, h: g.h, x: g.x, y: g.y })) : [];
     const fillJob = colorMasks && colorMasks.length
-      ? Run.track('trace', window.api.trace({ layers: colorMasks, w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
+      ? Run.track('trace', window.api.trace({ layers: [...colorMasks, ...gradCrops], w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
       : trace
         ? Run.track('trace', window.api.trace({ bits, w, h }, traceParams(s, mmPerPx, w, h, s.textBlocks), 'fill'))
         : contourBits && !(s.outline && s.outlineOnly)
@@ -1997,10 +2004,11 @@ async function runProcess() {
     if (stale()) return;
     if (fillRes.status === 'rejected') throw fillRes.reason;
     if (outlineRes.status === 'rejected') throw outlineRes.reason;
-    const colors = colorLayers ? colorSvgLayers(colorLayers, fillRes.value || [], colorContour) : null;
+    const colors = colorLayers ? colorSvgLayers(colorLayers, fillRes.value || [], colorContour, colorGrads) : null;
     const fillPath = colors ? null : fillRes.value;
-    // Farben: Rasterexporte, Vorschaubild und Herausziehen zeigen genau die vektorisierten Flächen
-    const rgba8 = colors ? rasterizeColors(colors, w, h) : null;
+    // Farben: Rasterexporte, Vorschaubild und Herausziehen zeigen genau die vektorisierten Flächen –
+    // oder mit „Rasterexporte in Echtfarben“ die Bildpixel selbst
+    const rgba8 = colors ? colorTrueRgba || rasterizeColors(colors, w, h) : null;
     if (colorLayers && !colors.some((c) => c.d) && !(s.outline && s.outlineOnly)) {
       toast(colorLayers.length ? 'Alle Farben sind ausgeblendet – das Ergebnis ist leer.' : 'Keine Farben gefunden – das Bild ist leer oder vollständig freigestellt.', true);
     }
@@ -2119,12 +2127,23 @@ function rasterizePath(d, w, h) {
  * Modus Farben: Ebenen fürs SVG (Pfad, Farbe, Name) – Reihenfolge von unten nach oben,
  * nur sichtbare Farben (paths gehört zu den sichtbaren Ebenen in dieser Reihenfolge).
  */
-function colorSvgLayers(layers, paths, contour = false) {
+function colorSvgLayers(layers, paths, contour = false, grads = null) {
   const vis = layers.filter((l) => !l.off);
-  const out = vis.map((l, i) => ({
-    d: String(paths[i] || '').trim(), hex: l.hex, label: `${i + 1} ${l.name} (${l.hex})`,
-    name: l.name, key: `c${l.from}`, // Schlüssel für die Stickparameter: ursprüngliche Bildfarbe
-  }));
+  // Pfade der Verlaufsflächen folgen auf alle Ebenen (und die Motivkontur)
+  let gi = vis.length + (contour ? 1 : 0);
+  const out = vis.map((l, i) => {
+    const flat = String(paths[i] || '').trim();
+    const g = (grads && grads[i] ? grads[i] : [])
+      .map((v) => ({ d: String(paths[gi++] || '').trim(), x1: v.x1, y1: v.y1, x2: v.x2, y2: v.y2, stops: v.stops }))
+      .filter((v) => v.d);
+    return {
+      // d: ganze Ebene (Stickdatei, LightBurn, Vereinigen), flat + grads: Ausgabe mit Farbverläufen
+      d: [flat, ...g.map((v) => v.d)].filter(Boolean).join(' '),
+      flat, grads: g.length ? g : null,
+      hex: l.hex, label: `${i + 1} ${l.name} (${l.hex})`,
+      name: l.name, key: `c${l.from}`, // Schlüssel für die Stickparameter: ursprüngliche Bildfarbe
+    };
+  });
   // Motivkontur: letzte Maske, eigene schwarze Ebene ganz oben
   if (contour) {
     out.push({
@@ -2141,8 +2160,21 @@ function rasterizeColors(colors, w, h) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   for (const c of colors) {
     if (!c.d) continue;
-    ctx.fillStyle = c.hex;
-    ctx.fill(new Path2D(c.d), 'evenodd');
+    if (!c.grads) {
+      ctx.fillStyle = c.hex;
+      ctx.fill(new Path2D(c.d), 'evenodd');
+      continue;
+    }
+    if (c.flat) {
+      ctx.fillStyle = c.hex;
+      ctx.fill(new Path2D(c.flat), 'evenodd');
+    }
+    for (const g of c.grads) {
+      const lg = ctx.createLinearGradient(g.x1, g.y1, g.x2, g.y2);
+      for (const [t, hex] of g.stops) lg.addColorStop(t, hex);
+      ctx.fillStyle = lg;
+      ctx.fill(new Path2D(g.d), 'evenodd');
+    }
   }
   return ctx.getImageData(0, 0, w, h).data;
 }
@@ -3949,7 +3981,8 @@ function lightBurnSvg(r) {
   if (r.svgLightBurn) return r.svgLightBurn;
   if (r.mode !== 'color') return r.svg;
   const layers = svgLayersOf(r.svg, r.w, r.h, { label: 'Ergebnis', id: 'farbe', widthMm: r.widthMm, isColor: true });
-  if (layers.filter((l) => l.fromColor).length < 2) return r.svg;
+  // mit Farbverläufen immer neu (LightBurn kennt keine Verläufe – dort die Ebenenfarbe)
+  if (layers.filter((l) => l.fromColor).length < 2 && !r.svg.includes('<linearGradient')) return r.svg;
   r.svgLightBurn = Encoders.svgDocument({ w: r.w, h: r.h, widthMm: r.widthMm, layers: lightBurnLayers(layers), outline: r.outline });
   return r.svgLightBurn;
 }

@@ -324,13 +324,27 @@ technische Motive. In LightBurn als **Füllung** (die Linien sind schmale Fläch
 
 **Farben** – Farbreduktion, je Farbe eine Ebene:
 
-- **Anzahl Farben** (2–16 oder **Auto**, höchstens 10), **Farbpalette** *Bildfarben* oder *Brother-Garne*,
+- **Anzahl Farben** (2–32 oder **Auto**, höchstens 10), **Farbpalette** *Bildfarben* oder *Brother-Garne*,
   **Kanten glätten** (mm), **Kleinste Fläche** (mm²), **Überlappung** (mm), **Hintergrundfarbe weglassen**.
 - **Ebenenliste** (unten → oben = Reihenfolge): Häkchen = ausgeben, Farbfeld = Farbe ändern,
   ⇢ = mit einer anderen Farbe zusammenführen, ↺ = Änderungen dieser Farbe zurücknehmen.
   **Farbänderungen zurücksetzen** nimmt alle zurück.
 - LightBurn legt beim Import **je Farbe eine Ebene** an – ideal für mehrfarbige Gravur mit
   unterschiedlicher Leistung je Ebene oder für Farblaser/Druck.
+- **Kantensäume entfernen** – *Automatisch*: schmale Mischfarben an den Kanten von Logos und Grafiken
+  verschwinden, Zwischentöne in Fotos bleiben. *Logo*: jede schmale Mischfarbe wird entfernt
+  (bisheriges Verhalten, für Logos mit starker Kantenglättung). *Aus*: alle Farben bleiben.
+- **Echtfarben mit Verläufen (SVG)** – jede größere Fläche (ab 1 mm²), deren Farbe sich ändert, bekommt
+  einen weichen Farbverlauf, der den Bildfarben folgt. Gedacht für Grafikprogramme (Inkscape,
+  Illustrator, Affinity) und Druck. Tipp: mit weniger Farben entstehen größere, weich verlaufende Flächen.
+  Nur mit der Palette *Bildfarben*; umgefärbte Farben bleiben einfarbig. LightBurn, Stickdateien und
+  „Vereinigen“ nutzen je Ebene die Ebenenfarbe (sie kennen keine Verläufe).
+  - **Stufen glätten** (0–100 %, Standard 50 %): Nachbarflächen, deren Grenze im Bild kaum Kontrast hat
+    (Farbstufe in einem weichen Übergang, z. B. Haut, Stoff), werden zu einer Fläche mit gemeinsamem
+    Verlauf. Echte Kanten (Brille, Bart, Schrift) bleiben scharf. Höher = weniger Stufen, aber auch
+    weniger Schattierung.
+- **Rasterexporte in Echtfarben** – PNG, JPG und BMP enthalten die Bildpixel in voller Farbe (nur die
+  ausgegebenen Farbflächen, freigestellter Hintergrund bleibt leer) statt der vektorisierten Flächen.
 
 **Relief** – KI-Tiefenkarte für 3D-Gravur in Holz (hell = erhaben, dunkel = tief):
 

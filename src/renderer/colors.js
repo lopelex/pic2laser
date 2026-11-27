@@ -20,7 +20,8 @@ const Colors = (() => {
   const SHIFT = 8 - BITS;
   const BINS = 1 << (3 * BITS);
   const AUTO_MAX = 10;
-  const MAX_COLORS = 24;
+  const MAX_COLORS = 32;
+  const STEP_MAX = 16; // bis hierher je Farbe ein k-Means-Lauf, darüber alle weiteren Startzentren auf einmal
 
   /* ---------------- Farbräume ---------------- */
 
@@ -255,11 +256,39 @@ const Colors = (() => {
     })();
     const want = count > 0 ? Math.min(count, H.n, MAX_COLORS) : Math.min(AUTO_MAX, H.n);
     let res = kmeans(H, [first]);
-    for (let k = 2; k <= want; k++) {
+    for (let k = 2; k <= Math.min(want, STEP_MAX); k++) {
       if (count <= 0 && unexplained(H, res, 10) < 0.001) break;
       const seed = nextSeed(H, res.cen);
       if (!seed) break;
       res = kmeans(H, [...res.cen, seed]);
+    }
+    // mehr als 16 Farben: weitere Startzentren wie nextSeed, aber ohne Zwischenläufe (Abstand zum
+    // nächsten Zentrum fortlaufend nachführen), dann ein gemeinsamer k-Means-Lauf – sonst wächst die
+    // Rechenzeit quadratisch mit der Farbanzahl
+    if (want > STEP_MAX && res.cen.length === STEP_MAX) {
+      const cen = res.cen.map((c) => c.slice());
+      const minD = new Float64Array(H.n);
+      for (let j = 0; j < H.n; j++) {
+        const L = H.lab[j * 3], A = H.lab[j * 3 + 1], B = H.lab[j * 3 + 2];
+        let bd = Infinity;
+        for (const q of cen) bd = Math.min(bd, (L - q[0]) ** 2 + (A - q[1]) ** 2 + (B - q[2]) ** 2);
+        minD[j] = bd;
+      }
+      while (cen.length < want) {
+        let best = -1, bs = 0;
+        for (let j = 0; j < H.n; j++) {
+          const sc = Math.sqrt(H.wt[j]) * minD[j];
+          if (sc > bs) { bs = sc; best = j; }
+        }
+        if (best < 0) break;
+        const q = [H.lab[best * 3], H.lab[best * 3 + 1], H.lab[best * 3 + 2]];
+        cen.push(q);
+        for (let j = 0; j < H.n; j++) {
+          const d = (H.lab[j * 3] - q[0]) ** 2 + (H.lab[j * 3 + 1] - q[1]) ** 2 + (H.lab[j * 3 + 2] - q[2]) ** 2;
+          if (d < minD[j]) minD[j] = d;
+        }
+      }
+      res = kmeans(H, cen);
     }
     if (count <= 0) {
       for (const m of must) {
@@ -381,7 +410,7 @@ const Colors = (() => {
   /**
    * Zerlegt das Bild in Farbflächen.
    * rgba: Pixel (auf Weiß), opaque: 1 = Pixel zählt (nicht transparent/freigestellt)
-   * opts: { count (0 = Auto), palette ('image'|'brother'), smoothPasses, minAreaPx, skipBg,
+   * opts: { count (0 = Auto), palette ('image'|'brother'), smoothPasses, minAreaPx, skipBg, blend ('auto'|'logo'|'off'),
    *         edits: [{ from: '#rrggbb', to?: '#rrggbb', off?: bool, into?: '#rrggbb' }],
    *         keep: Uint8Array|null – Pixel, die Glätten und Kleinstflächen nicht verändern,
    *         textColors: [{ rgb, weight }] – Farben erkannter Schrift (siehe cluster) }
@@ -433,8 +462,11 @@ const Colors = (() => {
     assignBins(alive);
     paint();
 
-    // Mischfarben an Kanten auflösen: Farbe liegt zwischen zwei anderen und besteht fast nur aus Rand
-    if (k >= 3) {
+    // Mischfarben an Kanten auflösen: Farbe liegt zwischen zwei anderen und besteht fast nur aus Rand.
+    // opts.blend: 'auto' (Standard) = nur an geschlossenen Flächen, 'logo' = immer (wie bis 1.22),
+    // 'off' = nie (alle Zwischentöne bleiben, z. B. für Fotos mit Verläufen)
+    const blendMode = opts.blend === 'logo' || opts.blend === 'off' ? opts.blend : 'auto';
+    if (k >= 3 && blendMode !== 'off') {
       const area = new Float64Array(k), edge = new Float64Array(k), text = new Float64Array(k);
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
@@ -447,6 +479,7 @@ const Colors = (() => {
         }
       }
       const total = area.reduce((a, b) => a + b, 0) || 1;
+      const solid = (c) => area[c] > 0 && edge[c] / area[c] < 0.25;
       let any = false;
       for (let c = 0; c < k; c++) {
         if (!area[c] || edge[c] / area[c] < 0.5 || area[c] / total > 0.15) continue;
@@ -457,6 +490,9 @@ const Colors = (() => {
           if (a === c || !alive[a]) continue;
           for (let b = a + 1; b < k && !blend; b++) {
             if (b === c || !alive[b]) continue;
+            // ein Saum aus Kantenglättung liegt an einer geschlossenen Fläche (Logo, Grafik); in Fotos
+            // und Maserung sind auch die Nachbarfarben zerfasert – dort ist die Farbe ein echter Zwischenton
+            if (blendMode === 'auto' && !(solid(a) || solid(b))) continue;
             if (isBlend({ rgb: cenRgb[c], lab: cen[c] }, { rgb: cenRgb[a], lab: cen[a] }, { rgb: cenRgb[b], lab: cen[b] })) blend = true;
           }
         }
@@ -628,7 +664,283 @@ const Colors = (() => {
     return vis.map((l, i) => ({ layer: l, bits: masks[i] }));
   }
 
-  return { separate, layerMasks, colorName, toHex, fromHex, labOf, EMPTY, palettes: PALETTES };
+  /**
+   * Echtfarben mit Verläufen: zerlegt jede Ebenenmaske in zusammenhängende Flächen und gibt jeder
+   * größeren Fläche, deren Farbe sich über die Fläche ändert, einen linearen Farbverlauf.
+   * Richtung: stärkste Farbänderung der linearen Näherung (Kleinste Quadrate je Kanal);
+   * Farbstopps: mittlere Bildfarbe in Streifen quer zur Richtung (folgt auch ungleichmäßigen Verläufen).
+   * Gerechnet nur mit den eigenen Pixeln der Ebene (labels === label), nicht mit der Überlappung.
+   * Stufen glätten (opts.merge 0..1): benachbarte Flächen – auch verschiedener Farbebenen – werden zu
+   * einer Fläche mit gemeinsamem Verlauf, wenn ihre Grenze im Bild kaum Kontrast hat (Farbstufe in
+   * einem weichen Übergang, keine echte Kante) und ein Verlauf die vereinte Fläche noch gut beschreibt
+   * (Restabweichung der linearen Näherung). Die vereinte Fläche liegt in der Ebene ihres größten Teils.
+   * masks: [{ layer, bits }] (Colors.layerMasks). Ergebnis je Maske:
+   * { rest: Uint8Array (Pixel ohne Verlauf, einfarbig), grads: [{ x, y, w, h, bits (Ausschnitt),
+   *   x1, y1, x2, y2, stops: [[offset 0..1, '#rrggbb']] }] }
+   */
+  function gradientRegions(rgba, labels, w, h, masks, opts = {}) {
+    const n = w * h;
+    const minPx = Math.max(64, Number(opts.minPx) || 0);
+    const minDelta = Number(opts.minDelta) || 10; // kleinste Farbänderung (RGB-Abstand) über die Fläche
+    const maxGrads = Number(opts.maxGrads) || 4000;
+    const merge = Math.min(1, Math.max(0, Number(opts.merge) || 0));
+    const rests = masks.map((m) => m.bits.slice());
+    const result = masks.map((m, i) => ({ rest: rests[i], grads: [] }));
+    const skipLayer = masks.map((m) => !!(opts.skip && opts.skip(m.layer)));
+
+    // 1. zusammenhängende Flächen je Ebene (4er-Nachbarschaft) mit Momenten der eigenen Pixel
+    // M: [N, sx, sy, sxx, sxy, syy, sr, sg, sb, srx, sry, sgx, sgy, sbx, sby, srr, sgg, sbb]
+    const NM = 18;
+    const comps = []; // { li, seed, cnt, x0, y0, x1, y1, m: Float64Array }
+    const own = new Int32Array(n).fill(-1); // eigene Pixel → Fläche
+    const comp = new Int32Array(n);
+    const stack = new Int32Array(n);
+    masks.forEach(({ layer, bits }, li) => {
+      if (skipLayer[li]) return;
+      comp.fill(-1);
+      for (let s = 0; s < n; s++) {
+        if (!bits[s] || comp[s] >= 0) continue;
+        const id = comps.length;
+        const c = { li, seed: s, cnt: 0, x0: w, y0: h, x1: -1, y1: -1, m: new Float64Array(NM) };
+        const M = c.m;
+        let sp = 0;
+        stack[sp++] = s; comp[s] = id;
+        while (sp) {
+          const i = stack[--sp];
+          const x = i % w, y = (i / w) | 0;
+          c.cnt++;
+          if (x < c.x0) c.x0 = x;
+          if (y < c.y0) c.y0 = y;
+          if (x > c.x1) c.x1 = x;
+          if (y > c.y1) c.y1 = y;
+          if (labels[i] === layer.label) {
+            own[i] = id;
+            const px = x + 0.5, py = y + 0.5, k = i * 4;
+            const r = rgba[k], g = rgba[k + 1], b = rgba[k + 2];
+            M[0]++; M[1] += px; M[2] += py; M[3] += px * px; M[4] += px * py; M[5] += py * py;
+            M[6] += r; M[7] += g; M[8] += b;
+            M[9] += r * px; M[10] += r * py; M[11] += g * px; M[12] += g * py; M[13] += b * px; M[14] += b * py;
+            M[15] += r * r; M[16] += g * g; M[17] += b * b;
+          }
+          if (x > 0 && bits[i - 1] && comp[i - 1] < 0) { comp[i - 1] = id; stack[sp++] = i - 1; }
+          if (x < w - 1 && bits[i + 1] && comp[i + 1] < 0) { comp[i + 1] = id; stack[sp++] = i + 1; }
+          if (i >= w && bits[i - w] && comp[i - w] < 0) { comp[i - w] = id; stack[sp++] = i - w; }
+          if (i < n - w && bits[i + w] && comp[i + w] < 0) { comp[i + w] = id; stack[sp++] = i + w; }
+        }
+        comps.push(c);
+      }
+    });
+    if (!comps.length) return result;
+
+    // lineare Näherung aus den Momenten: Mittelpunkt, Farbgradient G (3 × 2), Restabweichung (RMS je Kanal)
+    const fit = (M) => {
+      const N = M[0];
+      if (!(N > 0)) return null;
+      const mx = M[1] / N, my = M[2] / N;
+      const cxx = M[3] / N - mx * mx, cxy = M[4] / N - mx * my, cyy = M[5] / N - my * my;
+      const det = cxx * cyy - cxy * cxy;
+      const G = [];
+      let res = 0;
+      for (let ch = 0; ch < 3; ch++) {
+        const mc = M[6 + ch] / N;
+        const vx = M[9 + 2 * ch] / N - mc * mx, vy = M[10 + 2 * ch] / N - mc * my;
+        const gx = det > 1e-6 ? (cyy * vx - cxy * vy) / det : 0;
+        const gy = det > 1e-6 ? (cxx * vy - cxy * vx) / det : 0;
+        G.push([gx, gy]);
+        res += Math.max(0, M[15 + ch] / N - mc * mc - (gx * vx + gy * vy));
+      }
+      return { N, mx, my, det, G, rms: Math.sqrt(res / 3) };
+    };
+
+    // 2. Stufen glätten: Flächen über kontrastarme Grenzen zusammenlegen (Union-Find)
+    const parent = new Int32Array(comps.length);
+    for (let c = 0; c < comps.length; c++) parent[c] = c;
+    const root = (c) => { while (parent[c] !== c) { parent[c] = parent[parent[c]]; c = parent[c]; } return c; };
+    if (merge > 0 && comps.length > 1 && comps.length < 2097152) {
+      const maxContrast = 15 + 60 * merge; // mittlerer Farbabstand quer über die Grenze
+      // erlaubte Zunahme der Abweichung vom Verlauf durch das Vereinen (RMS je Kanal), bezogen auf die
+      // kleinere Fläche – sonst ginge ein kleiner Buchstabe in einem großen Himmel unter. Die
+      // Bildstruktur selbst (Hautporen, Stoff) steckt schon in beiden Teilen und zählt nicht
+      const maxInc = 3 + 20 * merge;
+      const edges = new Map(); // a·2^21 + b → [Anzahl, Summe Kontrast]
+      const STEP = 2; // Kontrast über ±2 px: weichgezeichnete echte Kanten zählen voll
+      const px = (i) => i * 4;
+      const contrast = (i, j) => {
+        const a = px(i), b = px(j);
+        return Math.sqrt((rgba[a] - rgba[b]) ** 2 + (rgba[a + 1] - rgba[b + 1]) ** 2 + (rgba[a + 2] - rgba[b + 2]) ** 2);
+      };
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = y * w + x, a = own[i];
+          if (a < 0) continue;
+          for (let dir = 0; dir < 2; dir++) {
+            const j = dir ? (y < h - 1 ? i + w : -1) : (x < w - 1 ? i + 1 : -1);
+            if (j < 0) continue;
+            const b = own[j];
+            if (b < 0 || b === a) continue;
+            // Pixel etwas weiter weg auf beiden Seiten vergleichen
+            let p = i, q = j;
+            if (dir) {
+              p = Math.max(x, i - STEP * w); q = Math.min(j + STEP * w, (h - 1) * w + x);
+              if (p < 0) p = i;
+            } else {
+              p = i - Math.min(STEP, x); q = j + Math.min(STEP, w - 1 - (x + 1));
+            }
+            const key = a < b ? a * 2097152 + b : b * 2097152 + a;
+            const e = edges.get(key);
+            const cv = contrast(p, q);
+            if (e) { e[0]++; e[1] += cv; } else edges.set(key, [1, cv]);
+          }
+        }
+      }
+      const list = [];
+      for (const [key, [cnt, sum]] of edges) {
+        if (cnt < 3) continue;
+        const c = sum / cnt;
+        if (c < maxContrast) list.push({ a: Math.floor(key / 2097152), b: key % 2097152, c });
+      }
+      list.sort((u, v) => u.c - v.c);
+      const mom = comps.map((c) => c.m);
+      const sse = (M) => { const f = fit(M); return f ? f.rms * f.rms * 3 * f.N : 0; };
+      const err = comps.map((c) => sse(c.m));
+      for (const { a, b } of list) {
+        const ra = root(a), rb = root(b);
+        if (ra === rb) continue;
+        const M = new Float64Array(NM);
+        for (let k = 0; k < NM; k++) M[k] = mom[ra][k] + mom[rb][k];
+        if (!(M[0] > 0)) continue;
+        const e = sse(M);
+        if ((e - err[ra] - err[rb]) / (3 * Math.min(mom[ra][0], mom[rb][0]) || 1) > maxInc * maxInc) continue;
+        const [big, small] = mom[ra][0] >= mom[rb][0] ? [ra, rb] : [rb, ra];
+        parent[small] = big;
+        mom[big] = M;
+        err[big] = e;
+      }
+      comps.forEach((c, i) => { c.mm = mom[i]; });
+    }
+
+    // 3. Gruppen (vereinte Flächen): Ebene des größten Teils, Richtung der stärksten Farbänderung
+    const groups = new Map(); // Wurzel → Gruppe
+    for (let c = 0; c < comps.length; c++) {
+      const r = root(c);
+      let g = groups.get(r);
+      if (!g) groups.set(r, (g = { members: [], cnt: 0, x0: w, y0: h, x1: -1, y1: -1, M: (comps[r].mm || comps[r].m), main: c, mainOwn: -1 }));
+      const k = comps[c];
+      g.members.push(c);
+      g.cnt += k.cnt;
+      g.x0 = Math.min(g.x0, k.x0); g.y0 = Math.min(g.y0, k.y0); g.x1 = Math.max(g.x1, k.x1); g.y1 = Math.max(g.y1, k.y1);
+      if (k.m[0] > g.mainOwn) { g.mainOwn = k.m[0]; g.main = c; }
+    }
+    const gOf = new Int32Array(comps.length).fill(-1);
+    const cand = [];
+    for (const g of groups.values()) {
+      const merged = g.members.length > 1;
+      if (cand.length >= maxGrads) break;
+      if (merged ? g.cnt < minPx * 0.25 : g.cnt < minPx || g.M[0] < minPx * 0.5) continue;
+      const f = fit(g.M);
+      if (!f || !(f.det > 1e-6)) continue;
+      let p = 0, q = 0, r = 0;
+      for (const [gx, gy] of f.G) { p += gx * gx; q += gx * gy; r += gy * gy; }
+      const ang = 0.5 * Math.atan2(2 * q, p - r);
+      g.mx = f.mx; g.my = f.my; g.dx = Math.cos(ang); g.dy = Math.sin(ang);
+      g.grad = Math.sqrt(p * g.dx * g.dx + 2 * q * g.dx * g.dy + r * g.dy * g.dy);
+      g.merged = merged;
+      g.tmin = Infinity; g.tmax = -Infinity;
+      for (const c of g.members) gOf[c] = cand.length;
+      cand.push(g);
+    }
+    if (!cand.length) return result;
+    for (let i = 0; i < n; i++) {
+      const j = own[i] >= 0 ? gOf[own[i]] : -1;
+      if (j < 0) continue;
+      const c = cand[j];
+      const t = (i % w + 0.5 - c.mx) * c.dx + (((i / w) | 0) + 0.5 - c.my) * c.dy;
+      if (t < c.tmin) c.tmin = t;
+      if (t > c.tmax) c.tmax = t;
+    }
+    // 4. Farbstopps: Streifen entlang der Richtung (je Streifen mittlere Farbe)
+    const BINS_MAX = 16;
+    const keep = cand.map((c) => {
+      const len = c.tmax - c.tmin;
+      if (!(len > 2) || (!c.merged && c.grad * len < minDelta)) return false;
+      c.nb = Math.max(2, Math.min(BINS_MAX, Math.round(len / 6)));
+      c.acc = new Float64Array(c.nb * 4);
+      return true;
+    });
+    for (let i = 0; i < n; i++) {
+      const j = own[i] >= 0 ? gOf[own[i]] : -1;
+      if (j < 0 || !keep[j]) continue;
+      const c = cand[j];
+      const t = (i % w + 0.5 - c.mx) * c.dx + (((i / w) | 0) + 0.5 - c.my) * c.dy;
+      const b = Math.min(c.nb - 1, Math.floor(((t - c.tmin) / (c.tmax - c.tmin)) * c.nb));
+      const k = i * 4, o = b * 4;
+      c.acc[o] += rgba[k]; c.acc[o + 1] += rgba[k + 1]; c.acc[o + 2] += rgba[k + 2]; c.acc[o + 3]++;
+    }
+    const seen = new Uint8Array(n);
+    for (let j = 0; j < cand.length; j++) {
+      if (!keep[j]) continue;
+      const c = cand[j];
+      let stops = [];
+      for (let b = 0; b < c.nb; b++) {
+        const o = b * 4, cnt = c.acc[o + 3];
+        if (cnt < 3) continue;
+        stops.push({ t: (b + 0.5) / c.nb, rgb: [c.acc[o] / cnt, c.acc[o + 1] / cnt, c.acc[o + 2] / cnt] });
+      }
+      if (!stops.length) continue;
+      if (stops.length === 1) stops = [{ t: 0, rgb: stops[0].rgb }, { t: 1, rgb: stops[0].rgb }];
+      const first = stops[0].rgb, last = stops[stops.length - 1].rgb;
+      let spread = 0;
+      for (const st of stops) spread = Math.max(spread, dist2(st.rgb, first), dist2(st.rgb, last));
+      if (!c.merged && spread < minDelta * minDelta) continue; // praktisch einfarbig
+      // Endfarben vom Streifenmittel bis an den Rand der Fläche hochrechnen – sonst bleibt an der
+      // Grenze zur Nachbarfläche (gleicher Verlauf, andere Farbebene) eine sichtbare Naht
+      const extend = (A, B, t) => {
+        const f = (t - A.t) / (B.t - A.t);
+        return { t, rgb: A.rgb.map((v, ch) => Math.min(255, Math.max(0, v + (B.rgb[ch] - v) * f))) };
+      };
+      if (stops[0].t > 0) {
+        stops = [extend(stops[0], stops[1], 0), ...stops.slice(1, -1), extend(stops[stops.length - 2], stops[stops.length - 1], 1)];
+      }
+      // überflüssige Zwischenstopps (liegen auf der Geraden zwischen den Nachbarn) weglassen
+      for (let changed = true; changed && stops.length > 2;) {
+        changed = false;
+        for (let s = 1; s < stops.length - 1; s++) {
+          const A = stops[s - 1], B = stops[s], C = stops[s + 1];
+          const f = (B.t - A.t) / (C.t - A.t);
+          const lerp = A.rgb.map((v, ch) => v + (C.rgb[ch] - v) * f);
+          if (dist2(lerp, B.rgb) < 4 * 4) { stops.splice(s, 1); changed = true; break; }
+        }
+      }
+      // Ausschnitt der (vereinten) Fläche: Teile erneut fluten; diese Pixel fehlen in den Restflächen
+      const x0 = c.x0, y0 = c.y0, bw = c.x1 - x0 + 1, bh = c.y1 - y0 + 1;
+      const crop = new Uint8Array(bw * bh);
+      const touched = [];
+      for (const mi of c.members) {
+        const k = comps[mi], bits = masks[k.li].bits, rest = rests[k.li];
+        let sp = 0;
+        stack[sp++] = k.seed; seen[k.seed] = 1; touched.push(k.seed);
+        while (sp) {
+          const i = stack[--sp];
+          const x = i % w, y = (i / w) | 0;
+          crop[(y - y0) * bw + (x - x0)] = 1;
+          rest[i] = 0;
+          const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i >= w ? i - w : -1, i < n - w ? i + w : -1];
+          for (const q of nb) if (q >= 0 && bits[q] && !seen[q]) { seen[q] = 1; touched.push(q); stack[sp++] = q; }
+        }
+        for (const i of touched) seen[i] = 0;
+        touched.length = 0;
+      }
+      result[comps[c.main].li].grads.push({
+        x: x0, y: y0, w: bw, h: bh, bits: crop,
+        x1: c.mx + c.tmin * c.dx, y1: c.my + c.tmin * c.dy,
+        x2: c.mx + c.tmax * c.dx, y2: c.my + c.tmax * c.dy,
+        stops: stops.map((st) => [st.t, toHex(st.rgb)]),
+      });
+    }
+    return result;
+  }
+
+  return { separate, layerMasks, gradientRegions, colorName, toHex, fromHex, labOf, EMPTY, palettes: PALETTES };
 })();
 
 if (typeof module !== 'undefined') module.exports = Colors;
