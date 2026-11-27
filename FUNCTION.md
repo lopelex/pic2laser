@@ -369,6 +369,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   Speicherordner öffnen, Eintrag duplizieren, einzelne Einträge oder alles löschen.
 - **Umbenennen:** ✎ oder Doppelklick auf den Namen; Enter oder Klick daneben übernimmt, Esc bricht ab.
   Nur der Name in `meta.json` ändert sich (Datum bleibt); beim erneuten Speichern bleibt er erhalten.
+  Dateiname aller Ausgaben (`baseName`): Name des geöffneten Eintrags (`state.historyName`, gesetzt beim
+  Öffnen, Speichern und Umbenennen), sonst der Name der Bilddatei – Export, Herausziehen, An LightBurn
+  senden, Name in PES/DST.
 - **Sortieren:** neueste oder älteste zuerst (zuletzt gespeichert) bzw. Name A–Z / Z–A (natürliche
   Reihenfolge, „Bild 2“ vor „Bild 10“). Die Wahl wird gemerkt.
 - **Vereinigen (⊕):** legt das gespeicherte Ergebnis eines Eintrags über das aktuelle Ergebnis,

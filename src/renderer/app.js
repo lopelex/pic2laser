@@ -166,6 +166,7 @@ const state = {
   activePreset: null, // { key, settings } – zuletzt angewendetes Preset
   originalViewKey: null,
   historyId: null,
+  historyName: null, // Name des geöffneten Historie-Eintrags (auch umbenannt) – Name der exportierten Dateien
   history: [],
   generation: 0,
   zoom: 1,
@@ -1191,6 +1192,7 @@ async function loadImage(name, bytes, { historyId = null, settings = null } = {}
   const url = URL.createObjectURL(blob);
   state.source = { name, ext, bytes, bitmap, url, savedId: historyId };
   state.historyId = historyId;
+  state.historyName = null; // setzt openHistoryEntry bzw. saveToHistory
   state.result = null;
   state.baseResult = null;
   state.merge = null; // gehört zum vorigen Bild (ein Historie-Eintrag stellt seine Vereinigung danach wieder her)
@@ -3546,8 +3548,11 @@ function setBusy(on) {
 /* Export & Historie                                                  */
 /* ------------------------------------------------------------------ */
 
+/** Dateiname (ohne Endung) für Export, Herausziehen, LightBurn und Stickdateien: Name des geöffneten
+ * Historie-Eintrags (auch nach dem Umbenennen), sonst der Name der Bilddatei. */
 function baseName() {
   if (!state.source) return 'bild';
+  if (state.historyId && state.historyName) return state.historyName;
   return state.source.name.replace(/\.[^.]+$/, '') || 'bild';
 }
 
@@ -3958,6 +3963,7 @@ async function saveToHistory(silent = false) {
       height: r.h,
     });
     state.historyId = meta.id;
+    state.historyName = meta.name || null;
     src.savedId = meta.id;
     await refreshHistory();
     if (!silent) toast('In der Historie gespeichert');
@@ -4019,6 +4025,11 @@ function renameInput(e) {
     try {
       await window.api.history.rename(e.id, name);
       if (state.merge?.id === e.id) { state.merge.name = name; renderMergePanel(); }
+      if (state.historyId === e.id) {
+        // geöffneter Eintrag: exportierte Dateien heißen ab jetzt so (auch die schon vorbereiteten zum Herausziehen)
+        state.historyName = name;
+        if (state.result) scheduleDragPrepare();
+      }
       await refreshHistory();
     } catch (err) {
       toast(`Umbenennen fehlgeschlagen: ${cleanError(err)}`, true);
@@ -4141,6 +4152,7 @@ async function openHistoryEntry(id) {
       historyId: id,
       settings: meta.settings,
     });
+    if (state.historyId === id) state.historyName = meta.name || null;
     const source = state.source;
     preview.then((p) => {
       // nur, solange dieser Eintrag offen ist und noch kein frisches Ergebnis vorliegt

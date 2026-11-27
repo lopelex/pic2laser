@@ -479,7 +479,8 @@ besser. Statt einer Datei erscheint ein Hinweis bei Foto/Relief, leerem Ergebnis
   oder **Name Z–A** (Datum = zuletzt gespeichert; die Wahl wird gemerkt).
 - Je Eintrag: **umbenennen** (✎ oder Doppelklick auf den Namen, Enter übernimmt, Esc bricht ab), SVG
   erneut speichern, Speicherordner öffnen, duplizieren, löschen. Der neue Name bleibt auch beim erneuten
-  Speichern erhalten. **Leeren** löscht die ganze Historie.
+  Speichern erhalten. Ist der Eintrag geöffnet, heißen exportierte, herausgezogene und an LightBurn
+  gesendete Dateien (auch Stickdateien) so wie der Eintrag. **Leeren** löscht die ganze Historie.
 - **Vereinigen (⊕):** legt einen Eintrag über das aktuelle Ergebnis, z. B. „Linien“ über „Foto“ desselben
   Bildes. Oben in der Seitenleiste erscheint **Vereinigt mit**:
   - **Oben liegt:** Historie-Eintrag oder aktuelles Ergebnis.
