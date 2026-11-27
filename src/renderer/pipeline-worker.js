@@ -96,7 +96,7 @@ const handlers = {
     const gray = new Uint8ClampedArray(n); // Helligkeit: 0 = schwarz
     for (let i = 0; i < n; i++) gray[i] = ((255 - bottom[i]) * (255 - a * top[i])) / 255;
 
-    const out = { w, h, bits: null, gray8: null, alpha8: null, trace: false, imagePng: null, imageB64: null, aspectOff };
+    const out = { w, h, bits: null, gray8: null, alpha8: null, trace: false, imagePng: null, imageB64: null, topImageB64: null, aspectOff };
     if (p.gray) {
       out.gray8 = gray;
       // Relief mit transparentem Hintergrund: bleibt durchsichtig, außer wo die Historie-Ebene etwas zeichnet
@@ -118,6 +118,21 @@ const handlers = {
       }
     }
     if (out.imagePng) out.imageB64 = Encoders.toBase64(out.imagePng);
+    // Eigene Ebene der oberen Seite bei Überblenden zwischen 0 und 100 %: abgeschwächt und gerastert
+    // (Graustufen bei Relief), Weiß durchsichtig – die untere Ebene bleibt unverändert
+    if (a > 0.001 && a < 0.999) {
+      const tg = new Uint8ClampedArray(n);
+      for (let i = 0; i < n; i++) tg[i] = 255 - a * top[i];
+      let canvas;
+      if (p.gray) {
+        const alpha = new Uint8ClampedArray(n);
+        for (let i = 0; i < n; i++) alpha[i] = 255 - tg[i] > 0 ? 255 : 0;
+        canvas = Processing.grayToCanvas(tg, w, h, alpha);
+      } else {
+        canvas = Processing.bitsToCanvas(Processing.ditherGray(tg, w, h, p.ditherAlgo), w, h, true);
+      }
+      out.topImageB64 = Encoders.toBase64(await Encoders.canvasBytes(canvas, 'image/png'));
+    }
     const transfer = [out.bits, out.gray8, out.alpha8, out.imagePng].filter(Boolean).map((x) => x.buffer);
     return { result: out, transfer };
   },
@@ -238,53 +253,52 @@ function renderColor({ source, mask, lineMask, textSource, s }) {
  * einziger Inhalt ist („nur Umrisslinie“) – sonst bliebe von ihr nur ein abgeschnittenes Stück.
  */
 async function layerDarkness(layer, w, h) {
-  const svg = String(layer.svg || '');
-  const vb = /viewBox="([-\d.e]+) ([-\d.e]+) ([\d.e]+) ([\d.e]+)"/.exec(svg);
-  if (!vb) throw new Error('Das Ergebnis des Historie-Eintrags ist nicht lesbar.');
-  const pad = -Number(vb[1]);
-  const w0 = Number(vb[3]) - 2 * pad, h0 = Number(vb[4]) - 2 * pad;
-  if (!(w0 > 0 && h0 > 0)) throw new Error('Das Ergebnis des Historie-Eintrags ist nicht lesbar.');
-  const fill = /<path d="([^"]*)" fill="#000"/.exec(svg);
-  const stroke = /<path d="([^"]*)" fill="none" stroke="#000" stroke-width="([\d.e]+)"/.exec(svg);
-  const image = /<image [^>]*xlink:href="data:image\/png;base64,([^"]+)"/.exec(svg);
-  const outline = /<path d="([^"]*)" transform="translate\(([-\d.e]+) ([-\d.e]+)\)" fill="none"/.exec(svg);
+  const doc = Encoders.parseSvg(layer.svg);
+  if (!doc) throw new Error('Das Ergebnis des Historie-Eintrags ist nicht lesbar.');
+  const { w0, h0, items, outline } = doc;
 
   const canvas = new OffscreenCanvas(w, h);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const sc = Math.min(w / w0, h / h0);
-  ctx.setTransform(sc, 0, 0, sc, (w - w0 * sc) / 2, (h - h0 * sc) / 2);
-  if (image) {
-    const b64 = atob(image[1]);
-    const bytes = new Uint8Array(b64.length);
-    for (let i = 0; i < b64.length; i++) bytes[i] = b64.charCodeAt(i);
-    const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-    // Punktmuster beim Vergrößern nicht verwischen; Relief und Verkleinern glätten
-    ctx.imageSmoothingEnabled = layer.mode === 'relief' || sc < 1;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(bmp, 0, 0, w0, h0);
-    bmp.close();
+  const fit = [sc, 0, 0, sc, (w - w0 * sc) / 2, (h - h0 * sc) / 2];
+  const use = (m) => ctx.setTransform(...Encoders.mulMatrix(fit, m));
+  for (const it of items) {
+    use(it.m);
+    if (it.kind === 'image') {
+      const b64 = atob(it.b64);
+      const bytes = new Uint8Array(b64.length);
+      for (let i = 0; i < b64.length; i++) bytes[i] = b64.charCodeAt(i);
+      const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+      // Punktmuster beim Vergrößern nicht verwischen; Relief und Verkleinern glätten
+      ctx.imageSmoothingEnabled = layer.mode === 'relief' || it.smooth || sc < 1;
+      ctx.imageSmoothingQuality = 'high';
+      // Weiß ist durchsichtig: Bilder dunkeln nur ab (wie beim Vereinigen gerechnet)
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.drawImage(bmp, it.x, it.y, it.w, it.h);
+      ctx.globalCompositeOperation = 'source-over';
+      bmp.close();
+    } else if (it.kind === 'fill') {
+      ctx.fillStyle = '#000';
+      ctx.fill(new Path2D(it.d), 'evenodd');
+    } else {
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = Math.max(1, it.width);
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke(new Path2D(it.d));
+    }
   }
-  if (fill) {
-    ctx.fillStyle = '#000';
-    ctx.fill(new Path2D(fill[1]), 'evenodd');
-  }
-  if (stroke) {
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = Math.max(1, Number(stroke[2]));
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.stroke(new Path2D(stroke[1]));
-  }
-  if (!fill && !image && !stroke && outline) {
-    ctx.translate(Number(outline[2]), Number(outline[3]));
+  if (!items.length && outline) {
+    use([1, 0, 0, 1, outline.x, outline.y]);
     ctx.strokeStyle = '#000';
     ctx.lineWidth = Math.max(1, 0.2 / ((layer.widthMm || 100) / w0)); // wie in den Rasterexporten
     ctx.lineJoin = 'round';
-    ctx.stroke(new Path2D(outline[1]));
+    ctx.stroke(new Path2D(outline.d));
   }
   const d = ctx.getImageData(0, 0, w, h).data;
   const dark = new Uint8Array(w * h);
-  for (let p = 0, i = 0; p < dark.length; p++, i += 4) dark[p] = ((255 - d[i]) * d[i + 3] + 127) / 255;
+  // dunkelster Kanal: auch farbige Ebenen (z. B. blaue Vektoren eines vereinigten Eintrags) zählen voll
+  for (let p = 0, i = 0; p < dark.length; p++, i += 4) dark[p] = ((255 - Math.min(d[i], d[i + 1], d[i + 2])) * d[i + 3] + 127) / 255;
   return { dark, aspectOff: Math.abs(w0 / h0 - w / h) > 0.02 * (w / h) };
 }
 

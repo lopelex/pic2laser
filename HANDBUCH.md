@@ -485,8 +485,15 @@ besser. Statt einer Datei erscheint ein Hinweis bei Foto/Relief, leerem Ergebnis
   - **Oben liegt:** Historie-Eintrag oder aktuelles Ergebnis.
   - **Überblenden:** Deckkraft der oberen Ebene (Doppelklick = 100 %).
   - **Aufheben** löst die Vereinigung.
-  - Zwei Vektor-Ergebnisse bei 0 % oder 100 % bleiben Vektor (auch als Stickdatei), sonst entsteht ein
-    Rasterbild.
+  - Im **SVG** ist jedes Bild eine eigene Ebene, mit „Farben“ jede Farbe – auch wenn zwei Farb-Ergebnisse
+    vereinigt werden. Angezeigt und exportiert wird in den Originalfarben.
+  - **An LightBurn senden** färbt jede Ebene in eine eigene LightBurn-Ebenenfarbe um (z. B. die zweite
+    Schwarz-Weiß-Ebene blau), damit Leistung und Geschwindigkeit je Bild bzw. Farbe einstellbar sind.
+    Überlappende Stellen werden zweimal graviert.
+  - In der **Stickdatei** bekommt jede Ebene einen eigenen Farbblock, Schwarz-Weiß-Ebenen mit schwarzem
+    Faden. Foto-Ebenen lassen sich nicht sticken und fehlen dort.
+  - Beim Überblenden unter 100 % wird eine obere Schwarz-Weiß-Ebene heller gerastert; Farbebenen bleiben voll.
+  - PNG/JPG/BMP enthalten das zusammengerechnete Bild bzw. die Ebenen übereinander.
 
 ---
 
