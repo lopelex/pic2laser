@@ -5,6 +5,28 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.22.0 – 27.11.2026
+
+### Neu
+- **Neues Logo und App-Icon:** Foto links, Gravur rechts, dazwischen der Laserstrahl. Alle Varianten (Icon 16–1024 px,
+  Logo mit Schriftzug hell/dunkel) liegen als SVG und PNG im Ordner `logo/`.
+- **Schrift & Logos – Modellauswahl:** neben dem mitgelieferten PP-OCRv4 jetzt *Genauer* (PP-OCRv5 mobil, 5 MB) und
+  *Beste Qualität* (PP-OCRv5 Server, 88 MB, langsamer und speicherhungrig). Beide werden beim ersten Gebrauch geladen.
+- **Schrift & Logos – Erweitert:** Empfindlichkeit, Auflösung (640–2560 px), *Mehrere Größen prüfen* (große und
+  kleine Schrift im selben Bild), Rahmen um die Schrift, Zeilen zusammenfassen, kleinste und größte Schrifthöhe,
+  Gesichter ausschließen. Die Voreinstellungen entsprechen dem bisherigen Verhalten.
+
+### Behoben
+- **Großer Schriftzug in einem Logo-Banner** wurde nicht erkannt („Keine Schrift erkannt.“), weil Zeilen über einem
+  Viertel der Bildhöhe immer verworfen wurden. Lange, flache Schriftzüge gelten jetzt immer als Schrift.
+- **Modus Farben:** Schrift neben einem andersfarbigen Logo (z. B. rote Zahlen neben einem gelben Wappen) wurde
+  schwarz und bekam einen gelben Rand. Jetzt behält jeder Buchstabe und jedes Logo-Teil seine Farbe, und der Rand
+  nimmt die Farbe des direkt angrenzenden Grundes an.
+- Die Speicherprüfung vor der Texterkennung berücksichtigt jetzt die gewählte Auflösung; reicht der Speicher für
+  *Mehrere Größen prüfen* nicht, bleibt das Ergebnis der normalen Auflösung.
+
+---
+
 ## 1.21.0 – 27.11.2026
 
 ### Neu
