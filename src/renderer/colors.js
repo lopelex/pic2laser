@@ -242,8 +242,12 @@ const Colors = (() => {
     return miss / H.total;
   }
 
-  /** k-Means mit fester oder automatischer Farbanzahl. */
-  function cluster(H, count) {
+  /**
+   * k-Means mit fester oder automatischer Farbanzahl. must: Lab-Farben erkannter Schrift (nach Gewicht
+   * absteigend) – bei automatischer Anzahl bekommt jede eine eigene Farbe, wenn keine nahe genug liegt
+   * (einheitliche Schrift sähe sonst wie eine Kantenmischung zweier anderer Farben aus).
+   */
+  function cluster(H, count, must = []) {
     const first = (() => {
       let best = 0;
       for (let j = 1; j < H.n; j++) if (H.wt[j] > H.wt[best]) best = j;
@@ -256,6 +260,12 @@ const Colors = (() => {
       const seed = nextSeed(H, res.cen);
       if (!seed) break;
       res = kmeans(H, [...res.cen, seed]);
+    }
+    if (count <= 0) {
+      for (const m of must) {
+        if (res.cen.length >= AUTO_MAX) break;
+        if (res.cen.every((q) => dist2(m, q) > 10 * 10)) res = kmeans(H, [...res.cen, m.slice()]);
+      }
     }
     return res;
   }
@@ -372,7 +382,9 @@ const Colors = (() => {
    * Zerlegt das Bild in Farbflächen.
    * rgba: Pixel (auf Weiß), opaque: 1 = Pixel zählt (nicht transparent/freigestellt)
    * opts: { count (0 = Auto), palette ('image'|'brother'), smoothPasses, minAreaPx, skipBg,
-   *         edits: [{ from: '#rrggbb', to?: '#rrggbb', off?: bool, into?: '#rrggbb' }] }
+   *         edits: [{ from: '#rrggbb', to?: '#rrggbb', off?: bool, into?: '#rrggbb' }],
+   *         keep: Uint8Array|null – Pixel, die Glätten und Kleinstflächen nicht verändern,
+   *         textColors: [{ rgb, weight }] – Farben erkannter Schrift (siehe cluster) }
    * Ergebnis: { labels (Uint8Array, EMPTY = leer), layers: [{ label, rgb, hex, name, thread, from, merged, area, off, edited }] }
    * – Ebenen von unten (größte Fläche) nach oben.
    */
@@ -382,7 +394,8 @@ const Colors = (() => {
     const H = histogram(rgba, opaque);
     if (!H.n) return { labels, layers: [] };
 
-    const { cen, rgb: cenRgb } = cluster(H, Math.round(Number(opts.count) || 0));
+    const must = (opts.textColors || []).slice().sort((a, b) => b.weight - a.weight).map((t) => labOf(...t.rgb));
+    const { cen, rgb: cenRgb } = cluster(H, Math.round(Number(opts.count) || 0), must);
     const k = cen.length;
     // Anzeige- und Ausgabefarbe: Mittelwert der zugehörigen Pixel (RGB), nicht die Lab-Rückrechnung
     const meanRgb = () => {
@@ -422,12 +435,13 @@ const Colors = (() => {
 
     // Mischfarben an Kanten auflösen: Farbe liegt zwischen zwei anderen und besteht fast nur aus Rand
     if (k >= 3) {
-      const area = new Float64Array(k), edge = new Float64Array(k);
+      const area = new Float64Array(k), edge = new Float64Array(k), text = new Float64Array(k);
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           const i = y * w + x, c = labels[i];
           if (c === EMPTY) continue;
           area[c]++;
+          if (opts.keep && opts.keep[i]) text[c]++;
           if ((x > 0 && labels[i - 1] !== c) || (x < w - 1 && labels[i + 1] !== c)
             || (y > 0 && labels[i - w] !== c) || (y < h - 1 && labels[i + w] !== c)) edge[c]++;
         }
@@ -436,6 +450,8 @@ const Colors = (() => {
       let any = false;
       for (let c = 0; c < k; c++) {
         if (!area[c] || edge[c] / area[c] < 0.5 || area[c] / total > 0.15) continue;
+        // überwiegend erkannte Schrift: eine echte Farbe, auch wenn dünne Buchstaben fast nur Rand sind
+        if (text[c] >= area[c] * 0.3) continue;
         let blend = false;
         for (let a = 0; a < k && !blend; a++) {
           if (a === c || !alive[a]) continue;
@@ -539,8 +555,11 @@ const Colors = (() => {
     }
 
     // Glätten und Kleinstflächen
+    // (Pixel in opts.keep – erkannte Schrift – behalten ihre Farbe)
+    const kept = opts.keep ? labels.slice() : null;
     if (opts.smoothPasses > 0) majority(labels, w, h, Math.min(12, Math.round(opts.smoothPasses)));
     if (opts.minAreaPx > 0) removeSmall(labels, w, h, opts.minAreaPx);
+    if (kept) for (let p = 0; p < n; p++) if (opts.keep[p]) labels[p] = kept[p];
 
     const area = new Float64Array(256);
     for (let p = 0; p < n; p++) area[labels[p]]++;

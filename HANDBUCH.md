@@ -251,10 +251,11 @@ Farben (je Kanal).
   entfernen** (mm).
 - **Reihenfolge zu „Schrift & Logos“** – Verbesserungen auch auf erkannte Schrift anwenden oder nicht.
 
-### Schrift & Logos (Fläche, Linien, Foto)
+### Schrift & Logos (Fläche, Linien, Foto, Farben)
 
 - **Schrift erkennen und sauber darstellen** – Buchstaben scharf und gefüllt statt gerastert.
 - **Erkennung** vor oder nach dem Freistellen, **Logos einbeziehen**, **Schriftstärke**.
+- Im Modus Farben wird jeder Schriftzug zu einer sauberen, einfarbigen Fläche; Glätten und Kleinstflächen lassen ihn unverändert.
 - Erkannte Bereiche werden im Original blau markiert.
 
 ### Gesichter (alle außer Relief)
@@ -263,6 +264,7 @@ Farben (je Kanal).
   Gesicht zusätzlich fein nachgezeichnet.
 - **Reihenfolge** (vor/nach dem Freistellen), **Merkmale finden** *Geschätzt* oder *Genau* (Face Parsing, NC),
   eigene Regler für **Mund, Nase, Kinn, Wangen** (0 = aus).
+- Erkannte Gesichter werden im Original orange gestrichelt markiert (nur als Hinweis, nicht im Ergebnis).
 
 ### Motivkontur (alle außer Relief)
 
@@ -477,14 +479,22 @@ besser. Statt einer Datei erscheint ein Hinweis bei Foto/Relief, leerem Ergebnis
   oder **Name Z–A** (Datum = zuletzt gespeichert; die Wahl wird gemerkt).
 - Je Eintrag: **umbenennen** (✎ oder Doppelklick auf den Namen, Enter übernimmt, Esc bricht ab), SVG
   erneut speichern, Speicherordner öffnen, duplizieren, löschen. Der neue Name bleibt auch beim erneuten
-  Speichern erhalten. **Leeren** löscht die ganze Historie.
+  Speichern erhalten. Ist der Eintrag geöffnet, heißen exportierte, herausgezogene und an LightBurn
+  gesendete Dateien (auch Stickdateien) so wie der Eintrag. **Leeren** löscht die ganze Historie.
 - **Vereinigen (⊕):** legt einen Eintrag über das aktuelle Ergebnis, z. B. „Linien“ über „Foto“ desselben
   Bildes. Oben in der Seitenleiste erscheint **Vereinigt mit**:
   - **Oben liegt:** Historie-Eintrag oder aktuelles Ergebnis.
   - **Überblenden:** Deckkraft der oberen Ebene (Doppelklick = 100 %).
   - **Aufheben** löst die Vereinigung.
-  - Zwei Vektor-Ergebnisse bei 0 % oder 100 % bleiben Vektor (auch als Stickdatei), sonst entsteht ein
-    Rasterbild.
+  - Im **SVG** ist jedes Bild eine eigene Ebene, mit „Farben“ jede Farbe – auch wenn zwei Farb-Ergebnisse
+    vereinigt werden. Angezeigt und exportiert wird in den Originalfarben.
+  - **An LightBurn senden** färbt jede Ebene in eine eigene LightBurn-Ebenenfarbe um (z. B. die zweite
+    Schwarz-Weiß-Ebene blau), damit Leistung und Geschwindigkeit je Bild bzw. Farbe einstellbar sind.
+    Überlappende Stellen werden zweimal graviert.
+  - In der **Stickdatei** bekommt jede Ebene einen eigenen Farbblock, Schwarz-Weiß-Ebenen mit schwarzem
+    Faden. Foto-Ebenen lassen sich nicht sticken und fehlen dort.
+  - Beim Überblenden unter 100 % wird eine obere Schwarz-Weiß-Ebene heller gerastert; Farbebenen bleiben voll.
+  - PNG/JPG/BMP enthalten das zusammengerechnete Bild bzw. die Ebenen übereinander.
 
 ---
 

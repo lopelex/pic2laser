@@ -543,7 +543,7 @@ const Processing = (() => {
    * Modus Farben: Farbpixel in Arbeitsgröße mit Bildanpassung je Kanal (Weichzeichnen, Schärfen,
    * Helligkeit, Kontrast, Gamma, Invertieren) und Deckung: opaque = 0 für transparente Pixel der
    * Quelle und freigestellten Hintergrund.
-   * @returns {{ w, h, rgba: Uint8ClampedArray, opaque: Uint8Array }}
+   * @returns {{ w, h, rgba: Uint8ClampedArray, opaque: Uint8Array, textKeep: Uint8Array|null, textColors: Array|null }}
    */
   function processColor(bitmap, s, maskCanvas = null) {
     const { w, h } = targetSize(bitmap.width, bitmap.height, s);
@@ -571,7 +571,11 @@ const Processing = (() => {
     const m = maskCanvas ? maskAlpha(maskCanvas, w, h) : null;
     const opaque = new Uint8Array(n);
     for (let p = 0; p < n; p++) opaque[p] = srcA[p] >= 0.5 && (!m || m[p] >= 0.5) ? 1 : 0;
-    return { w, h, rgba, opaque };
+    // Schrift & Logos: Buchstaben als einheitliche Farbfläche mit scharfem Saum
+    const text = s.textClean && s.textBlocks && s.textBlocks.length
+      ? cleanTextColor(rgba, opaque, w, h, s.textBlocks, s.textPad ?? 1, s.textBold ?? 0)
+      : null;
+    return { w, h, rgba, opaque, textKeep: text ? text.keep : null, textColors: text ? text.colors : null };
   }
 
   /**
@@ -886,6 +890,81 @@ const Processing = (() => {
    * pad: Suchradius für Logo-Elemente in Zeilenhöhen; bold: Schwellwert-Versatz (+ = fetter).
    */
   function cleanText(bits, gray, rgba, w, h, blocks, pad, bold) {
+    textRegions(gray, rgba, w, h, blocks, pad, bold, ({ tm, halo, bx0, by0, rw, rh, ink }) => {
+      for (let y = 0; y < rh; y++) {
+        for (let x = 0; x < rw; x++) {
+          const k = y * rw + x;
+          const i = (by0 + y) * w + bx0 + x;
+          if (tm[k]) bits[i] = ink;
+          else if (halo[k]) bits[i] = 1 - ink;
+        }
+      }
+    });
+  }
+
+  /**
+   * Schrift & Logos im Modus Farben: Die Buchstaben (samt einbezogener Logo-Elemente) bekommen je
+   * Textblock eine einheitliche Farbe (Mittel ihrer Pixel), der schmale Saum darum die mittlere Farbe
+   * des Grundes – so wird die Schrift beim Zerlegen zu einer sauberen Farbfläche statt ausgefranst.
+   * rgba wird verändert. Rückgabe: { keep: Maske der Schrift- und Saumpixel (die das Glätten nicht
+   * verändern soll), colors: [{ rgb, weight }] Schriftfarben } oder null, wenn nichts gefunden wurde.
+   */
+  function cleanTextColor(rgba, opaque, w, h, blocks, pad, bold) {
+    const n = w * h;
+    const src = rgba.slice(); // Analyse auf den unveränderten Farben (Blöcke können sich überlappen)
+    const gray = new Float32Array(n);
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      gray[p] = opaque[p] ? 0.299 * src[i] + 0.587 * src[i + 1] + 0.114 * src[i + 2] : 255;
+    }
+    const keep = new Uint8Array(n);
+    const colors = []; // Schriftfarben: { rgb, weight }
+    let any = false;
+    textRegions(gray, src, w, h, blocks, pad, bold, ({ tm, halo, bx0, by0, rw, rh }) => {
+      const bg = [0, 0, 0, 0];
+      const fgPx = []; // Pixelindizes der Buchstaben
+      for (let y = 0; y < rh; y++) {
+        for (let x = 0; x < rw; x++) {
+          const k = y * rw + x;
+          const i = (by0 + y) * w + bx0 + x;
+          if (!opaque[i] || !halo[k]) continue;
+          if (tm[k]) { fgPx.push(i); continue; }
+          const j = i * 4;
+          bg[0] += src[j]; bg[1] += src[j + 1]; bg[2] += src[j + 2]; bg[3]++;
+        }
+      }
+      if (!fgPx.length) return;
+      const bc = bg[3] ? bg.slice(0, 3).map((v) => v / bg[3]) : null;
+      // Schriftfarbe: Mittel der Hälfte der Buchstabenpixel, die sich am deutlichsten vom Grund abheben
+      // (Kern der Striche) – geglättete Kanten mischen sonst den Grund hinein (dünne Schrift wird zu hell)
+      const far = (i) => (bc ? (src[i * 4] - bc[0]) ** 2 + (src[i * 4 + 1] - bc[1]) ** 2 + (src[i * 4 + 2] - bc[2]) ** 2 : 0);
+      const core = bc ? fgPx.map((i) => [far(i), i]).sort((a, b) => b[0] - a[0]).slice(0, Math.max(1, Math.ceil(fgPx.length / 2))).map((e) => e[1]) : fgPx;
+      const fc = [0, 0, 0];
+      for (const i of core) { fc[0] += src[i * 4]; fc[1] += src[i * 4 + 1]; fc[2] += src[i * 4 + 2]; }
+      for (let c = 0; c < 3; c++) fc[c] /= core.length;
+      colors.push({ rgb: fc, weight: fgPx.length });
+      for (let y = 0; y < rh; y++) {
+        for (let x = 0; x < rw; x++) {
+          const k = y * rw + x;
+          const i = (by0 + y) * w + bx0 + x;
+          if (!opaque[i] || !halo[k]) continue;
+          const c = tm[k] ? fc : bc;
+          if (!c) continue;
+          const j = i * 4;
+          rgba[j] = c[0]; rgba[j + 1] = c[1]; rgba[j + 2] = c[2];
+          keep[i] = 1;
+          any = true;
+        }
+      }
+    });
+    return any ? { keep, colors } : null;
+  }
+
+  /**
+   * Schriftbereiche bestimmen (siehe cleanText): ruft je Textblock fn({ tm, halo, bx0, by0, rw, rh, ink })
+   * auf – tm = Buchstaben samt Logo-Elementen, halo = tm um einen schmalen Saum erweitert
+   * (Rechteck bx0, by0, rw × rh), ink = Farbe der Schrift im Binärbild (1 = schwarz).
+   */
+  function textRegions(gray, rgba, w, h, blocks, pad, bold, fn) {
     for (const b of blocks) {
       const lineH = Math.max(2, b.lineH * h);
       let bx0 = Math.max(0, Math.floor(b.x1 * w)), by0 = Math.max(0, Math.floor(b.y1 * h));
@@ -911,10 +990,30 @@ const Processing = (() => {
         if (!best || parts.count > best.parts.count) best = { kind, parts };
       }
       if (rgba) {
-        const grayCount = best.parts.count;
+        const gray0 = best.parts;
+        // Spalten (je eine Zeilenhöhe breit) mit Buchstabenpixeln – wie weit die Schrift entlang der Zeile reicht
+        const bins = Math.max(1, Math.ceil(tw / lineH));
+        const spread = (mask) => {
+          const seen = new Uint8Array(bins);
+          for (let k = 0; k < mask.length; k++) if (mask[k]) seen[Math.min(bins - 1, Math.floor((k % tw) / lineH))] = 1;
+          return seen.reduce((a, v) => a + v, 0);
+        };
+        const graySpread = spread(gray0.mask);
         for (const test of colorGroups(rgba, w, tx0, ty0, tx1, ty1, bold)) {
           const parts = innerParts(w, tx0, ty0, tx1, ty1, test, minArea);
-          if (parts.count > grayCount * 2 && parts.count > best.parts.count) best = { kind: 'color', parts };
+          if (parts.count <= best.parts.count) continue;
+          let take = parts.count > gray0.count * 2;
+          // Farbige Schrift vor einem Verlauf: Die Helligkeit trennt nur einen Teil der Buchstaben (dort,
+          // wo der Grund heller/dunkler ist). Die Farbgruppe enthält diese fast vollständig und reicht
+          // deutlich weiter entlang der Zeile – dann sind die zusätzlichen Pixel die übrigen Buchstaben
+          // (bei Schrift vor Laub deckt die dunkle Schrift schon die ganze Zeile ab)
+          if (!take && gray0.count) {
+            let inside = 0;
+            for (let k = 0; k < parts.mask.length; k++) if (gray0.mask[k] && parts.mask[k]) inside++;
+            const sp = spread(parts.mask);
+            take = inside >= gray0.count * 0.9 && sp >= graySpread * 1.25 && sp - graySpread >= 2;
+          }
+          if (take) best = { kind: 'color', parts };
         }
       }
       const glyphs = best.parts;
@@ -1019,14 +1118,7 @@ const Processing = (() => {
       // Schrift in ihrer Farbe, schmaler Saum darum in der Gegenfarbe (scharfe Kanten); der übrige
       // Hintergrund behält seine Darstellung (Rasterung/Linien) – keine Kästen
       const halo = boxDilate(tm, rw, rh, Math.max(1, Math.round(lineH * 0.08)));
-      for (let y = 0; y < rh; y++) {
-        for (let x = 0; x < rw; x++) {
-          const k = y * rw + x;
-          const i = (by0 + y) * w + bx0 + x;
-          if (tm[k]) bits[i] = ink;
-          else if (halo[k]) bits[i] = 1 - ink;
-        }
-      }
+      fn({ tm, halo, bx0, by0, rw, rh, ink });
     }
   }
 

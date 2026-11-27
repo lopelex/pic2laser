@@ -87,7 +87,13 @@ Alle KI-Funktionen laufen lokal und offline.
     bleiben beim Verstellen der Regler erhalten, solange die Farbe ähnlich bleibt (ΔE < 12).
   - Vektorisierung je Farbe mit Potrace (Regler unter „Vektorisierung“, auch „Formen begradigen“),
     alle Ebenen in einem Auftrag. Rasterexporte zeigen genau die vektorisierten Flächen (BMP 24 Bit).
-  - „Vereinigen“ ist mit dem Modus Farben nicht möglich; Schrift & Logos ist ausgeblendet.
+  - „Vereinigen“ mit einem Farb-Ergebnis (als aktuelles Ergebnis oder als Historie-Eintrag): siehe Historie.
+  - Schrift & Logos: Je Textblock bekommen die Buchstaben (samt einbezogener Logo-Elemente) eine
+    einheitliche Farbe (Mittel der Hälfte ihrer Pixel, die sich am stärksten vom Grund abheben – der
+    Kern der Striche), der schmale Saum die mittlere Farbe des Grundes; diese Pixel behalten beim
+    Glätten und beim Entfernen von Kleinstflächen ihre Farbe. Bei automatischer Farbanzahl bekommt
+    jede Schriftfarbe eine eigene Farbe (ΔE > 10 zu allen anderen), und eine Farbe, die überwiegend
+    aus Schrift besteht, gilt nie als Kantenmischung.
   - Gesichtszüge hervorheben wirkt auf die Helligkeit (Änderung gleich auf R, G, B – Farbton bleibt).
   - Motivkontur: eigene schwarze Ebene „Motivkontur“ ganz oben; die Farbflächen sparen den Ring aus.
 - **Formen verbessern** (Abschnitt unter „Vektorisierung“). Mit „Schrift & Logos“ wählbar:
@@ -176,6 +182,8 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   nachgezeichnet. Die Verstärkung ist begrenzt: Schwache Konturen (Lippen, Lidfalte) werden
   deutlich betont, ohnehin dunkle Falten und Schatten nur wenig – so entstehen bei faltiger Haut
   keine schwarzen Flecken.
+- Erkannte Gesichter werden im Original-Fenster orange gestrichelt umrahmt (wie die Schriftbereiche
+  in Blau) – nur in der Vorschau, nie im Ergebnis oder Export.
 - **Reihenfolge:** vor dem Freistellen (ganzes Bild) oder danach (nur Gesichter im Motiv).
 - **Merkmale finden:** *Geschätzt* (feste Anteile des Gesichtsrahmens) oder *Genau* (Face Parsing,
   BiSeNet, nicht kommerziell): jedes Gesicht wird in Haut, Augen, Brauen, Nase und Lippen zerlegt;
@@ -190,7 +198,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   selbst (Flächen, die ganz im Schriftbereich liegen); der Hintergrund behält seine Darstellung,
   es entsteht kein Kasten. Farbige Schrift mit ähnlicher Helligkeit wie der Grund (z. B. gelb vor
   Wolken) wird über ihre Farbe abgegrenzt und schwarz gezeichnet; deutlich hellere Schrift auf
-  dunklem Grund wird hell gezeichnet.
+  dunklem Grund wird hell gezeichnet. Die Farbe gewinnt auch, wenn sie die über die Helligkeit
+  gefundenen Buchstaben fast ganz enthält und deutlich weiter entlang der Zeile reicht (farbige
+  Schrift vor einem Verlauf, bei der die Helligkeit nur einen Teil der Buchstaben trennt).
 - Bereiche auf erkannten Gesichtern (häufiger Fehltreffer des Textdetektors) und riesige Schrift
   (Zeile über ein Viertel der Bildhöhe – bleibt auch ohne Sonderbehandlung sauber) werden ignoriert.
 - **Logos einbeziehen:** Grafikelemente, die an dunkle Schrift grenzen (z. B. ein Logo-Symbol),
@@ -359,6 +369,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   Speicherordner öffnen, Eintrag duplizieren, einzelne Einträge oder alles löschen.
 - **Umbenennen:** ✎ oder Doppelklick auf den Namen; Enter oder Klick daneben übernimmt, Esc bricht ab.
   Nur der Name in `meta.json` ändert sich (Datum bleibt); beim erneuten Speichern bleibt er erhalten.
+  Dateiname aller Ausgaben (`baseName`): Name des geöffneten Eintrags (`state.historyName`, gesetzt beim
+  Öffnen, Speichern und Umbenennen), sonst der Name der Bilddatei – Export, Herausziehen, An LightBurn
+  senden, Name in PES/DST.
 - **Sortieren:** neueste oder älteste zuerst (zuletzt gespeichert) bzw. Name A–Z / Z–A (natürliche
   Reihenfolge, „Bild 2“ vor „Bild 10“). Die Wahl wird gemerkt.
 - **Vereinigen (⊕):** legt das gespeicherte Ergebnis eines Eintrags über das aktuelle Ergebnis,
@@ -367,9 +380,25 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   - **Oben liegt:** Historie-Eintrag oder aktuelles Ergebnis.
   - **Überblenden:** Deckkraft der oberen Ebene – 0 % = nur die untere Ebene, 100 % = beide voll.
     Weiß ist durchsichtig, Schwarz addiert sich (Doppelklick = 100 %).
-  - Zwei Vektor-Ergebnisse (Fläche/Linien) bei 0 % oder 100 % ergeben wieder einen Vektor;
-    Zwischenwerte und Foto-Ergebnisse werden als Punktmuster gerastert (Bild im SVG), mit Relief
-    entsteht ein Graustufenbild.
+  - **SVG mit Ebenen** (wie im Modus Farben): je Bild eine eigene Inkscape-Ebene, von unten nach oben
+    in der gewählten Reihenfolge – „Aktuelles Ergebnis“ und der Historie-Eintrag unter seinem Namen; ein
+    Farb-Ergebnis mit allen Farbebenen (Historie-Eintrag mit „Name: “ davor). Anzeige, SVG-Export und
+    PNG/JPG/BMP zeigen die Originalfarben (Schwarz-Weiß-Ergebnisse schwarz). Rasterbilder (Foto/Relief)
+    bleiben Bilder in ihrer Ebene. Bei 0 % entfällt die obere Seite; bei Zwischenwerten wird eine obere
+    Schwarz-Weiß-Seite abgeschwächt gerastert (Relief: Graustufen), Farbebenen bleiben voll. Wo sich
+    Ebenen überdecken, wird zweimal graviert. Ein vereinigter Eintrag lässt sich erneut vereinigen
+    (Schwarz-Weiß: alle Ebenen als eine; „Farben + …“ behält seine Ebenen).
+  - **An LightBurn senden:** eigenes SVG (`lightBurnSvg`), in dem jede Ebene eine eigene LightBurn-
+    Ebenenfarbe (Palette 00–29) bekommt – LightBurn ordnet importierte Farben der nächstliegenden
+    Ebenenfarbe zu, ähnliche Farben landeten sonst in einer Ebene. Schwarz-Weiß-Ebenen: schwarz, dann
+    blau usw. (neben Farben blau); Farbebenen: die nächstliegende freie Farbe. Gilt auch im Modus
+    Farben ohne Vereinigung. Herausziehen und Export liefern das SVG in Originalfarben.
+  - **Stickdatei:** je Ebene ein eigener Farbblock (`own`: Farbwechsel auch bei gleicher Garnfarbe),
+    Schwarz-Weiß-Ebenen mit schwarzem Faden, Flächen als Füllstich, Linien als Steppstich. Rasterbild-
+    Ebenen (Foto, abgeschwächte Ebene) entfallen – die Stickinfo nennt sie.
+  - Ohne Farben zeigen PNG/JPG/BMP das zusammengerechnete Bild: Zwei Vektor-Ergebnisse
+    (Fläche/Linien) bei 0 % oder 100 % ergeben wieder einen Vektor; Zwischenwerte und Foto-Ergebnisse
+    werden als Punktmuster gerastert, mit Relief entsteht ein Graustufenbild.
   - Ändert man Einstellungen, wird das eigene Ergebnis neu berechnet und wieder vereinigt.
     Gleiches Seitenverhältnis → deckungsgleich, sonst mittig eingepasst. Die Umrisslinie kommt
     vom aktuellen Ergebnis, die des Eintrags entfällt (außer bei „nur Umrisslinie“).

@@ -1064,8 +1064,9 @@ const Embroidery = (() => {
       const o = layerOpts(g, l.p || defaults, l.kind);
       if (o.type === 'off') return;
       const before = pen.save();
-      // gleiche Garnfarbe wie zuvor (z. B. schwarze Fläche + Umrisslinie): ohne Farbwechsel weiter
-      const same = threads.length && threads[threads.length - 1].hex.toLowerCase() === String(l.hex).toLowerCase();
+      // gleiche Garnfarbe wie zuvor (z. B. schwarze Fläche + Umrisslinie): ohne Farbwechsel weiter –
+      // außer die Ebene verlangt einen eigenen Faden (own, z. B. je Bild einer Vereinigung)
+      const same = threads.length && !l.own && threads[threads.length - 1].hex.toLowerCase() === String(l.hex).toLowerCase();
       if (threads.length && !same) pen.colorChange();
       pen.layer = i;
       const mark = pen.ops.length;

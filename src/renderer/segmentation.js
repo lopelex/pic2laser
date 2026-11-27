@@ -369,7 +369,7 @@ const Segmentation = (() => {
    * Vorschau des Originals mit entferntem Hintergrund.
    * markers: [{ x, y, positive }] – Klickpunkte (grün = Motiv, rot = Hintergrund).
    */
-  async function cutoutPreview(bitmap, mask, markers, boxes = [], hideBackground = false) {
+  async function cutoutPreview(bitmap, mask, markers, boxes = [], hideBackground = false, faceBoxes = []) {
     const { w, h } = analysisSize(bitmap);
     const c = new OffscreenCanvas(w, h);
     const ctx = c.getContext('2d');
@@ -425,6 +425,15 @@ const Segmentation = (() => {
       ctx.setLineDash([ctx.lineWidth * 3, ctx.lineWidth * 2]);
       ctx.strokeStyle = '#3b82f6';
       for (const b of boxes) ctx.strokeRect(b.x1 * w, b.y1 * h, (b.x2 - b.x1) * w, (b.y2 - b.y1) * h);
+      ctx.restore();
+    }
+    // erkannte Gesichter als gestrichelte Rahmen (nur Hinweis in der Vorschau, nicht im Ergebnis)
+    if (faceBoxes.length) {
+      ctx.save();
+      ctx.lineWidth = Math.max(2, Math.round(Math.max(w, h) / 400));
+      ctx.setLineDash([ctx.lineWidth * 3, ctx.lineWidth * 2]);
+      ctx.strokeStyle = '#f59e0b';
+      for (const b of faceBoxes) ctx.strokeRect(b.x1 * w, b.y1 * h, (b.x2 - b.x1) * w, (b.y2 - b.y1) * h);
       ctx.restore();
     }
     return c.convertToBlob({ type: 'image/png' });

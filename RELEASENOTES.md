@@ -5,6 +5,37 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.21.0 – 27.11.2026
+
+### Neu
+- **Vereinigen mit Ebenen:** Beim Vereinigen kommt jedes Bild als eigene Ebene ins SVG – wie im Modus Farben. In
+  LightBurn lassen sich so Leistung und Geschwindigkeit je Bild einstellen.
+- **Vereinigen mit dem Modus Farben:** Farb-Ergebnisse lassen sich jetzt mit allen anderen Modi und mit anderen
+  Farb-Ergebnissen vereinigen; alle Farbebenen bleiben erhalten. Farbebenen werden beim Überblenden nicht
+  abgeschwächt.
+- **An LightBurn senden** gibt jeder Ebene eine eigene LightBurn-Ebenenfarbe (z. B. die zweite
+  Schwarz-Weiß-Ebene blau), damit ähnliche Farben nicht in einer Ebene landen. Export und Herausziehen behalten
+  die Originalfarben.
+- **Stickdatei beim Vereinigen:** je Ebene ein eigener Farbblock, auch bei gleicher Garnfarbe;
+  Schwarz-Weiß-Ebenen mit schwarzem Faden. Foto-Ebenen lassen sich nicht sticken – die Stickinfo nennt sie.
+- **Schrift & Logos im Modus Farben:** Buchstaben werden zu sauberen, einfarbigen Flächen und gehen beim Glätten
+  nicht verloren.
+- **Gesichter im Original markiert:** Erkannte Gesichter sind orange gestrichelt umrahmt (nur als Hinweis, nicht im
+  Ergebnis).
+- **Regler mit −/+:** Vor und hinter jedem Regler ändert ein kleiner Knopf den Wert um einen Schritt; gedrückt
+  halten wiederholt.
+
+### Geändert
+- **Dateiname aus der Historie:** Ist ein Historie-Eintrag geöffnet, heißen exportierte, herausgezogene und an
+  LightBurn gesendete Dateien (auch Stickdateien) wie der Eintrag – auch nach dem Umbenennen.
+
+### Behoben
+- **Farbige Schrift vor einem Farbverlauf** (z. B. gelb auf Himmelblau) wurde nur teilweise erkannt – etwa
+  „rfest 2026“ statt „Sommerfest 2026“.
+- Im Modus Farben konnte erkannte schwarze Schrift mit einem dunklen Hintergrund zu einer Farbe verschmelzen.
+
+---
+
 ## 1.20.0 – 27.11.2026
 
 ### Neu
