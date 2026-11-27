@@ -21,10 +21,10 @@ Alle KI-Funktionen laufen lokal und offline.
   Änderung automatisch.
 - **Zoom:** Mausrad zoomt stufenlos (100–1600 %) auf die Mausposition; Trackpad: Pinch zoomt,
   zwei Finger verschieben. Knöpfe + / − / Einpassen.
-- **Verschieben:** Im Original mit gedrückter linker Maustaste, im Ergebnis mit der mittleren
-  Maustaste. Beide Ansichten laufen synchron.
+- **Verschieben:** In Original und Ergebnis mit gedrückter linker (oder mittlerer) Maustaste.
+  Beide Ansichten laufen synchron.
 - **Statuszeile:** Pixelgröße, Endgröße in mm, DPI, SVG-Größe und Rechenzeit.
-- **Info im Ergebnisfeld:** welche Dateien beim Herausziehen mitkommen, Größe in mm, DPI.
+- **Info im Ergebnisfeld:** welche Dateien beim Herausziehen (Strg/Cmd + Ziehen) mitkommen, Größe in mm, DPI.
 
 ## Modi
 

@@ -5,6 +5,22 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.20.0 – 27.11.2026
+
+### Neu
+- **Historie umbenennen:** Einträge lassen sich mit ✎ oder Doppelklick auf den Namen umbenennen; Enter oder Klick
+  daneben übernimmt, Esc bricht ab.
+- **Historie sortieren:** Neben der Suche wählt man **Neueste zuerst**, **Älteste zuerst**, **Name A–Z** oder
+  **Name Z–A**. Die Auswahl wird gemerkt.
+
+### Geändert
+- **Ergebnis herausziehen nur mit Strg/Cmd + Ziehen** – wie beim Original. Linksziehen verschiebt jetzt auch im
+  Ergebnis die Ansicht, so wie im Original; die mittlere Maustaste geht weiterhin.
+- **Kopfzeile:** Knöpfe mit Icons und etwas kleiner; in schmalen Fenstern nur Icons (Beschriftung im Tooltip),
+  „Exportieren“ bleibt beschriftet. Roter Punkt und Schriftzug oben links sind entfallen.
+
+---
+
 ## 1.19.0 – 24.11.2026
 
 ### Neu

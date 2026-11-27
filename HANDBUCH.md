@@ -55,7 +55,7 @@ Umgeschaltet wird oben in der Seitenleiste mit **Lasern | Sticken** (siehe [Absc
 3. **Feinschliff** – Freistellen, Bildanpassung, Gesichter, Schrift, Formen. Jede Änderung wird sofort
    neu berechnet.
 4. **Größe und Formate** – Breite oder Höhe in mm, Exportformate ankreuzen.
-5. **Weitergeben** – Exportieren, an LightBurn senden oder das Ergebnis mit der Maus herausziehen.
+5. **Weitergeben** – Exportieren, an LightBurn senden oder das Ergebnis mit Strg/Cmd + Ziehen herausziehen.
 
 Beim ersten Start erklärt eine **Einführungstour** diesen Ablauf. Dieses Handbuch öffnet sich in der App über
 **?** oben rechts oder mit **F1**; dort startet „Tour starten“ die Einführungstour erneut.
@@ -110,10 +110,10 @@ geladen. **NC** kennzeichnet Modelle, die nur nicht-kommerziell genutzt werden d
 - **Geteilt | Original | Ergebnis:** beide Bilder nebeneinander oder eines groß.
 - **Zoom:** Mausrad zoomt stufenlos (100–1600 %) auf die Mausposition; Trackpad: Pinch zoomt, zwei Finger
   verschieben. Knöpfe **−**, **+** und **Einpassen**.
-- **Verschieben:** im Original mit gedrückter linker Maustaste, im Ergebnis mit der mittleren Maustaste.
+- **Verschieben:** in Original und Ergebnis mit gedrückter linker (oder mittlerer) Maustaste.
   Beide Ansichten laufen synchron.
 - **Statuszeile:** Pixelgröße, Endgröße in mm, DPI, Dateigröße des SVG und Rechenzeit.
-- **Info im Ergebnisfeld:** welche Dateien beim Herausziehen mitkommen, Größe in mm, DPI.
+- **Info im Ergebnisfeld:** welche Dateien beim Herausziehen (Strg/Cmd + Ziehen) mitkommen, Größe in mm, DPI.
 - **Info im Originalfeld:** Größe und Bearbeitungsschritte des aufbereiteten Originals.
 - Markierungen im Original: entfernter Hintergrund rot schraffiert mit Schnittlinie, Klickpunkte
   (Plus/Minus), erkannte Schrift blau.
