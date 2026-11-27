@@ -193,10 +193,12 @@ Pic2Laser selbst ist Open Source (GPL-2.0-or-later, siehe [Lizenz](#lizenz)). F�
 - `src/main/model-worker.js` – KI-Inferenz als Utility-Prozess (onnxruntime-node, Fallback onnxruntime-web)
 - `src/main/resources.js` – Arbeitsspeicher/CPU ermitteln, Leistungsstufen und Grenzen
 - `src/main/updater.js` – Update-Prüfung über GitHub-Releases (Start + alle 24 h), Download mit Prüfsumme, Installation je System
+- `src/main/mcp.js` / `mcp-bridge.js` – MCP-Server für KI-Assistenten (HTTP auf 127.0.0.1) und stdio-Brücke für Claude Desktop
 - `src/main/preload.js` – sichere IPC-Brücke (`window.api`)
 - `src/renderer/pipeline-worker.js` – Web Worker für die rechenintensive Bildverarbeitung
 - `src/renderer/processing.js` – Bildverarbeitung (Anpassungen, Schwellwert, Dithering, Kanten, Umriss)
 - `src/renderer/ai.js` – Vor-/Nachverarbeitung für alle KI-Modelle
+- `src/renderer/mcp.js` – Werkzeuge des MCP-Servers (laufen im Fenster, über dieselben Funktionen wie die Bedienung)
 - `src/renderer/segmentation.js` – Freistellen (Masken, Farbmaske, Klickpunkte)
 - `src/renderer/restore.js` – Altes Foto restaurieren (Entrauschen, Kratzer, Gesichter)
 - `src/renderer/sine.js` – Modus Wellen: lädt das WebAssembly-Modul und rechnet Einstellungen in Pixel um

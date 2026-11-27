@@ -52,6 +52,24 @@ contextBridge.exposeInMainWorld('api', {
   lightburnSend: (payload) => ipcRenderer.invoke('lightburn-send', payload),
   cancelAll: () => ipcRenderer.invoke('cancel-all'),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
+  copyText: (text) => ipcRenderer.invoke('clipboard-write', text),
+
+  // MCP-Server: Einstellungen, Werkzeugaufrufe aus dem Hauptprozess und Aktivitätsanzeige
+  mcp: {
+    state: () => ipcRenderer.invoke('mcp-state'),
+    set: (patch) => ipcRenderer.invoke('mcp-set', patch),
+    reply: (id, result) => ipcRenderer.invoke('mcp-reply', id, result),
+    onCall: (cb) => {
+      const handler = (_e, msg) => cb(msg);
+      ipcRenderer.on('mcp-call', handler);
+      return () => ipcRenderer.removeListener('mcp-call', handler);
+    },
+    onActivity: (cb) => {
+      const handler = (_e, a) => cb(a);
+      ipcRenderer.on('mcp-activity', handler);
+      return () => ipcRenderer.removeListener('mcp-activity', handler);
+    },
+  },
 
   history: {
     list: () => ipcRenderer.invoke('history-list'),
