@@ -121,6 +121,16 @@ const DEFAULTS = Object.freeze({
   textOrder: 'before', // Schrift erkennen: 'before' = vor dem Freistellen (ganzes Bild), 'after' = nur im freigestellten Motiv
   textPad: 1,
   textBold: 0,
+  textModel: 'text', // 'text' = PP-OCRv4 (mitgeliefert), 'text_v5' = PP-OCRv5 mobil, 'text_v5_server' = PP-OCRv5 Server
+  // Erweiterte Erkennung (Voreinstellungen = Verhalten bis 1.21.0)
+  textSens: 50, // Empfindlichkeit 0..100: höher findet blassere Schrift, niedriger weniger Fehltreffer
+  textRes: 1280, // längste Bildseite für die Erkennung (px)
+  textUnclip: 1.5, // Rahmen um die Schrift (Erweiterung des erkannten Kerns)
+  textMerge: 0.6, // Zeilen zusammenfassen bis zu diesem Abstand (× Zeilenhöhe)
+  textMinPct: 0, // kleinste Schrifthöhe in % der Bildhöhe (0 = nur Krümel verwerfen)
+  textMaxPct: 25, // größte Zeilenhöhe in % der Bildhöhe (100 = keine Grenze; flache Zeilen gelten immer)
+  textFaces: true, // Bereiche in Gesichtern ignorieren
+  textMulti: false, // zusätzlich in doppelter Auflösung suchen (kleine Schrift)
 });
 
 const SETTINGS_STORAGE_KEY = 'pic2laser.settings';
@@ -262,6 +272,11 @@ const FORMATTERS = {
   faceFidelity: (v) => `${Math.round(Number(v) * 100)} %`,
   textPad: (v) => (Number(v) ? `${Number(v).toFixed(1)} × Zeilenhöhe` : 'nur Schrift'),
   textBold: (v) => (Number(v) > 0 ? `+${v}` : `${v}`),
+  textSens: (v) => `${v}`,
+  textUnclip: (v) => `${Number(v).toFixed(1)}×`,
+  textMerge: (v) => (Number(v) ? `${Number(v).toFixed(1)} × Zeilenhöhe` : 'nur überlappende'),
+  textMinPct: (v) => (Number(v) ? `${Number(v).toFixed(2).replace(/0$/, '')} % der Höhe` : 'aus'),
+  textMaxPct: (v) => (Number(v) >= 100 ? 'keine Grenze' : `${v} % der Höhe`),
 };
 
 /** Hinweis unter der Modellauswahl (Modus Linien, KI). */
@@ -1544,7 +1559,7 @@ const MODEL_NAMES = {
   depth_base: 'Tiefenkarte (fein)', depth_large: 'Tiefenkarte (sehr fein)', codeformer: 'Gesichter restaurieren (CodeFormer)',
   faceparse: 'Gesichtsmerkmale (Face Parsing)',
   scunet: 'Rauschen entfernen', lama: 'Kratzer auffüllen', restoreformer: 'Gesichter restaurieren', yunet: 'Gesichtspunkte',
-  text: 'Texterkennung',
+  text: 'Texterkennung (PP-OCRv4)', text_v5: 'Texterkennung – genauer (PP-OCRv5)', text_v5_server: 'Texterkennung – beste Qualität (PP-OCRv5 Server)',
 };
 
 /** Kennung der Restaurierungs-Einstellungen ('' = keine Restaurierung). */
@@ -1574,11 +1589,46 @@ const KEYS = {
   depth: (up, res, model = 'depth') => `depth${model === 'depth' ? '' : `-${model}`}:${up}:${res}`,
   faces: (up, maskKey = null) => (maskKey ? `faces:${up}:cut:${maskKey}` : `faces:${up}`),
   faceParts: (up, maskKey = null) => `${KEYS.faces(up, maskKey)}:parse`,
-  text: (up, maskKey = null) => (maskKey ? `text:${up}:cut:${maskKey}` : `text:${up}`),
+  text: (up, maskKey = null, sig = '') => `text:${up}${maskKey ? `:cut:${maskKey}` : ''}${sig ? `:${sig}` : ''}`,
   smooth: (up) => `upscale:smooth:${up}`, // „Glatte Konturen“: Vergrößerung nur für die Fläche
 };
 
 const textWanted = (s) => s.textClean && s.mode !== 'relief' && s.mode !== 'sine';
+
+const TEXT_MODELS = new Set(['text', 'text_v5', 'text_v5_server']);
+/** Modell der Texterkennung (unbekannte Werte aus alten Presets → PP-OCRv4). */
+const textModelOf = (s) => (TEXT_MODELS.has(s.textModel) ? s.textModel : 'text');
+
+/** Einstellungen der Texterkennung für AI.detectText (Regler → Modellparameter). */
+function textOpts(s) {
+  const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  const sens = Math.max(0, Math.min(100, num(s.textSens, 50)));
+  return {
+    model: textModelOf(s),
+    limit: Math.max(320, Math.min(2560, num(s.textRes, 1280))),
+    thresh: 0.3 - (sens - 50) * 0.004, // 0,5 … 0,1
+    boxScore: 0.55 - (sens - 50) * 0.006, // 0,85 … 0,25
+    unclip: num(s.textUnclip, 1.5),
+    merge: num(s.textMerge, 0.6),
+    minLine: num(s.textMinPct, 0) / 100,
+    maxLine: num(s.textMaxPct, 25) / 100,
+    faces: s.textFaces !== false,
+    multi: !!s.textMulti,
+  };
+}
+/** Kennung der Erkennungs-Einstellungen für den Zwischenspeicher ('' = Voreinstellung). */
+function textSig(s) {
+  const o = textOpts(s), d = AI.TEXT_DEFAULTS;
+  const parts = ['model', 'limit', 'thresh', 'boxScore', 'unclip', 'merge', 'minLine', 'maxLine', 'faces', 'multi'];
+  return parts.every((k) => o[k] === d[k]) ? '' : parts.map((k) => `${o[k]}`).join(',');
+}
+/** Aufwand der Texterkennung relativ zu einem Durchlauf mit 1280 px (für die Restzeit). */
+function textUnits(s) {
+  const o = textOpts(s);
+  const one = (o.limit / 1280) ** 2;
+  return o.multi ? one * 5 : one; // zweiter Durchlauf in doppelter Auflösung ≈ 4× so viele Pixel
+}
+const TEXT_SEED_MS = { text: 900, text_v5: 1000, text_v5_server: 7000 };
 
 /** Maske, auf die sich die Texterkennung bezieht (null = ganzes Bild). */
 const textMaskKey = (s) => (s.textOrder === 'after' ? maskKeyFor(s) : null);
@@ -1785,7 +1835,10 @@ function planSteps(s) {
       add('face-parse', 'Gesichtsmerkmale finden', 'face-parse', state.faceCount ?? 1, 300, KEYS.faceParts(up, faceMaskKey(s)));
     }
   }
-  if (textWanted(s)) add('text', 'Texterkennung', 'text', 1, 900, KEYS.text(up, textMaskKey(s)));
+  if (textWanted(s)) {
+    const model = textModelOf(s);
+    add('text', MODEL_NAMES[model], model === 'text' ? 'text' : `text:${model}`, textUnits(s), TEXT_SEED_MS[model], KEYS.text(up, textMaskKey(s), textSig(s)));
+  }
 
   let src = work;
   if (smoothUpscaleApplies(s, work)) {
@@ -2893,7 +2946,9 @@ async function ensureMask(s, bitmap) {
 async function detectText(s, bitmap, mask = null) {
   try {
     const maskKey = mask ? s.maskKey : null;
-    const blocks = await Run.track('text', cached(KEYS.text(upTag(s), maskKey), () => AI.detectText(mask ? maskedBitmap(bitmap, mask) : bitmap), s));
+    const key = KEYS.text(upTag(s), maskKey, textSig(s));
+    if (!cacheOf(s).has(key)) await ensureModelReady(textModelOf(s));
+    const blocks = await Run.track('text', cached(key, () => AI.detectText(mask ? maskedBitmap(bitmap, mask) : bitmap, textOpts(s)), s));
     $('#text-info').textContent = blocks.length
       ? `${blocks.length} Schriftbereich${blocks.length === 1 ? '' : 'e'} erkannt (im Original blau markiert).`
       : 'Keine Schrift erkannt.';
@@ -3157,7 +3212,7 @@ const MODEL_GROUPS = [
   ['Freistellen', ['u2netp', 'isnet', 'birefnet', 'ben2', 'modnet', 'sam_encoder', 'sam2_encoder']],
   ['Strichzeichnung', ['lineart', 'lineart_contour', 'lineart_sketch', 'lineart_portrait', 'lineart_teed']],
   ['Restaurieren & Verbessern', ['scunet', 'lama', 'restoreformer', 'codeformer', 'yunet', 'esrgan']],
-  ['Erkennung & Relief', ['faces', 'faceparse', 'text', 'depth', 'depth_base', 'depth_large']],
+  ['Erkennung & Relief', ['faces', 'faceparse', 'text', 'text_v5', 'text_v5_server', 'depth', 'depth_base', 'depth_large']],
 ];
 // Teilmodelle, die mit ihrem Hauptmodell geladen und entfernt werden
 const MODEL_HIDDEN = new Set(['sam_decoder', 'sam2_decoder']);

@@ -88,9 +88,12 @@ Alle KI-Funktionen laufen lokal und offline.
   - Vektorisierung je Farbe mit Potrace (Regler unter „Vektorisierung“, auch „Formen begradigen“),
     alle Ebenen in einem Auftrag. Rasterexporte zeigen genau die vektorisierten Flächen (BMP 24 Bit).
   - „Vereinigen“ mit einem Farb-Ergebnis (als aktuelles Ergebnis oder als Historie-Eintrag): siehe Historie.
-  - Schrift & Logos: Je Textblock bekommen die Buchstaben (samt einbezogener Logo-Elemente) eine
-    einheitliche Farbe (Mittel der Hälfte ihrer Pixel, die sich am stärksten vom Grund abheben – der
-    Kern der Striche), der schmale Saum die mittlere Farbe des Grundes; diese Pixel behalten beim
+  - Schrift & Logos: Jedes zusammenhängende Teil (Buchstabe, Ziffer, Logo-Element) bekommt eine
+    einheitliche Farbe (Mittel der Hälfte seiner Pixel, die sich am stärksten vom angrenzenden Grund
+    abheben – der Kern der Striche); ähnliche Farben eines Blocks werden zusammengefasst, rote Zahlen
+    neben einem schwarzen Logo-Symbol bleiben also rot. Im schmalen Saum bekommen nur Kantenpixel
+    (Mischung aus Schrift- und Grundfarbe) die Farbe des direkt angrenzenden Grundes; andere Farben im
+    Saum (z. B. ein weißer Streifen zwischen Kontur und Linie, das Innere einer „8“) bleiben. Diese Pixel behalten beim
     Glätten und beim Entfernen von Kleinstflächen ihre Farbe. Bei automatischer Farbanzahl bekommt
     jede Schriftfarbe eine eigene Farbe (ΔE > 10 zu allen anderen), und eine Farbe, die überwiegend
     aus Schrift besteht, gilt nie als Kantenmischung.
@@ -201,8 +204,20 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   dunklem Grund wird hell gezeichnet. Die Farbe gewinnt auch, wenn sie die über die Helligkeit
   gefundenen Buchstaben fast ganz enthält und deutlich weiter entlang der Zeile reicht (farbige
   Schrift vor einem Verlauf, bei der die Helligkeit nur einen Teil der Buchstaben trennt).
+- **Modell:** *Standard* (PP-OCRv4, mitgeliefert), *Genauer* (PP-OCRv5 mobil, 5 MB) oder *Beste
+  Qualität* (PP-OCRv5 Server, 88 MB, etwa 7-mal langsamer, ca. 1,5 GB Arbeitsspeicher bei 1280 px).
+  Die PP-OCRv5-Modelle werden beim ersten Gebrauch geladen.
 - Bereiche auf erkannten Gesichtern (häufiger Fehltreffer des Textdetektors) und riesige Schrift
   (Zeile über ein Viertel der Bildhöhe – bleibt auch ohne Sonderbehandlung sauber) werden ignoriert.
+  Ausnahme: lange, flache Zeilen (Kern mindestens 3× so breit wie hoch), z. B. der Schriftzug eines
+  Logo-Banners, gelten immer als Schrift.
+- **Erweitert** (aufklappbar): **Empfindlichkeit** (0–100, Standard 50: Schwelle der Wahrscheinlichkeitskarte
+  0,5–0,1 und Mindestsicherheit 0,85–0,25), **Auflösung** (640–2560 px, Standard 1280), **Mehrere Größen
+  prüfen** (zusätzlicher Durchlauf in doppelter Auflösung, bis 2560 px; reicht der Speicher dafür nicht,
+  bleibt das Ergebnis der normalen Auflösung), **Rahmen um die Schrift** (1–3, Standard 1,5),
+  **Zeilen zusammenfassen** (0–2 × Zeilenhöhe, Standard 0,6), **Kleinste Schrifthöhe** (0–5 % der
+  Bildhöhe), **Größte Zeilenhöhe** (10–100 %, Standard 25 %, 100 = keine Grenze), **Gesichter
+  ausschließen** (Standard an). Die Voreinstellungen entsprechen dem bisherigen Verhalten.
 - **Logos einbeziehen:** Grafikelemente, die an dunkle Schrift grenzen (z. B. ein Logo-Symbol),
   werden schrittweise mit übernommen.
 - **Schriftstärke** (fetter/feiner). Erkannte Bereiche werden im Original blau markiert.
