@@ -688,8 +688,14 @@ ipcMain.handle('history-export-svg', async (_e, id) => {
   return res.filePath;
 });
 
-ipcMain.handle('history-open-folder', (_e, id) => {
-  shell.openPath(entryDir(id));
+ipcMain.handle('history-open-folder', async (_e, id) => {
+  const dir = entryDir(id);
+  await fs.access(dir); // Eintrag inzwischen gelöscht → Fehler an die Oberfläche
+  // openPath meldet Fehler nur als Rückgabetext (wirft nicht). Dann über den Dateimanager
+  // versuchen (anderer Weg: D-Bus bzw. Explorer/Finder mit markierter Datei).
+  const err = await shell.openPath(dir);
+  if (err) shell.showItemInFolder(path.join(dir, 'meta.json'));
+  return { dir, error: err || null };
 });
 
 function safeExt(ext) {
