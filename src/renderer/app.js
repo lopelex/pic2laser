@@ -4113,7 +4113,14 @@ function renderHistory() {
         }
       }),
       mergeButton(e),
-      iconButton('📁', 'Speicherordner öffnen', () => window.api.history.openFolder(e.id)),
+      iconButton('📁', 'Speicherordner öffnen', async () => {
+        try {
+          const r = await window.api.history.openFolder(e.id);
+          if (r?.error) toast(`Ordner ließ sich nicht direkt öffnen (${r.error}) – versuche Dateimanager: ${r.dir}`, true);
+        } catch (err) {
+          toast(`Speicherordner öffnen fehlgeschlagen: ${cleanError(err)}`, true);
+        }
+      }),
       iconButton('✕', 'Aus Historie löschen', async () => {
         if (!confirm(`„${e.name}“ aus der Historie löschen?`)) return;
         await window.api.history.remove(e.id);
