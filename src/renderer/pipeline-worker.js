@@ -123,8 +123,8 @@ const handlers = {
   },
 
   /** Vorschau des freigestellten Originals mit Klickpunkten (PNG-Bytes). */
-  async cutout({ source, mask, markers, boxes, hideBackground }) {
-    const blob = await Segmentation.cutoutPreview(source, mask, markers, boxes, hideBackground);
+  async cutout({ source, mask, markers, boxes, hideBackground, faceBoxes }) {
+    const blob = await Segmentation.cutoutPreview(source, mask, markers, boxes, hideBackground, faceBoxes || []);
     source.close();
     if (mask) mask.close();
     const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -179,7 +179,7 @@ function outlineSilhouette(s, w, h, bits, alpha, gray8) {
  */
 function renderColor({ source, mask, lineMask, textSource, s }) {
   if (textSource) textSource.close();
-  const { w, h, rgba, opaque } = Processing.processColor(source, s, mask);
+  const { w, h, rgba, opaque, textKeep, textColors } = Processing.processColor(source, s, mask);
   source.close();
   const mmPerPx = s.widthMm / w;
   // Motivkontur: eigene schwarze Ebene ganz oben; die Farbflächen darunter sparen sie aus
@@ -198,6 +198,8 @@ function renderColor({ source, mask, lineMask, textSource, s }) {
     minAreaPx: (Number(s.colorMinAreaMm2) || 0) / (mmPerPx * mmPerPx),
     skipBg: !!s.colorSkipBg,
     edits: s.colorEdits,
+    keep: textKeep,
+    textColors,
   });
   const masks = Colors.layerMasks(labels, w, h, layers, (Number(s.colorOverlapMm) || 0) / mmPerPx, Processing.dilate);
   const bits = new Uint8Array(w * h);

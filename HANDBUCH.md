@@ -251,10 +251,11 @@ Farben (je Kanal).
   entfernen** (mm).
 - **Reihenfolge zu „Schrift & Logos“** – Verbesserungen auch auf erkannte Schrift anwenden oder nicht.
 
-### Schrift & Logos (Fläche, Linien, Foto)
+### Schrift & Logos (Fläche, Linien, Foto, Farben)
 
 - **Schrift erkennen und sauber darstellen** – Buchstaben scharf und gefüllt statt gerastert.
 - **Erkennung** vor oder nach dem Freistellen, **Logos einbeziehen**, **Schriftstärke**.
+- Im Modus Farben wird jeder Schriftzug zu einer sauberen, einfarbigen Fläche; Glätten und Kleinstflächen lassen ihn unverändert.
 - Erkannte Bereiche werden im Original blau markiert.
 
 ### Gesichter (alle außer Relief)
@@ -263,6 +264,7 @@ Farben (je Kanal).
   Gesicht zusätzlich fein nachgezeichnet.
 - **Reihenfolge** (vor/nach dem Freistellen), **Merkmale finden** *Geschätzt* oder *Genau* (Face Parsing, NC),
   eigene Regler für **Mund, Nase, Kinn, Wangen** (0 = aus).
+- Erkannte Gesichter werden im Original orange gestrichelt markiert (nur als Hinweis, nicht im Ergebnis).
 
 ### Motivkontur (alle außer Relief)
 

@@ -1364,10 +1364,10 @@ const Pipeline = (() => {
       const ts = textSource ? await createImageBitmap(textSource) : null;
       return work.call('render', { source: src, mask: m, lineMask: lm, textSource: ts, s }, [src, m, lm, ts].filter(Boolean));
     },
-    async cutout(source, mask, markers, boxes = [], hideBackground = false) {
+    async cutout(source, mask, markers, boxes = [], hideBackground = false, faceBoxes = []) {
       const src = await createImageBitmap(source);
       const m = mask ? await createImageBitmap(mask) : null;
-      return view.call('cutout', { source: src, mask: m, markers, boxes, hideBackground }, m ? [src, m] : [src]);
+      return view.call('cutout', { source: src, mask: m, markers, boxes, hideBackground, faceBoxes }, m ? [src, m] : [src]);
     },
     async skyMask(source, tolerance, seeds, protect = null) {
       const src = await createImageBitmap(source);
@@ -1576,7 +1576,7 @@ const KEYS = {
   smooth: (up) => `upscale:smooth:${up}`, // „Glatte Konturen“: Vergrößerung nur für die Fläche
 };
 
-const textWanted = (s) => s.textClean && s.mode !== 'relief' && s.mode !== 'sine' && s.mode !== 'color';
+const textWanted = (s) => s.textClean && s.mode !== 'relief' && s.mode !== 'sine';
 
 /** Maske, auf die sich die Texterkennung bezieht (null = ganzes Bild). */
 const textMaskKey = (s) => (s.textOrder === 'after' ? maskKeyFor(s) : null);
@@ -1880,17 +1880,18 @@ async function runProcess() {
       if (stale()) return;
     }
     state.lastTextBlocks = s.textBlocks;
+
+    // Gesichter erkennen (für „Gesichtszüge hervorheben“) – vor der Vorschau, damit sie dort markiert werden
+    s.faces = facesWanted(s) ? await detectFaces(s, work, s.faceOrder === 'after' ? mask : null) : [];
+    if (stale()) return;
+
     state.lastViewBase = viewBase;
     // genau diese Ansicht merken: „Hintergrund ausblenden“ zeichnet sie neu (nicht state.mask/state.settings,
     // die zu einem anderen Stand gehören können)
-    state.lastView = { s: { ...s, textBlocks: s.textBlocks }, mask, base: viewBase };
+    state.lastView = { s: { ...s, textBlocks: s.textBlocks, faces: s.faces }, mask, base: viewBase };
     await updateOriginalView(s, mask, viewBase);
     if (stale()) return;
     scheduleOriginalDrag(s, work, mask);
-
-    // Gesichter erkennen (für „Gesichtszüge hervorheben“)
-    s.faces = facesWanted(s) ? await detectFaces(s, work, s.faceOrder === 'after' ? mask : null) : [];
-    if (stale()) return;
 
     // 3. KI-Quelle je nach Modus (Strichzeichnung, Tiefenkarte) oder das Bild selbst
     const source = await contentSource(s, work, mask);
@@ -2922,7 +2923,7 @@ async function detectFaces(s, bitmap, mask = null) {
       faces = await Run.track('face-parse', cached(key, () => AI.faceParts(bitmap, found), s));
     }
     $('#face-info').textContent = faces.length
-      ? `${faces.length} Gesicht${faces.length === 1 ? '' : 'er'} erkannt.`
+      ? `${faces.length} Gesicht${faces.length === 1 ? '' : 'er'} erkannt (im Original orange markiert).`
       : 'Kein Gesicht erkannt – die Option wirkt nur auf Gesichter.';
     return faces;
   } catch (err) {
@@ -3021,15 +3022,17 @@ async function contentSource(s, bitmap, mask) {
 async function updateOriginalView(s, mask, base = state.source.bitmap) {
   const markers = []; // Klickpunkte zeichnet die Marker-Ebene (renderMarkers) – immer gleich groß
   const boxes = s.textBlocks || [];
+  // erkannte Gesichter: nur als Hinweis in der Vorschau (nur der Rahmen, keine weiteren Daten)
+  const faceBoxes = (s.faces || []).map((f) => ({ x1: f.x1, y1: f.y1, x2: f.x2, y2: f.y2 }));
   const hideBg = ui.hideBackground;
-  const key = `${mask ? s.maskKey : 'plain'}|${JSON.stringify(markers)}|${JSON.stringify(boxes)}|${restoreKey(s)}|${hideBg}`;
+  const key = `${mask ? s.maskKey : 'plain'}|${JSON.stringify(markers)}|${JSON.stringify(boxes)}|${JSON.stringify(faceBoxes)}|${restoreKey(s)}|${hideBg}`;
   if (state.originalViewKey === key) {
     state.originalViewPending = null; // eine noch laufende, andere Ansicht ist überholt
     return;
   }
   const img = $('#img-original');
   const source = state.source;
-  if (!mask && !markers.length && !boxes.length && base === source.bitmap) {
+  if (!mask && !markers.length && !boxes.length && !faceBoxes.length && base === source.bitmap) {
     state.originalViewPending = null;
     state.originalViewKey = key;
     if (state.originalUrl) URL.revokeObjectURL(state.originalUrl);
@@ -3043,7 +3046,7 @@ async function updateOriginalView(s, mask, base = state.source.bitmap) {
   state.originalViewPending = key;
   let png;
   try {
-    png = await Pipeline.cutout(base, mask, markers, boxes, hideBg);
+    png = await Pipeline.cutout(base, mask, markers, boxes, hideBg, faceBoxes);
   } catch (err) {
     if (!isCancelled(err)) console.error('Vorschau des Originals fehlgeschlagen:', err);
     return;
@@ -4885,6 +4888,62 @@ function bindUpdates() {
     }
   });
 }
+
+/* ------------------------------------------------------------------ */
+
+/** Ein Schritt nach oben (+1) oder unten (-1) für einen Regler – wie ein Ziehen von Hand. */
+function stepSlider(input, dir) {
+  if (input.disabled) return false;
+  const before = input.value;
+  if (dir > 0) input.stepUp(); else input.stepDown();
+  if (input.value === before) return false;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return true;
+}
+
+/** Vor und hinter jeden Regler einen kleinen −/+-Knopf setzen (gedrückt halten wiederholt). */
+function addSliderSteppers(root = document) {
+  const inputs = root.matches?.('input[type=range]') ? [root] : root.querySelectorAll('input[type=range]');
+  for (const input of inputs) {
+    if (input.parentElement?.classList.contains('slider-row')) continue;
+    const row = document.createElement('span');
+    row.className = 'slider-row';
+    input.before(row);
+    const mk = (dir) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'step-btn';
+      b.textContent = dir > 0 ? '+' : '−';
+      b.title = dir > 0 ? 'Einen Schritt erhöhen' : 'Einen Schritt verringern';
+      b.tabIndex = -1;
+      let delay = null, repeat = null;
+      const stop = () => { clearTimeout(delay); clearInterval(repeat); delay = repeat = null; };
+      b.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        stop();
+        if (!stepSlider(input, dir)) return;
+        delay = setTimeout(() => { repeat = setInterval(() => { if (!stepSlider(input, dir)) stop(); }, 60); }, 400);
+      });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop);
+      // Klicks nicht an das Label weiterreichen, Doppelklick setzt den Regler nicht zurück
+      b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+      b.addEventListener('dblclick', (e) => { e.preventDefault(); e.stopPropagation(); });
+      return b;
+    };
+    // Regler steht im DOM zuerst, damit das Label weiterhin ihn meint; die Reihenfolge macht CSS
+    row.append(input, mk(-1), mk(1));
+    const sync = () => { for (const b of row.querySelectorAll('.step-btn')) b.disabled = input.disabled; };
+    sync();
+    new MutationObserver(sync).observe(input, { attributes: true, attributeFilter: ['disabled'] });
+  }
+}
+
+addSliderSteppers();
+new MutationObserver((muts) => {
+  for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1) addSliderSteppers(n);
+}).observe(document.body, { childList: true, subtree: true });
 
 /* ------------------------------------------------------------------ */
 

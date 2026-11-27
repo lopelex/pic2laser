@@ -87,7 +87,13 @@ Alle KI-Funktionen laufen lokal und offline.
     bleiben beim Verstellen der Regler erhalten, solange die Farbe ähnlich bleibt (ΔE < 12).
   - Vektorisierung je Farbe mit Potrace (Regler unter „Vektorisierung“, auch „Formen begradigen“),
     alle Ebenen in einem Auftrag. Rasterexporte zeigen genau die vektorisierten Flächen (BMP 24 Bit).
-  - „Vereinigen“ ist mit dem Modus Farben nicht möglich; Schrift & Logos ist ausgeblendet.
+  - „Vereinigen“ ist mit dem Modus Farben nicht möglich.
+  - Schrift & Logos: Je Textblock bekommen die Buchstaben (samt einbezogener Logo-Elemente) eine
+    einheitliche Farbe (Mittel der Hälfte ihrer Pixel, die sich am stärksten vom Grund abheben – der
+    Kern der Striche), der schmale Saum die mittlere Farbe des Grundes; diese Pixel behalten beim
+    Glätten und beim Entfernen von Kleinstflächen ihre Farbe. Bei automatischer Farbanzahl bekommt
+    jede Schriftfarbe eine eigene Farbe (ΔE > 10 zu allen anderen), und eine Farbe, die überwiegend
+    aus Schrift besteht, gilt nie als Kantenmischung.
   - Gesichtszüge hervorheben wirkt auf die Helligkeit (Änderung gleich auf R, G, B – Farbton bleibt).
   - Motivkontur: eigene schwarze Ebene „Motivkontur“ ganz oben; die Farbflächen sparen den Ring aus.
 - **Formen verbessern** (Abschnitt unter „Vektorisierung“). Mit „Schrift & Logos“ wählbar:
@@ -176,6 +182,8 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   nachgezeichnet. Die Verstärkung ist begrenzt: Schwache Konturen (Lippen, Lidfalte) werden
   deutlich betont, ohnehin dunkle Falten und Schatten nur wenig – so entstehen bei faltiger Haut
   keine schwarzen Flecken.
+- Erkannte Gesichter werden im Original-Fenster orange gestrichelt umrahmt (wie die Schriftbereiche
+  in Blau) – nur in der Vorschau, nie im Ergebnis oder Export.
 - **Reihenfolge:** vor dem Freistellen (ganzes Bild) oder danach (nur Gesichter im Motiv).
 - **Merkmale finden:** *Geschätzt* (feste Anteile des Gesichtsrahmens) oder *Genau* (Face Parsing,
   BiSeNet, nicht kommerziell): jedes Gesicht wird in Haut, Augen, Brauen, Nase und Lippen zerlegt;
@@ -190,7 +198,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   selbst (Flächen, die ganz im Schriftbereich liegen); der Hintergrund behält seine Darstellung,
   es entsteht kein Kasten. Farbige Schrift mit ähnlicher Helligkeit wie der Grund (z. B. gelb vor
   Wolken) wird über ihre Farbe abgegrenzt und schwarz gezeichnet; deutlich hellere Schrift auf
-  dunklem Grund wird hell gezeichnet.
+  dunklem Grund wird hell gezeichnet. Die Farbe gewinnt auch, wenn sie die über die Helligkeit
+  gefundenen Buchstaben fast ganz enthält und deutlich weiter entlang der Zeile reicht (farbige
+  Schrift vor einem Verlauf, bei der die Helligkeit nur einen Teil der Buchstaben trennt).
 - Bereiche auf erkannten Gesichtern (häufiger Fehltreffer des Textdetektors) und riesige Schrift
   (Zeile über ein Viertel der Bildhöhe – bleibt auch ohne Sonderbehandlung sauber) werden ignoriert.
 - **Logos einbeziehen:** Grafikelemente, die an dunkle Schrift grenzen (z. B. ein Logo-Symbol),
