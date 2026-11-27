@@ -332,13 +332,21 @@
         <h3>Farben</h3>
         <label class="slider" title="Anzahl der Farben – Auto erkennt die Farben von Logos und Grafiken selbst (höchstens 10)">
           <span>Anzahl Farben <output data-for="colorCount"></output></span>
-          <input type="range" data-key="colorCount" min="0" max="16" step="1" />
+          <input type="range" data-key="colorCount" min="0" max="32" step="1" />
         </label>
         <label class="field" title="Bildfarben = Farben aus dem Bild; Garnfarben = jede Farbe rastet auf das nächste Garn ein (gleiche Garne werden zusammengeführt)">
           <span>Farbpalette</span>
           <select data-key="colorPalette">
             <option value="image">Bildfarben</option>
             <option value="brother">Brother-Garne (PES-Standardfarben)</option>
+          </select>
+        </label>
+        <label class="field" title="Kantenglättung und JPEG erzeugen schmale Säume in Mischfarben zwischen zwei Farben. Automatisch: Säume an geschlossenen Farbflächen (Logos, Grafiken) werden entfernt, Zwischentöne in Fotos und Maserung bleiben. Logo: jede schmale Mischfarbe wird entfernt (wie bis Version 1.22). Aus: alle Farben bleiben.">
+          <span>Kantensäume entfernen</span>
+          <select data-key="colorBlend">
+            <option value="auto">Automatisch</option>
+            <option value="logo">Logo (immer entfernen)</option>
+            <option value="off">Aus (alle Zwischentöne behalten)</option>
           </select>
         </label>
         <label class="slider" title="Glättet die Grenzen zwischen den Farben (Zacken, Rauschen, Kantenglättung)">
@@ -354,10 +362,16 @@
           <input type="range" data-key="colorOverlapMm" min="0" max="1" step="0.05" />
         </label>
         <label class="check" title="Die Fläche in der Farbe, die am Bildrand überwiegt, wird vom Rand aus entfernt (z. B. weißer Hintergrund). Dieselbe Farbe innerhalb des Motivs bleibt erhalten."><input type="checkbox" data-key="colorSkipBg" /> Hintergrundfarbe weglassen</label>
+        <label class="check" title="Echtfarben: Größere Flächen bekommen im SVG einen weichen Farbverlauf, der den Farben im Bild folgt (für Inkscape, Illustrator, Affinity, Druck). Nur mit Bildfarben; umgefärbte Farben bleiben einfarbig. LightBurn und Stickdateien nutzen weiter die Ebenenfarbe."><input type="checkbox" data-key="colorGradients" /> Echtfarben mit Verläufen (SVG)</label>
+        <label class="slider" data-if="colorGradients:true" title="Nur mit „Echtfarben mit Verläufen“: Nachbarflächen, deren Grenze im Bild kaum Kontrast hat (Farbstufe in einem weichen Übergang, z. B. Haut), werden zu einer Fläche mit gemeinsamem Verlauf. Echte Kanten bleiben scharf. Höher = weniger Stufen, aber weniger Schattierung.">
+          <span>Stufen glätten <output data-for="colorGradientMerge"></output></span>
+          <input type="range" data-key="colorGradientMerge" min="0" max="1" step="0.05" />
+        </label>
+        <label class="check" title="PNG, JPG und BMP zeigen die Bildpixel in voller Farbe (freigestellt, nur die ausgegebenen Farbflächen) statt der vektorisierten Farbflächen"><input type="checkbox" data-key="colorTrueRaster" /> Rasterexporte in Echtfarben</label>
         <h4>Ebenen <span class="sub">(unten → oben = Stickreihenfolge)</span></h4>
         <div class="color-list" id="color-list"></div>
         <button class="btn btn-small" id="btn-color-reset">Farbänderungen zurücksetzen</button>
-        <p class="hint info">Je Farbe eine eigene Ebene im SVG, die größte Fläche liegt unten. Häkchen = Farbe ausgeben, Farbfeld = Farbe ändern, ⇢ = mit einer anderen Farbe zusammenführen. <b>LightBurn</b> legt je Farbe eine Ebene an. <b>Sticken:</b> unter „Exportformate“ PES, DST oder EXP wählen – direkt für die Stickmaschine, mit Füllstich je Farbe. Alternativ übernehmen Stickprogramme (Ink/Stitch, Hatch, Wilcom, Embrilliance StitchArtist) das SVG mit Farben und Reihenfolge – dort Stichart zuweisen. Für weiche Fotos vorher „Weichzeichnen“ erhöhen.</p>
+        <p class="hint info">Je Farbe eine eigene Ebene im SVG, die größte Fläche liegt unten. Häkchen = Farbe ausgeben, Farbfeld = Farbe ändern, ⇢ = mit einer anderen Farbe zusammenführen. <b>LightBurn</b> legt je Farbe eine Ebene an. <b>Sticken:</b> unter „Exportformate“ PES, DST oder EXP wählen – direkt für die Stickmaschine, mit Füllstich je Farbe. Alternativ übernehmen Stickprogramme (Ink/Stitch, Hatch, Wilcom, Embrilliance StitchArtist) das SVG mit Farben und Reihenfolge – dort Stichart zuweisen. Für weiche Fotos vorher „Weichzeichnen“ erhöhen. <b>Echtfarben mit Verläufen:</b> jede größere Fläche bekommt einen Farbverlauf (SVG-Verlauf) – mit weniger Farben entstehen größere, weich verlaufende Flächen. Grafikprogramme zeigen die Verläufe; LightBurn und Stickdateien nehmen je Ebene die Ebenenfarbe.</p>
       </section>
 
       <section class="group" data-mode="relief">

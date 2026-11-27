@@ -212,6 +212,7 @@ function renderColor({ source, mask, lineMask, textSource, s }) {
     smoothPasses: (Number(s.colorSmoothMm) || 0) / mmPerPx,
     minAreaPx: (Number(s.colorMinAreaMm2) || 0) / (mmPerPx * mmPerPx),
     skipBg: !!s.colorSkipBg,
+    blend: s.colorBlend,
     edits: s.colorEdits,
     keep: textKeep,
     textColors,
@@ -226,9 +227,33 @@ function renderColor({ source, mask, lineMask, textSource, s }) {
   let total = 0;
   for (const l of layers) total += l.area;
   const colorLayers = layers.map((l) => ({ ...l, share: total ? l.area / total : 0 }));
+  // Echtfarben mit Verläufen: größere Flächen mit Farbänderung als eigener Pfad mit Farbverlauf,
+  // der Rest der Ebene bleibt einfarbig (nur Bildfarben; umgefärbte Ebenen bleiben einfarbig)
+  let colorGrads = null;
+  if (s.colorGradients && (s.colorPalette || 'image') === 'image' && !(s.outline && s.outlineOnly)) {
+    const regions = Colors.gradientRegions(rgba, labels, w, h, masks, {
+      minPx: 1 / (mmPerPx * mmPerPx), // ab 1 mm²
+      merge: Number(s.colorGradientMerge) || 0, // Stufen glätten
+      skip: (l) => l.edited,
+    });
+    colorGrads = regions.map((r) => r.grads);
+    regions.forEach((r, i) => { masks[i].bits = r.rest; });
+  }
+  // Rasterexporte in Echtfarben: die Bildpixel der sichtbaren Flächen, Motivkontur schwarz
+  let colorTrueRgba = null;
+  if (s.colorTrueRaster && !(s.outline && s.outlineOnly)) {
+    colorTrueRgba = new Uint8ClampedArray(w * h * 4);
+    for (let p = 0, i = 0; p < bits.length; p++, i += 4) {
+      if (contourBits && contourBits[p]) { colorTrueRgba[i + 3] = 255; continue; }
+      if (!bits[p]) continue;
+      colorTrueRgba[i] = rgba[i]; colorTrueRgba[i + 1] = rgba[i + 1]; colorTrueRgba[i + 2] = rgba[i + 2]; colorTrueRgba[i + 3] = 255;
+    }
+  }
   const out = {
     w, h, bits, gray8: null, alpha8: null, trace: false, imagePng: null, imageB64: null, sil: null, strokePath: null,
     colorLayers,
+    colorGrads,
+    colorTrueRgba,
     colorMasks: s.outline && s.outlineOnly ? [] : masks.map((m) => m.bits),
     // Motivkontur als letzte Maske (wird im Hauptprozess zur Ebene „Motivkontur“)
     colorContour: !!contourBits && !(s.outline && s.outlineOnly),
@@ -242,7 +267,8 @@ function renderColor({ source, mask, lineMask, textSource, s }) {
     }
     out.sil = outlineSilhouette(s, w, h, src || bits, null, null);
   }
-  const transfer = [bits, ...out.colorMasks, out.sil && out.sil.bits].filter(Boolean).map((a) => a.buffer);
+  const transfer = [bits, ...out.colorMasks, out.sil && out.sil.bits, colorTrueRgba,
+    ...(colorGrads || []).flat().map((g) => g.bits)].filter(Boolean).map((a) => a.buffer);
   return { result: out, transfer };
 }
 

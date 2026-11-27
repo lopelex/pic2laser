@@ -115,7 +115,17 @@ function bitsToPathlist(bits, w, h, turdSize, turnPolicy) {
   return list;
 }
 
-function trace({ bits, w, h }, params) {
+/** Pfade um (ox, oy) verschieben – Ausschnitt eines größeren Bildes (Modus Farben, Verlaufsflächen). */
+function shiftPathlist(list, ox, oy) {
+  if (!ox && !oy) return list;
+  for (const p of list) {
+    for (const pt of p.pt) { pt.x += ox; pt.y += oy; }
+    p.minX += ox; p.maxX += ox; p.minY += oy; p.maxY += oy;
+  }
+  return list;
+}
+
+function trace({ bits, w, h, x = 0, y = 0 }, params) {
   const turdSize = clamp(Number(params.turdSize) || 0, 0, 100000);
   const tracer = new Potrace({
     threshold: 128,
@@ -131,7 +141,7 @@ function trace({ bits, w, h }, params) {
   tracer._luminanceData = { width: w, height: h };
   tracer._imageLoaded = true;
   tracer._bmToPathlist = function bmToPathlist() {
-    this._pathlist = bitsToPathlist(bits, w, h, turdSize, this._params.turnPolicy);
+    this._pathlist = shiftPathlist(bitsToPathlist(bits, w, h, turdSize, this._params.turnPolicy), Number(x) || 0, Number(y) || 0);
   };
   // Formen begradigen: Potrace-Kurven durch Geraden, Bögen, Kreise und Ellipsen ersetzen
   if (params.shapes) {
@@ -160,9 +170,10 @@ function trace({ bits, w, h }, params) {
 if (process.parentPort) process.parentPort.on('message', (e) => {
   const { id, image, params } = e.data;
   try {
-    // Modus Farben: mehrere Ebenen gleicher Größe in einem Auftrag (Ergebnis: ein Pfad je Ebene)
+    // Modus Farben: mehrere Ebenen gleicher Größe in einem Auftrag (Ergebnis: ein Pfad je Ebene);
+    // Verlaufsflächen als Ausschnitt { bits, w, h, x, y } – der Pfad liegt trotzdem im ganzen Bild
     const d = Array.isArray(image && image.layers)
-      ? image.layers.map((bits) => trace({ bits, w: image.w, h: image.h }, params))
+      ? image.layers.map((l) => (l && l.bits ? trace(l, params) : trace({ bits: l, w: image.w, h: image.h }, params)))
       : trace(image, params);
     process.parentPort.postMessage({ id, ok: true, d });
   } catch (err) {

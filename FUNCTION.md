@@ -68,7 +68,7 @@ Alle KI-Funktionen laufen lokal und offline.
   0,8 mm werden dabei ignoriert. Freigestellter Hintergrund bleibt immer leer (Motiv intern höchstens
   Grauwert 253, Hintergrund 255, ausgelassen wird nur ≥ 253,5). Das SVG enthält offene Linien (`fill="none"`) – in
   LightBurn als **Linie** gravieren. Verfahren nach img2laser (Kyle Larsen, MIT), gerechnet in Rust/WebAssembly.
-- **Farben:** *Anzahl Farben* (2–16 oder **Auto**: erhöht die Anzahl, bis fast jedes Pixel durch eine Farbe
+- **Farben:** *Anzahl Farben* (2–32 oder **Auto**: erhöht die Anzahl, bis fast jedes Pixel durch eine Farbe
   oder eine Mischung zweier Farben erklärt ist – höchstens 10), *Farbpalette* (Bildfarben oder
   **Brother-Garne**: jede Farbe rastet auf das nächste der 61 PES-Standardgarne ein, gleiche Garne werden
   zusammengeführt; Farbwerte auf dem Bildschirm nur Näherung), *Kanten glätten* (Mehrheitsfilter, mm),
@@ -80,6 +80,11 @@ Alle KI-Funktionen laufen lokal und offline.
   transparente und freigestellte Bereiche bleiben leer.
   - Kantenglättung und JPEG-Farbsäume erzeugen Mischfarben; schmale Säume, die zwischen zwei anderen
     Farben liegen (Gerade in RGB oder Lab), werden aufgelöst und nicht als eigene Farbe ausgegeben.
+    *Kantensäume entfernen* (`colorBlend`): *Automatisch* (Standard) nur, wenn mindestens eine der
+    beiden Nachbarfarben eine geschlossene Fläche ist (Randanteil < 25 % – Logos, Grafiken); in Fotos
+    und Maserung sind auch die Nachbarfarben zerfasert, dort bleibt die Farbe als echter Zwischenton.
+    *Logo* entfernt jeden schmalen Mischton (Verhalten bis 1.22, die Stickerei-Vorlagen für Logos
+    nutzen es), *Aus* behält alle Farben.
   - **Ebenenliste** (unten → oben = Reihenfolge im SVG bzw. Stickreihenfolge): Häkchen = Farbe ausgeben,
     Farbfeld = Farbe ändern (bei Garnpalette rastet sie auf das nächste Garn ein), ⇢ = mit einer
     anderen Farbe zusammenführen, ↺ = Änderungen dieser Farbe zurücknehmen. Die Änderungen gelten nur
@@ -99,6 +104,30 @@ Alle KI-Funktionen laufen lokal und offline.
     aus Schrift besteht, gilt nie als Kantenmischung.
   - Gesichtszüge hervorheben wirkt auf die Helligkeit (Änderung gleich auf R, G, B – Farbton bleibt).
   - Motivkontur: eigene schwarze Ebene „Motivkontur“ ganz oben; die Farbflächen sparen den Ring aus.
+  - Bis 16 Farben kommt je Farbe ein k-Means-Lauf hinzu (wie bisher); darüber (17–32) werden die
+    weiteren Startzentren auf einmal gesetzt (k-Means++ ohne Zufall, Abstand fortlaufend nachgeführt)
+    und gemeinsam in einem Lauf verfeinert – sonst wüchse die Rechenzeit quadratisch mit der Farbanzahl.
+  - **Echtfarben mit Verläufen** (`colorGradients`, nur Palette Bildfarben): jede Ebenenmaske wird in
+    zusammenhängende Flächen zerlegt (`Colors.gradientRegions`). Flächen ab 1 mm², deren Farbe sich um
+    mindestens 10 (RGB-Abstand) ändert, bekommen einen eigenen Pfad mit `linearGradient`
+    (`gradientUnits="userSpaceOnUse"`): Richtung = stärkste Farbänderung der linearen Näherung
+    (Kleinste Quadrate je Kanal, größter Eigenvektor von GᵀG), Farbstopps = mittlere Bildfarbe in
+    bis zu 12 Streifen quer dazu, Zwischenstopps auf der Geraden entfallen, Endfarben bis an den Rand
+    hochgerechnet (keine Naht zur Nachbarfläche). Gerechnet nur mit den eigenen Pixeln der Ebene.
+    Die Flächen werden als Ausschnitt vektorisiert (Trace-Worker verschiebt die Pfade an ihre Lage),
+    der Rest der Ebene bleibt einfarbig. Umgefärbte Ebenen bleiben einfarbig.
+    *Stufen glätten* (`colorGradientMerge`, 0–1): Flächen aller Ebenen werden über ihre gemeinsame
+    Grenze verglichen – mittlerer Farbabstand der Pixel 2 px beiderseits der Grenze unter
+    15 + 60 · Stärke, und das Vereinen verschlechtert die lineare Näherung um höchstens
+    3 + 20 · Stärke (RMS je Kanal, aus additiven Momenten berechnet; Bildstruktur wie Hautporen
+    zählt nicht, da sie schon in beiden Teilen steckt). Die Zunahme wird auf die kleinere Fläche
+    bezogen – ein kleiner Buchstabe geht so nicht in einem großen Himmel unter. Vereint wird gierig, kontrastärmste Grenze
+    zuerst (Union-Find). Die vereinte Fläche bekommt einen Verlauf (bis 16 Streifen) und liegt in der
+    Ebene ihres größten Teils. Im SVG steht die
+    Ebenenfarbe als Ersatzfarbe (`fill="url(#…) #rrggbb"`); LightBurn-SVG, Stickdateien und Vereinigen
+    nutzen sie. Rasterexporte und Vorschau zeigen die Verläufe.
+  - **Rasterexporte in Echtfarben** (`colorTrueRaster`): PNG/JPG/BMP aus den Bildpixeln (nach
+    Bildanpassung) aller ausgegebenen Flächen, Motivkontur schwarz, sonst durchsichtig/weiß.
 - **Formen verbessern** (Abschnitt unter „Vektorisierung“). Mit „Schrift & Logos“ wählbar:
   *Reihenfolge* nach der Schrift-/Logoerkennung (Standard: die Verbesserungen gelten auch für die
   erkannte Schrift – sie wird aus dem KI-vergrößerten Bild gerechnet, mitbegradigt bzw. bei „Ruhige

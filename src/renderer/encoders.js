@@ -198,8 +198,27 @@ const Encoders = (() => {
     if (colors) {
       colors.forEach((c, i) => {
         if (!c.d) return;
-        parts.push(`  <g id="farbe-${i + 1}" inkscape:groupmode="layer" inkscape:label="${esc(c.label || c.hex)}">
+        if (!c.grads) {
+          parts.push(`  <g id="farbe-${i + 1}" inkscape:groupmode="layer" inkscape:label="${esc(c.label || c.hex)}">
     <path d="${c.d}" fill="${c.hex}" fill-rule="evenodd" stroke="none"/>
+  </g>`);
+          return;
+        }
+        // Echtfarben: einfarbiger Rest der Ebene und je Fläche ein Pfad mit linearem Farbverlauf
+        // (Koordinaten im Bild, userSpaceOnUse); die Ebenenfarbe steht als Ersatzfarbe dahinter
+        const defs = [], paths = [];
+        if (c.flat) paths.push(`    <path d="${c.flat}" fill="${c.hex}" fill-rule="evenodd" stroke="none"/>`);
+        c.grads.forEach((g, j) => {
+          const gid = `verlauf-${i + 1}-${j + 1}`;
+          const stops = g.stops.map(([t, hex]) => `<stop offset="${fmt(t)}" stop-color="${hex}"/>`).join('');
+          defs.push(`      <linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${fmt(g.x1)}" y1="${fmt(g.y1)}" x2="${fmt(g.x2)}" y2="${fmt(g.y2)}">${stops}</linearGradient>`);
+          paths.push(`    <path d="${g.d}" fill="url(#${gid}) ${c.hex}" fill-rule="evenodd" stroke="none"/>`);
+        });
+        parts.push(`  <g id="farbe-${i + 1}" inkscape:groupmode="layer" inkscape:label="${esc(c.label || c.hex)}">
+    <defs>
+${defs.join('\n')}
+    </defs>
+${paths.join('\n')}
   </g>`);
       });
     }
@@ -312,7 +331,9 @@ ${parts.join('\n')}
         } else if (a.fill === 'none') {
           items.push({ kind: 'stroke', d: a.d, width: Number(a['stroke-width']) || 1, m, color: a.stroke || '#000000', group });
         } else {
-          items.push({ kind: 'fill', d: a.d, m, color: a.fill || '#000000', group });
+          // Farbverlauf (url(#…) #rrggbb): beim Vereinigen gilt die Ersatzfarbe
+          const fill = /^url\(/.test(a.fill || '') ? (/#[0-9a-f]{3,6}\b/i.exec(a.fill.replace(/^url\([^)]*\)/, '')) || ['#000000'])[0] : a.fill;
+          items.push({ kind: 'fill', d: a.d, m, color: fill || '#000000', group });
         }
       }
     }

@@ -52,7 +52,7 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
   - *Wellen*: Sinuswellen-Schattierung (nach [img2laser](https://github.com/0not/img2laser)) – dunkle Stellen als
     dichte Wellen, als offene Vektorlinien; waagrecht oder senkrecht, weiße Flächen optional ausgespart.
     Gerechnet in WebAssembly (Rust, `wasm/sine`)
-  - *Farben*: Bild in wenige Farbflächen zerlegt (Auto oder 2–16 Farben, Bildfarben oder Brother-Garne),
+  - *Farben*: Bild in wenige Farbflächen zerlegt (Auto oder 2–32 Farben, Bildfarben oder Brother-Garne),
     je Farbe eine SVG-Ebene – für mehrfarbige Gravur und als Vorlage für Stickprogramme (Ink/Stitch, Hatch …);
     Farben ausblenden, umfärben, zusammenführen
   - *Relief*: KI-Tiefenkarte (Depth Anything V2 Small, wahlweise Base/Large) als Graustufenbild für 3D-Reliefgravur, optional mit transparentem

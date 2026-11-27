@@ -5,6 +5,27 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## Unveröffentlicht
+
+### Neu
+- **Modus Farben – Echtfarben mit Verläufen:** größere Farbflächen bekommen im SVG einen weichen Farbverlauf,
+  der den Bildfarben folgt – für Grafikprogramme (Inkscape, Illustrator, Affinity) und Druck. LightBurn und
+  Stickdateien nutzen weiter die Ebenenfarbe. Mit **Stufen glätten** werden Farbstufen in weichen Übergängen
+  (z. B. Haut) zu einer Fläche mit gemeinsamem Verlauf zusammengelegt, echte Kanten bleiben scharf.
+- **Modus Farben – bis 32 Farben** (bisher 16): mehr Details, z. B. für Porträts mit Verläufen. Oberhalb von 16 Farben
+  wird schneller gerechnet: 32 Farben brauchen etwa das 1,5-Fache von 16 statt fast das Dreifache.
+- **Modus Farben – Kantensäume entfernen** wählbar: *Automatisch* (neu, Standard), *Logo* (bisheriges Verhalten)
+  oder *Aus*.
+- **Modus Farben – Rasterexporte in Echtfarben:** PNG, JPG und BMP auf Wunsch mit den Bildpixeln in voller Farbe
+  statt der vektorisierten Farbflächen.
+
+### Behoben
+- **Modus Farben bei Fotos:** Zwischentöne wurden oft als „Kantensaum“ gelöscht – z. B. blieben bei einem Holzbrett
+  von 16 gewählten Farben nur 3, bei 32 nur 2. Jetzt gelten nur Säume an geschlossenen Farbflächen (Logos) als
+  Mischfarbe; die gewählte Farbanzahl kommt bei Fotos tatsächlich heraus. Logos werden genauso gerechnet wie bisher.
+
+---
+
 ## 1.22.0 – 27.11.2026
 
 ### Neu
