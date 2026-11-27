@@ -909,6 +909,20 @@ const Processing = (() => {
    * rgba wird verändert. Rückgabe: { keep: Maske der Schrift- und Saumpixel (die das Glätten nicht
    * verändern soll), colors: [{ rgb, weight }] Schriftfarben } oder null, wenn nichts gefunden wurde.
    */
+  /**
+   * Liegt die Farbe (r, g, b) nahe der Strecke zwischen Schriftfarbe f und Grundfarbe bg, also ist sie
+   * eine Kantenmischung der beiden (oder fast reiner Grund)? Abstand in RGB-Einheiten.
+   */
+  function isBlend(r, g, b, f, bg) {
+    const dx = bg[0] - f[0], dy = bg[1] - f[1], dz = bg[2] - f[2];
+    const len2 = dx * dx + dy * dy + dz * dz;
+    const px = r - f[0], py = g - f[1], pz = b - f[2];
+    const t = len2 ? Math.max(0, Math.min(1, (px * dx + py * dy + pz * dz) / len2)) : 1;
+    const ex = px - t * dx, ey = py - t * dy, ez = pz - t * dz;
+    // höchstens 45 von der Strecke entfernt (die Form der Buchstaben bestimmt allein die Maske)
+    return ex * ex + ey * ey + ez * ez <= 45 * 45;
+  }
+
   function cleanTextColor(rgba, opaque, w, h, blocks, pad, bold) {
     const n = w * h;
     const src = rgba.slice(); // Analyse auf den unveränderten Farben (Blöcke können sich überlappen)
@@ -920,40 +934,122 @@ const Processing = (() => {
     const colors = []; // Schriftfarben: { rgb, weight }
     let any = false;
     textRegions(gray, src, w, h, blocks, pad, bold, ({ tm, halo, bx0, by0, rw, rh }) => {
-      const bg = [0, 0, 0, 0];
-      const fgPx = []; // Pixelindizes der Buchstaben
-      for (let y = 0; y < rh; y++) {
-        for (let x = 0; x < rw; x++) {
-          const k = y * rw + x;
-          const i = (by0 + y) * w + bx0 + x;
-          if (!opaque[i] || !halo[k]) continue;
-          if (tm[k]) { fgPx.push(i); continue; }
-          const j = i * 4;
-          bg[0] += src[j]; bg[1] += src[j + 1]; bg[2] += src[j + 2]; bg[3]++;
+      const m = rw * rh;
+      const gi = (k) => (by0 + ((k / rw) | 0)) * w + bx0 + (k % rw); // Rechteck → Bildpixel
+      // Grund je Saum-Pixel: Farbe des nächsten Pixels außerhalb des Saums (Ausbreitung von außen nach
+      // innen). Ein gemeinsamer Mittelwert für den ganzen Block mischt sonst verschiedene Gründe – z. B.
+      // Zahlen auf Weiß neben einem gelben Wappen bekämen einen gelben Rand.
+      const from = new Int32Array(m).fill(-1); // Bildpixel, dessen Farbe der Grund hier hat
+      const queue = new Int32Array(m);
+      let qh = 0, qt = 0;
+      const bg = [0, 0, 0, 0]; // Mittel des ganzen Blocks – nur Ersatz, wenn kein Grund erreichbar ist
+      for (let k = 0; k < m; k++) {
+        const i = gi(k);
+        if (!opaque[i]) continue;
+        if (!halo[k]) { from[k] = i; queue[qt++] = k; continue; }
+        if (!tm[k]) { const j = i * 4; bg[0] += src[j]; bg[1] += src[j + 1]; bg[2] += src[j + 2]; bg[3]++; }
+      }
+      while (qh < qt) {
+        const k = queue[qh++];
+        const x = k % rw, y = (k / rw) | 0;
+        for (const nb of [x > 0 ? k - 1 : -1, x < rw - 1 ? k + 1 : -1, y > 0 ? k - rw : -1, y < rh - 1 ? k + rw : -1]) {
+          if (nb < 0 || from[nb] >= 0 || tm[nb] || !halo[nb] || !opaque[gi(nb)]) continue;
+          from[nb] = from[k];
+          queue[qt++] = nb;
         }
       }
-      if (!fgPx.length) return;
-      const bc = bg[3] ? bg.slice(0, 3).map((v) => v / bg[3]) : null;
-      // Schriftfarbe: Mittel der Hälfte der Buchstabenpixel, die sich am deutlichsten vom Grund abheben
-      // (Kern der Striche) – geglättete Kanten mischen sonst den Grund hinein (dünne Schrift wird zu hell)
-      const far = (i) => (bc ? (src[i * 4] - bc[0]) ** 2 + (src[i * 4 + 1] - bc[1]) ** 2 + (src[i * 4 + 2] - bc[2]) ** 2 : 0);
-      const core = bc ? fgPx.map((i) => [far(i), i]).sort((a, b) => b[0] - a[0]).slice(0, Math.max(1, Math.ceil(fgPx.length / 2))).map((e) => e[1]) : fgPx;
-      const fc = [0, 0, 0];
-      for (const i of core) { fc[0] += src[i * 4]; fc[1] += src[i * 4 + 1]; fc[2] += src[i * 4 + 2]; }
-      for (let c = 0; c < 3; c++) fc[c] /= core.length;
-      colors.push({ rgb: fc, weight: fgPx.length });
-      for (let y = 0; y < rh; y++) {
-        for (let x = 0; x < rw; x++) {
-          const k = y * rw + x;
-          const i = (by0 + y) * w + bx0 + x;
-          if (!opaque[i] || !halo[k]) continue;
-          const c = tm[k] ? fc : bc;
-          if (!c) continue;
-          const j = i * 4;
-          rgba[j] = c[0]; rgba[j + 1] = c[1]; rgba[j + 2] = c[2];
-          keep[i] = 1;
-          any = true;
+      const blockBg = bg[3] ? bg.slice(0, 3).map((v) => v / bg[3]) : null;
+      const bgAt = (k) => (from[k] >= 0 ? [src[from[k] * 4], src[from[k] * 4 + 1], src[from[k] * 4 + 2]] : blockBg);
+      // nächstes Schriftpixel je Saum-Pixel (Ausbreitung von der Schrift nach außen)
+      const near = new Int32Array(m).fill(-1);
+      qh = 0; qt = 0;
+      for (let k = 0; k < m; k++) if (tm[k] && opaque[gi(k)]) { near[k] = k; queue[qt++] = k; }
+      while (qh < qt) {
+        const k = queue[qh++];
+        const x = k % rw, y = (k / rw) | 0;
+        for (const nb of [x > 0 ? k - 1 : -1, x < rw - 1 ? k + 1 : -1, y > 0 ? k - rw : -1, y < rh - 1 ? k + rw : -1]) {
+          if (nb < 0 || near[nb] >= 0 || !halo[nb]) continue;
+          near[nb] = near[k];
+          queue[qt++] = nb;
         }
+      }
+
+      // Schriftfarbe je zusammenhängendem Teil (Buchstabe, Ziffer, Logo-Element): rote Zahlen neben einem
+      // schwarzen Logo-Symbol bleiben rot. Je Teil das Mittel der Hälfte seiner Pixel, die sich am
+      // deutlichsten vom angrenzenden Grund abheben (Kern der Striche) – geglättete Kanten mischen sonst
+      // den Grund hinein (dünne Schrift wird zu hell).
+      const comp = new Int32Array(m).fill(-1);
+      const fill = new Int32Array(m);
+      const compColor = [];
+      const local = []; // Farben dieses Blocks, ähnliche zusammengefasst
+      for (let s0 = 0; s0 < m; s0++) {
+        if (!tm[s0] || comp[s0] >= 0 || !opaque[gi(s0)]) continue;
+        const id = compColor.length;
+        const px = [];
+        const ref = [0, 0, 0, 0];
+        let sp = 0;
+        comp[s0] = id; fill[sp++] = s0;
+        while (sp) {
+          const k = fill[--sp];
+          px.push(k);
+          const x = k % rw, y = (k / rw) | 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = x + dx, ny = y + dy;
+              if (nx < 0 || ny < 0 || nx >= rw || ny >= rh) continue;
+              const nb = ny * rw + nx;
+              if (tm[nb]) {
+                if (comp[nb] < 0 && opaque[gi(nb)]) { comp[nb] = id; fill[sp++] = nb; }
+              } else if (from[nb] >= 0) {
+                const j = from[nb] * 4;
+                ref[0] += src[j]; ref[1] += src[j + 1]; ref[2] += src[j + 2]; ref[3]++;
+              }
+            }
+          }
+        }
+        const bc = ref[3] ? ref.slice(0, 3).map((v) => v / ref[3]) : blockBg;
+        const far = (k) => {
+          const j = gi(k) * 4;
+          return bc ? (src[j] - bc[0]) ** 2 + (src[j + 1] - bc[1]) ** 2 + (src[j + 2] - bc[2]) ** 2 : 0;
+        };
+        const core = bc ? px.map((k) => [far(k), k]).sort((a, b) => b[0] - a[0]).slice(0, Math.max(1, Math.ceil(px.length / 2))).map((e) => e[1]) : px;
+        const fc = [0, 0, 0];
+        for (const k of core) { const j = gi(k) * 4; fc[0] += src[j]; fc[1] += src[j + 1]; fc[2] += src[j + 2]; }
+        for (let c = 0; c < 3; c++) fc[c] /= core.length;
+        // ähnliche Farben (Buchstaben eines Wortes) zu einer zusammenfassen: einheitliche Schrift und
+        // keine zusätzlichen Palettenfarben
+        let hit = local.find((e) => (e.rgb[0] - fc[0]) ** 2 + (e.rgb[1] - fc[1]) ** 2 + (e.rgb[2] - fc[2]) ** 2 < 40 * 40);
+        if (hit) {
+          const wsum = hit.weight + px.length;
+          for (let c = 0; c < 3; c++) hit.rgb[c] = (hit.rgb[c] * hit.weight + fc[c] * px.length) / wsum;
+          hit.weight = wsum;
+        } else {
+          hit = { rgb: fc, weight: px.length };
+          local.push(hit);
+        }
+        compColor.push(hit.rgb);
+      }
+      if (!compColor.length) return;
+      colors.push(...local);
+      for (let k = 0; k < m; k++) {
+        const i = gi(k);
+        if (!opaque[i] || !halo[k]) continue;
+        const j = i * 4;
+        let c;
+        if (tm[k]) c = compColor[comp[k]];
+        else {
+          // Saum: nur Kantenpixel (Mischung aus Schrift- und Grundfarbe) bekommen die Grundfarbe.
+          // Andere Farben im Saum bleiben unverändert – z. B. ein schmaler weißer Streifen zwischen
+          // schwarzer Kontur und roter Linie oder das Innere einer „8“, das der Grund nicht erreicht.
+          const b = from[k] >= 0 ? bgAt(k) : null;
+          const f = near[k] >= 0 && comp[near[k]] >= 0 ? compColor[comp[near[k]]] : null;
+          if (!b || !f || !isBlend(src[j], src[j + 1], src[j + 2], f, b)) continue;
+          c = b;
+        }
+        if (!c) continue;
+        rgba[j] = c[0]; rgba[j + 1] = c[1]; rgba[j + 2] = c[2];
+        keep[i] = 1;
+        any = true;
       }
     });
     return any ? { keep, colors } : null;

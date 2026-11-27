@@ -72,7 +72,8 @@ Linux-AppImage bauen: `npm run dist:linux` → `dist/Pic2Laser-…-linux-x64.App
   Mund, Nase, Kinn und Wangen werden aus dem Gesichtsrahmen geschätzt oder genau per Face Parsing gefunden
 - **Motivkontur**: dünne Linie dort, wo Motiv und Hintergrund ineinander verschwimmen (auch in Wellen und Farben – dort als eigene schwarze Ebene)
 - **Schrift & Logos**: erkennt Schriftzüge und angrenzende Logo-Elemente und stellt sie scharf und gefüllt dar,
-  statt sie zu rastern oder nachzuzeichnen (Bereiche werden im Original blau markiert)
+  statt sie zu rastern oder nachzuzeichnen (Bereiche werden im Original blau markiert). Drei Erkennungsmodelle
+  (PP-OCRv4, PP-OCRv5 mobil/Server) und erweiterte Regler für die Erkennung
 - **Umrisslinie**: Randkontur um das Motiv mit Abstand in mm (rote Linie → eigene LightBurn-Ebene,
   z. B. zum Ausschneiden), optional nur die Umrisslinie ohne Gravur. In PNG/JPG/BMP, Historien-Vorschau
   und Drag-Symbol erscheint sie schwarz, in gleicher Größe und Lage wie im SVG.
@@ -154,6 +155,8 @@ Alle Modelle laufen lokal und offline über onnxruntime (nativ, mit WebAssembly-
 | LaMa (ONNX von Carve) | Kratzer & Staub auffüllen | Apache-2.0 | Download bei Bedarf (208 MB) |
 | RestoreFormer++ (FP16-Gewichte, Saimon8420) | Gesichter restaurieren | Apache-2.0 | Download bei Bedarf (148 MB); ≙ eigener Konvertierung der offiziellen Gewichte |
 | PaddleOCR PP-OCRv4 (Detektor, via RapidOCR) | Texterkennung („Schrift & Logos“) | Apache-2.0 | mitgeliefert |
+| PaddleOCR PP-OCRv5 mobil (Detektor, ONNX von breezedeus/cnstd) | Texterkennung – genauer | Apache-2.0 | Download bei Bedarf (5 MB) |
+| PaddleOCR PP-OCRv5 Server (Detektor, ONNX von breezedeus/cnstd) | Texterkennung – beste Qualität | Apache-2.0 | Download bei Bedarf (88 MB) |
 | UltraFace RFB-320 | Gesichtserkennung („Gesichtszüge hervorheben“) | MIT | mitgeliefert (ungenutzte Graph-Eingänge entfernt) |
 | MODNet | Freistellen: Motiv – Porträt & Haare | Apache-2.0 | Download bei Bedarf (26 MB) |
 | IS-Net | Freistellen: Motiv – präzise | Apache-2.0 | Download bei Bedarf (179 MB) |

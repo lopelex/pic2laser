@@ -131,6 +131,8 @@ const MODEL_PEAK_MB = {
   faces: 60,
   yunet: 60,
   text: 250,
+  text_v5: 250,
+  text_v5_server: 1400,
   esrgan: 150,
   lineart: 800,
   lineart_contour: 800,
@@ -162,6 +164,10 @@ const MODEL_PEAK_MB = {
 const DEPTH_PEAK = { depth: [270, 205], depth_base: [510, 395], depth_large: [1380, 600] };
 
 /** Spitzenbedarf eines Aufrufs; skaliert bei bildgrößenabhängigen Modellen mit der Eingabe. */
+// Texterkennung [Grundbedarf, je 1280 × 1280 px] in MB, gemessen mit 1280 und 2560 px
+// (PP-OCRv5 Server: 1,5 GB bei 1280 px, 5,5 GB bei 2560 px)
+const TEXT_PEAK = { text: [50, 250], text_v5: [50, 260], text_v5_server: [180, 1320] };
+
 function peakMB(id, feeds) {
   if (DEPTH_PEAK[id]) {
     const dims = Object.values(feeds || {})[0]?.dims || [1, 3, 518, 420];
@@ -171,6 +177,12 @@ function peakMB(id, feeds) {
   if (id === 'scunet') {
     const dims = Object.values(feeds || {})[0]?.dims || [1, 3, 384, 384];
     return Math.round(2000 * ((dims[2] * dims[3]) / (384 * 384)) + 120);
+  }
+  if (TEXT_PEAK[id]) {
+    // Texterkennung: Auflösung ist einstellbar (bis 2560 px) – Bedarf wächst mit der Pixelzahl
+    const dims = Object.values(feeds || {})[0]?.dims || [1, 3, 1280, 960];
+    const [base, per] = TEXT_PEAK[id];
+    return Math.round(base + per * ((dims[2] * dims[3]) / (1280 * 1280)));
   }
   if (id === 'lineart' || id === 'lineart_contour' || id === 'lineart_sketch') {
     const dims = Object.values(feeds || {})[0]?.dims || [1, 3, 1024, 768];

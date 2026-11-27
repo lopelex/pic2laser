@@ -77,6 +77,24 @@ const MODELS = {
     file: 'ppocr-det-v4.onnx',
     license: 'Apache-2.0',
   },
+  // PP-OCRv5-Detektoren (PaddleOCR, Apache-2.0) als ONNX von breezedeus/cnstd. Gleiche Ein- und
+  // Ausgabe wie PP-OCRv4 (DB-Wahrscheinlichkeitskarte), nur genauer; Server-Variante deutlich langsamer.
+  text_v5: {
+    label: 'Texterkennung – genauer (PaddleOCR PP-OCRv5 mobil)',
+    file: 'ppocr-det-v5-mobile.onnx',
+    license: 'Apache-2.0',
+    url: `${HF}/breezedeus/cnstd-ppocr-ch_PP-OCRv5_det/resolve/14005c7ab09021b039cdf72a3b21eb51e3a9cf4f/ch_PP-OCRv5_det_infer.onnx`,
+    size: 4819576,
+    sha256: '4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae',
+  },
+  text_v5_server: {
+    label: 'Texterkennung – beste Qualität (PaddleOCR PP-OCRv5 Server)',
+    file: 'ppocr-det-v5-server.onnx',
+    license: 'Apache-2.0',
+    url: `${HF}/breezedeus/cnstd-ppocr-ch_PP-OCRv5_det_server/resolve/5902daf0bdba2e7809cc760f555abcf4f233eeee/ch_PP-OCRv5_det_server_infer.onnx`,
+    size: 88118768,
+    sha256: '0f8846b1d4bba223a2a2f9d9b44022fbc22cc019051a602b41a7fda9667e4cad',
+  },
   yunet: {
     label: 'Gesichtspunkte (YuNet)',
     file: 'yunet-2023mar.onnx',

@@ -251,6 +251,30 @@ dann als schmale Füllung statt als Linie gestickt.
 - **Nicht geprüft:** echte Maschinen, PE-Design, DesignShop 12 (EXP-Schnittcode `80 80 07 00` wie
   pyembroidery) – dafür die Prüfdateien in `test/fixtures/` und die Checkliste.
 
+## Schrift & Logos (nach Version 1.21.0)
+
+### T1. Großer Schriftzug in einem Logo-Banner wird nicht erkannt – ✅ behoben (noch ohne Version)
+**Ort:** `src/renderer/ai.js`, `detectText`. Zeilen über einem Viertel der Bildhöhe wurden immer
+verworfen (gegen Fehltreffer). In einem flachen Banner wie dem Pic2Laser-Logo (1220 × 400 px) nimmt der
+Schriftzug ca. 38 % der Höhe ein, die App meldete „Keine Schrift erkannt.“ Jetzt bleiben solche Zeilen
+erhalten, wenn ihr Kern mindestens 3× so breit wie hoch ist. Geprüft: Logo hell/dunkel werden erkannt,
+der hohe, schmale Fehltreffer im Icon allein wird weiter verworfen, Fotos (Modelltest, Gesichter)
+unverändert ohne Schriftbereich.
+
+### T2. Farben: gelber Rand um Schrift, Schrift in falscher Farbe – ✅ behoben (noch ohne Version)
+**Ort:** `src/renderer/processing.js`, `cleanTextColor`. Je Schriftblock gab es nur eine Schriftfarbe und eine
+Saumfarbe (Mittel des ganzen Blocks). Beim VfB-Wappen umfasst der Block die Zahlen „18“/„93“ (rot auf Weiß)
+und das gelbe Wappen samt schwarzer Hirschstangen: Die Zahlen wurden schwarz und bekamen einen gelben Rand.
+Jetzt Farbe je zusammenhängendem Teil und Saumfarbe aus dem direkt angrenzenden Grund – nur für
+Kantenpixel; das Innere von „8“/„9“ und der weiße Streifen zwischen schwarzer Kontur und roter Linie
+bleiben unverändert (beides war im ersten Versuch gelb bzw. rot geworden).
+
+### T3. PP-OCRv5 Server in hoher Auflösung: KI-Prozess stirbt – ✅ abgefangen (noch ohne Version)
+Der Speicherbedarf der Texterkennung war als fester Wert hinterlegt (250 MB). Gemessen: PP-OCRv5 Server
+1,5 GB bei 1280 px, 5,5 GB bei 2560 px („Mehrere Größen prüfen“). Jetzt wächst der Bedarf mit der
+Pixelzahl (`resources.js`, `TEXT_PEAK`), die Speicherprüfung greift vor dem Rechnen, und scheitert nur der
+zweite Durchlauf, bleibt das Ergebnis der normalen Auflösung.
+
 ## Geprüft, kein Problem
 
 - **Verarbeitungs-Worker:** Nach `Pipeline.cancel()` mit `worker = null` erzeugt `call()` ihn

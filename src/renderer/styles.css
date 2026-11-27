@@ -169,6 +169,15 @@ input:disabled { opacity: .5; }
 .check.disabled { opacity: .45; cursor: default; }
 .check.disabled input { opacity: 1; }
 
+details.advanced { margin: 8px 0 4px; border-top: 1px solid var(--border); padding-top: 6px; }
+details.advanced > summary {
+  cursor: pointer; user-select: none; color: var(--muted); font-size: 12px; padding: 2px 0; list-style: none;
+}
+details.advanced > summary::-webkit-details-marker { display: none; }
+details.advanced > summary::before { content: "▸ "; }
+details.advanced[open] > summary::before { content: "▾ "; }
+details.advanced > summary:hover { color: var(--text); }
+
 .row { display: flex; gap: 8px; align-items: center; }
 .row.two > * { flex: 1; }
 .row .grow { flex: 1; margin: 0; }

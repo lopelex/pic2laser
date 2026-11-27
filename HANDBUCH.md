@@ -254,7 +254,13 @@ Farben (je Kanal).
 ### Schrift & Logos (Fläche, Linien, Foto, Farben)
 
 - **Schrift erkennen und sauber darstellen** – Buchstaben scharf und gefüllt statt gerastert.
+- **Modell**: *Standard* (PP-OCRv4), *Genauer* (PP-OCRv5 mobil) oder *Beste Qualität* (PP-OCRv5 Server –
+  langsam, braucht viel Arbeitsspeicher). Die PP-OCRv5-Modelle werden beim ersten Gebrauch geladen.
 - **Erkennung** vor oder nach dem Freistellen, **Logos einbeziehen**, **Schriftstärke**.
+- **Erweitert** (aufklappen): **Empfindlichkeit** (höher = findet blassere Schrift, aber mehr Fehltreffer),
+  **Auflösung** (höher = kleinere Schrift, langsamer), **Mehrere Größen prüfen** (große und kleine Schrift
+  im selben Bild, dauert etwa 3–5-mal so lange), **Rahmen um die Schrift**, **Zeilen zusammenfassen**,
+  **Kleinste Schrifthöhe**, **Größte Zeilenhöhe** und **Gesichter ausschließen**.
 - Im Modus Farben wird jeder Schriftzug zu einer sauberen, einfarbigen Fläche; Glätten und Kleinstflächen lassen ihn unverändert.
 - Erkannte Bereiche werden im Original blau markiert.
 

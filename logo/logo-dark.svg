@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 400" width="1220" height="400">
+  <svg x="24" y="24" width="352" height="352" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2e38"/><stop offset="1" stop-color="#1a1d23"/>
+    </linearGradient>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3d8fd6"/><stop offset="1" stop-color="#a9dcff"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff5533" stop-opacity="0.35"/><stop offset="1" stop-color="#ff6a3d"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#fff3e8"/><stop offset="0.25" stop-color="#ffb08a"/>
+      <stop offset="0.6" stop-color="#ff5533" stop-opacity="0.45"/><stop offset="1" stop-color="#ff5533" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="raster" width="8" height="8" patternUnits="userSpaceOnUse">
+      <rect width="8" height="4.6" fill="#3b2516"/>
+    </pattern>
+    <clipPath id="card"><rect x="88" y="168" width="336" height="248" rx="22"/></clipPath>
+    <clipPath id="left"><rect x="0" y="0" width="256" height="512"/></clipPath>
+    <clipPath id="right"><rect x="256" y="0" width="256" height="512"/></clipPath>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4"/></filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="url(#bg)"/>
+
+  <g clip-path="url(#card)">
+    <!-- Foto (links) -->
+    <g clip-path="url(#left)">
+      <rect x="88" y="168" width="336" height="248" fill="url(#sky)"/>
+      <circle cx="176" cy="236" r="30" fill="#ffd23f"/>
+      <path d="M88 416 V330 L172 262 L236 318 L300 238 L424 352 V416 Z" fill="#4c9a5a"/>
+      <path d="M88 416 V372 L160 336 L250 380 L330 330 L424 392 V416 Z" fill="#2f6b3d"/>
+    </g>
+    <!-- Gravur (rechts) -->
+    <g clip-path="url(#right)">
+      <rect x="88" y="168" width="336" height="248" fill="#ecdcc0"/>
+      <circle cx="176" cy="236" r="30" fill="url(#raster)"/>
+      <path d="M88 416 V330 L172 262 L236 318 L300 238 L424 352 V416 Z" fill="url(#raster)"/>
+      <path d="M88 416 V372 L160 336 L250 380 L330 330 L424 392 V416 Z" fill="#3b2516"/>
+    </g>
+  </g>
+  <rect x="88" y="168" width="336" height="248" rx="22" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="6"/>
+
+  <!-- Laserlinie über das Bild -->
+  <rect x="250" y="168" width="12" height="248" fill="#ff5533" opacity="0.55" filter="url(#blur)"/>
+  <rect x="253.5" y="168" width="5" height="248" fill="#ff7a4f"/>
+  <rect x="255" y="168" width="2" height="248" fill="#fff1e6"/>
+
+  <!-- Laserkopf + Strahl -->
+  <path d="M214 56 H298 V92 L280 114 H232 L214 92 Z" fill="#e6e8ec"/>
+  <rect x="214" y="78" width="84" height="6" fill="#ff5533"/>
+  <path d="M246 114 H266 L259 168 H253 Z" fill="url(#beam)"/>
+  <circle cx="256" cy="168" r="38" fill="url(#glow)"/>
+  <circle cx="256" cy="168" r="7" fill="#ffffff"/>
+</svg>
+  <text x="410" y="258" font-family="Inter, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="168" font-weight="800" letter-spacing="-4" fill="#f2f3f5">Pic<tspan fill="#ff5533">2</tspan>Laser</text>
+</svg>

@@ -410,17 +410,29 @@ const AI = (() => {
   }
 
   /* ---------------------------------------------------------------- */
-  /* Texterkennung (PaddleOCR PP-OCRv4, DB-Detektor)                  */
+  /* Texterkennung (PaddleOCR PP-OCRv4/v5, DB-Detektor)               */
   /* ---------------------------------------------------------------- */
 
-  /**
-   * Findet Textbereiche und fasst benachbarte Zeilen zu Blöcken zusammen.
-   * Rückgabe: [{ x1, y1, x2, y2, lineH }] relativ (0..1), lineH = größte Zeilenhöhe im Block.
-   */
-  async function detectText(source, limit = 1280) {
-    const sc = Math.min(1, limit / Math.max(source.width, source.height)) || 1;
-    const w = roundTo(source.width * Math.max(sc, 32 / Math.min(source.width, source.height)), 32);
-    const h = roundTo(source.height * Math.max(sc, 32 / Math.min(source.width, source.height)), 32);
+  /** Voreinstellungen der Texterkennung (entsprechen dem Verhalten bis 1.21.0). */
+  const TEXT_DEFAULTS = {
+    model: 'text', // 'text' (PP-OCRv4), 'text_v5' (PP-OCRv5 mobil), 'text_v5_server'
+    limit: 1280, // längste Bildseite für das Modell (px)
+    thresh: 0.3, // Schwelle der Wahrscheinlichkeitskarte
+    boxScore: 0.55, // mittlere Sicherheit, die ein Bereich mindestens haben muss
+    unclip: 1.5, // Erweiterung des DB-Kerns (Rahmen um die Schrift)
+    merge: 0.6, // Abstand (× Zeilenhöhe), bis zu dem Zeilen zu einem Block zusammengefasst werden
+    minLine: 0, // kleinste Zeilenhöhe als Anteil der Bildhöhe (0 = nur Krümel unter 3 px verwerfen)
+    maxLine: 0.25, // größte Zeilenhöhe als Anteil der Bildhöhe (≥ 1 = keine Grenze)
+    faces: true, // Bereiche in erkannten Gesichtern verwerfen
+    multi: false, // zusätzlich in doppelter Auflösung suchen (kleine Schrift)
+  };
+
+  /** Ein Durchlauf des Detektors in einer Auflösung. Boxen in Pixeln des Quellbildes. */
+  async function detectTextPass(source, maxScale, o) {
+    const minSide = Math.min(source.width, source.height);
+    const sc = Math.max(maxScale, 32 / minSide);
+    const w = roundTo(source.width * sc, 32);
+    const h = roundTo(source.height * sc, 32);
     const rgba = pixels(source, w, h);
     // PaddleOCR erwartet BGR-Reihenfolge
     const n = w * h;
@@ -431,15 +443,16 @@ const AI = (() => {
       input[n + p] = (rgba[i + 1] / 255 - mean[1]) / std[1];
       input[2 * n + p] = (rgba[i] / 255 - mean[2]) / std[2];
     }
-    const out = await run('text', { x: { data: input, dims: [1, 3, h, w] } });
+    const out = await run(o.model, { x: { data: input, dims: [1, 3, h, w] } });
     const prob = out.data;
 
     // DB-Nachbearbeitung: zusammenhängende Bereiche über der Schwelle → Boxen
     const seen = new Uint8Array(n);
     const stack = new Int32Array(n);
     const boxes = [];
+    const minH = Math.max(3, o.minLine * h);
     for (let start = 0; start < n; start++) {
-      if (seen[start] || prob[start] < 0.3) continue;
+      if (seen[start] || prob[start] < o.thresh) continue;
       let sp = 0, x0 = w, y0 = h, x1 = 0, y1 = 0, count = 0, sum = 0;
       seen[start] = 1; stack[sp++] = start;
       while (sp) {
@@ -449,35 +462,67 @@ const AI = (() => {
         if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
         const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
         for (const k of nb) {
-          if (k >= 0 && !seen[k] && prob[k] >= 0.3) { seen[k] = 1; stack[sp++] = k; }
+          if (k >= 0 && !seen[k] && prob[k] >= o.thresh) { seen[k] = 1; stack[sp++] = k; }
         }
       }
       const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
-      if (count < 12 || bh < 3 || sum / count < 0.55) continue;
-      // „Unclip“: DB-Kerne sind schmaler als der Text → um A·1,5/U erweitern
-      const d = (bw * bh * 1.5) / (2 * (bw + bh));
-      // Riesige „Zeilen“ (über ein Viertel der Bildhöhe): Fehltreffer oder Schrift, die auch ohne
-      // Sonderbehandlung sauber bleibt – als Schriftbereich würde fast das ganze Bild hart gefüllt
-      if (bh + 2 * d > 0.25 * h) continue;
-      boxes.push({ x1: x0 - d, y1: y0 - d, x2: x1 + 1 + d, y2: y1 + 1 + d, lineH: bh + 2 * d });
+      if (count < 12 || bh < 3 || sum / count < o.boxScore) continue;
+      // „Unclip“: DB-Kerne sind schmaler als der Text → um A·r/U erweitern
+      const d = (bw * bh * o.unclip) / (2 * (bw + bh));
+      const lineH = bh + 2 * d;
+      if (lineH < minH) continue;
+      // Riesige „Zeilen“ (standardmäßig über ein Viertel der Bildhöhe): Fehltreffer oder Schrift, die auch
+      // ohne Sonderbehandlung sauber bleibt – als Schriftbereich würde fast das ganze Bild hart gefüllt.
+      // Ausnahme: lange, flache Zeilen (Kern mind. 3× so breit wie hoch) sind echte Schrift, z. B. der
+      // Schriftzug in einem Logo-Banner, der dort leicht über ein Viertel der Höhe einnimmt.
+      if (o.maxLine < 1 && lineH > o.maxLine * h && bw < 3 * bh) continue;
+      const fx = source.width / w, fy = source.height / h;
+      boxes.push({ x1: (x0 - d) * fx, y1: (y0 - d) * fy, x2: (x1 + 1 + d) * fx, y2: (y1 + 1 + d) * fy, lineH: lineH * fy });
+    }
+    return boxes;
+  }
+
+  /**
+   * Findet Textbereiche und fasst benachbarte Zeilen zu Blöcken zusammen.
+   * Rückgabe: [{ x1, y1, x2, y2, lineH }] relativ (0..1), lineH = größte Zeilenhöhe im Block.
+   */
+  async function detectText(source, opts = {}) {
+    const o = { ...TEXT_DEFAULTS, ...opts };
+    const longSide = Math.max(source.width, source.height);
+    const base = Math.min(1, o.limit / longSide) || 1;
+    let boxes = await detectTextPass(source, base, o);
+    if (o.multi) {
+      // Zweiter Durchlauf in doppelter Auflösung (höchstens 2560 px, Vergrößerung bis 2×) für kleine Schrift
+      const fine = Math.min(2, Math.min(2560, o.limit * 2) / longSide);
+      if (fine > base * 1.25) {
+        try {
+          boxes = boxes.concat(await detectTextPass(source, fine, o));
+        } catch (err) {
+          // Zu wenig Speicher für die doppelte Auflösung (v. a. PP-OCRv5 Server: ca. 5,5 GB bei 2560 px):
+          // Treffer der normalen Auflösung behalten statt die ganze Erkennung scheitern zu lassen
+          if (err?.cancelled || /cancelled$/.test(String(err?.message)) || !/LOW_MEMORY|bad_alloc|Arbeitsspeicher|KI-Prozess wurde beendet/.test(String(err?.message || err))) throw err;
+          console.warn('Texterkennung: zweiter Durchlauf (doppelte Auflösung) übersprungen –', err.message || err);
+        }
+      }
     }
 
     // Gesichter hält das Modell gern für Schrift (gemessen: Porträt → ein „Textblock“ über Augen und
     // Nase mit derselben Sicherheit wie echte Schrift). Im Ergebnis entstünde dort ein hart gefülltes
     // Rechteck. Bereiche, die überwiegend in einem erkannten Gesicht liegen, deshalb verwerfen.
+    const W = source.width, H = source.height;
     let kept = boxes;
-    if (boxes.length) {
+    if (boxes.length && o.faces) {
       const faces = await detectFaces(source).catch(() => []);
       if (faces.length) {
         kept = boxes.filter((b) => !faces.some((f) => {
-          const iw = Math.max(0, Math.min(b.x2 / w, f.x2) - Math.max(b.x1 / w, f.x1));
-          const ih = Math.max(0, Math.min(b.y2 / h, f.y2) - Math.max(b.y1 / h, f.y1));
-          return iw * ih > 0.5 * ((b.x2 - b.x1) / w) * ((b.y2 - b.y1) / h);
+          const iw = Math.max(0, Math.min(b.x2 / W, f.x2) - Math.max(b.x1 / W, f.x1));
+          const ih = Math.max(0, Math.min(b.y2 / H, f.y2) - Math.max(b.y1 / H, f.y1));
+          return iw * ih > 0.5 * ((b.x2 - b.x1) / W) * ((b.y2 - b.y1) / H);
         }));
       }
     }
 
-    // Benachbarte Zeilen/Wörter zu Blöcken zusammenfassen
+    // Benachbarte Zeilen/Wörter zu Blöcken zusammenfassen (auch die Treffer beider Auflösungen)
     let blocks = kept.map((b) => ({ ...b }));
     let merged = true;
     while (merged) {
@@ -485,7 +530,8 @@ const AI = (() => {
       outer: for (let a = 0; a < blocks.length; a++) {
         for (let b = a + 1; b < blocks.length; b++) {
           const A = blocks[a], B = blocks[b];
-          const g = Math.min(A.lineH, B.lineH) * 0.6;
+          const g = Math.min(A.lineH, B.lineH) * o.merge;
+          // „<“ statt „≤“: bei Abstand 0 werden nur echt überlappende Bereiche zusammengefasst
           if (A.x1 - g < B.x2 && B.x1 - g < A.x2 && A.y1 - g < B.y2 && B.y1 - g < A.y2) {
             blocks[a] = {
               x1: Math.min(A.x1, B.x1), y1: Math.min(A.y1, B.y1),
@@ -501,8 +547,8 @@ const AI = (() => {
     }
     const clamp = (v) => Math.max(0, Math.min(1, v));
     return blocks.map((b) => ({
-      x1: clamp(b.x1 / w), y1: clamp(b.y1 / h), x2: clamp(b.x2 / w), y2: clamp(b.y2 / h),
-      lineH: b.lineH / h,
+      x1: clamp(b.x1 / W), y1: clamp(b.y1 / H), x2: clamp(b.x2 / W), y2: clamp(b.y2 / H),
+      lineH: b.lineH / H,
     }));
   }
 
@@ -943,5 +989,5 @@ const AI = (() => {
     if (upscaleMaxInput) UPSCALE_MAX_INPUT = upscaleMaxInput;
   }
 
-  return { configure, run, pipelined, abort, beginRun, guard, get cacheHits() { return cacheHits; }, pixels, toNCHW, detectText, segment, samEmbedding, samMask, sam2Embedding, sam2Mask, lineArt, lineModel, lineFixedSize, depthMap, depthModel, upscale, detectFaces, enhanceFacesLineArt, faceRegion, faceParts, faceProtectZones };
+  return { configure, run, pipelined, abort, beginRun, guard, get cacheHits() { return cacheHits; }, pixels, toNCHW, detectText, TEXT_DEFAULTS, segment, samEmbedding, samMask, sam2Embedding, sam2Mask, lineArt, lineModel, lineFixedSize, depthMap, depthModel, upscale, detectFaces, enhanceFacesLineArt, faceRegion, faceParts, faceProtectZones };
 })();

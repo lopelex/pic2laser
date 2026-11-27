@@ -483,6 +483,15 @@
         <label class="check"><input type="checkbox" data-key="textClean" /> Schrift erkennen und sauber darstellen</label>
         <div data-show="textClean">
           <label class="field">
+            <span>Modell</span>
+            <select data-key="textModel">
+              <option value="text">Standard (PP-OCRv4, mitgeliefert)</option>
+              <option value="text_v5">Genauer (PP-OCRv5 mobil, 5 MB)</option>
+              <option value="text_v5_server">Beste Qualität (PP-OCRv5 Server, 88 MB)</option>
+            </select>
+          </label>
+          <p class="hint" data-if="textModel:text_v5_server">Deutlich langsamer (etwa 7-mal) und braucht ca. 1,4 GB Arbeitsspeicher.</p>
+          <label class="field">
             <span>Erkennung</span>
             <select data-key="textOrder">
               <option value="before">Vor dem Freistellen (ganzes Bild)</option>
@@ -497,7 +506,46 @@
             <span>Schriftstärke <output data-for="textBold"></output></span>
             <input type="range" data-key="textBold" min="-40" max="40" step="1" />
           </label>
-          <p class="hint info">Erkennt Schriftzüge per KI und stellt sie scharf und gefüllt dar statt gerastert oder nachgezeichnet. „Logos einbeziehen“ übernimmt Grafikelemente, die direkt an die Schrift grenzen (z.&nbsp;B. ein Logo-Symbol). „Nach dem Freistellen“ sucht Schrift nur im freigestellten Motiv und ignoriert Schrift im Hintergrund.</p>
+          <details class="advanced">
+            <summary>Erweitert</summary>
+            <label class="slider" title="Höher = findet auch blasse oder kleine Schrift, aber mehr Fehltreffer. Niedriger = nur deutliche Schrift.">
+              <span>Empfindlichkeit <output data-for="textSens"></output></span>
+              <input type="range" data-key="textSens" min="0" max="100" step="5" />
+            </label>
+            <label class="field" title="Längste Bildseite, auf der gesucht wird. Höher findet kleinere Schrift, dauert aber länger.">
+              <span>Auflösung</span>
+              <select data-key="textRes">
+                <option value="640">640 px (schnell, große Schrift)</option>
+                <option value="960">960 px</option>
+                <option value="1280">1280 px (Standard)</option>
+                <option value="1920">1920 px</option>
+                <option value="2560">2560 px (kleine Schrift, langsam)</option>
+              </select>
+            </label>
+            <label class="check" title="Sucht zusätzlich in doppelter Auflösung und führt die Treffer zusammen. Findet große und kleine Schrift im selben Bild, dauert etwa 5-mal so lange.">
+              <input type="checkbox" data-key="textMulti" /> Mehrere Größen prüfen
+            </label>
+            <label class="slider" title="Wie großzügig der Bereich um die erkannten Buchstaben gezogen wird.">
+              <span>Rahmen um die Schrift <output data-for="textUnclip"></output></span>
+              <input type="range" data-key="textUnclip" min="1" max="3" step="0.1" />
+            </label>
+            <label class="slider" title="Bis zu welchem Abstand nahe Wörter und Zeilen zu einem Block zusammengefasst werden.">
+              <span>Zeilen zusammenfassen <output data-for="textMerge"></output></span>
+              <input type="range" data-key="textMerge" min="0" max="2" step="0.1" />
+            </label>
+            <label class="slider" title="Kleinere Bereiche werden nicht als Schrift behandelt (gegen Krümel und Muster).">
+              <span>Kleinste Schrifthöhe <output data-for="textMinPct"></output></span>
+              <input type="range" data-key="textMinPct" min="0" max="5" step="0.25" />
+            </label>
+            <label class="slider" title="Höhere Zeilen gelten als Fehltreffer. Lange, flache Schriftzüge (z. B. in einem Logo-Banner) werden immer erkannt.">
+              <span>Größte Zeilenhöhe <output data-for="textMaxPct"></output></span>
+              <input type="range" data-key="textMaxPct" min="10" max="100" step="5" />
+            </label>
+            <label class="check" title="Das Modell hält Augen und Nase manchmal für Schrift. Abschalten, wenn Schrift nah an einem Gesicht verloren geht.">
+              <input type="checkbox" data-key="textFaces" /> Gesichter ausschließen
+            </label>
+          </details>
+          <p class="hint info">Erkennt Schriftzüge per KI und stellt sie scharf und gefüllt dar statt gerastert oder nachgezeichnet. „Logos einbeziehen“ übernimmt Grafikelemente, die direkt an die Schrift grenzen (z.&nbsp;B. ein Logo-Symbol). „Nach dem Freistellen“ sucht Schrift nur im freigestellten Motiv und ignoriert Schrift im Hintergrund. Die Modelle PP-OCRv5 erkennen genauer und werden beim ersten Gebrauch geladen. Unter „Erweitert“ lässt sich die Erkennung feiner einstellen.</p>
           <p class="hint status" id="text-info"></p>
         </div>
       </section>
