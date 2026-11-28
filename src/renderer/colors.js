@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * Modus „Farben“: zerlegt ein Bild in wenige Farbflächen (z. B. für Stickerei oder Laser mit
  * mehreren Ebenen). Ablauf:
@@ -14,7 +12,7 @@
  *  6. Ebenen nach Fläche sortiert (größte unten)
  * Läuft im Pipeline-Worker; ohne DOM-Abhängigkeiten.
  */
-const Colors = (() => {
+export const Colors = (() => {
   const EMPTY = 255; // Label: transparent / freigestellt / weggelassen
   const BITS = 6; // Auflösung des Histogramms je Kanal
   const SHIFT = 8 - BITS;
@@ -631,4 +629,3 @@ const Colors = (() => {
   return { separate, layerMasks, colorName, toHex, fromHex, labOf, EMPTY, palettes: PALETTES };
 })();
 
-if (typeof module !== 'undefined') module.exports = Colors;

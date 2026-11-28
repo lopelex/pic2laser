@@ -1,12 +1,13 @@
-'use strict';
-
-/* global Processing, Encoders, Segmentation, Sine, Colors */
-
 /**
  * Web Worker für die rechenintensive Bildverarbeitung, damit die Oberfläche
  * während der Berechnung bedienbar bleibt.
  */
-importScripts('processing.js', 'encoders.js', 'segmentation.js', 'wasm/sine-wasm.js', 'sine.js', 'colors.js');
+
+import { Colors } from './colors.js';
+import { Encoders } from './encoders.js';
+import { Processing } from './processing.js';
+import { Segmentation } from './segmentation.js';
+import { Sine } from './sine.js';
 
 const handlers = {
   /**

@@ -1,10 +1,8 @@
-'use strict';
-
 /**
  * Ausgabe-Encoder. Alle Rasterformate erhalten die DPI-Angabe,
  * damit LightBurn die Bilder direkt in der richtigen Größe importiert.
  */
-const Encoders = (() => {
+export const Encoders = (() => {
   const CRC_TABLE = (() => {
     const t = new Uint32Array(256);
     for (let n = 0; n < 256; n++) {

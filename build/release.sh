@@ -10,6 +10,7 @@ V=$(node -p "require('./package.json').version")
 
 # Stickdateien (PES/DST/EXP) prüfen – keine Release mit fehlerhafter Ausgabe
 npm test --silent || { echo "Abbruch: npm test schlägt fehl" >&2; exit 1; }
+npm run lint --silent || { echo "Abbruch: npm run lint meldet Fehler" >&2; exit 1; }
 TAG="v$V"
 
 FILES=(

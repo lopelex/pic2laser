@@ -1,9 +1,7 @@
-'use strict';
-
 /**
  * Bildverarbeitung: Bitmap -> Graustufen -> Anpassungen -> Binärbild (1 = schwarz/gravieren).
  */
-const Processing = (() => {
+export const Processing = (() => {
   const MAX_PIXELS = 36e6; // Schutz gegen zu große Arbeitsbilder
 
   /** Zielgröße des Arbeitsbildes in Pixeln. */

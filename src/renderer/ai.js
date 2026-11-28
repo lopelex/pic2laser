@@ -1,10 +1,11 @@
-'use strict';
-
 /**
  * KI-Funktionen: Vor- und Nachverarbeitung für die ONNX-Modelle.
  * Die eigentliche Inferenz läuft im Main-Prozess (window.api.models.run).
  */
-const AI = (() => {
+
+import { Processing } from './processing.js';
+
+export const AI = (() => {
   const IMAGENET = { mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225] };
 
   /** Zeichnet die Quelle auf Weiß und liefert RGBA-Pixel. */

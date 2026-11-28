@@ -58,7 +58,7 @@ Alle KI-Funktionen laufen lokal und offline.
 - **Dithering / Relief:** Verfahren, Auflösung in DPI, Tiefen-Detail. Relief: **Tiefenmodell** *Standard*
   (Depth Anything V2 Small, Apache-2.0), *Fein* (Base, ca. 2–3× langsamer) oder *Sehr fein* (Large, ca. 7–9×
   langsamer, 2–3,6 GB RAM); Base und Large stehen unter CC BY-NC 4.0 (nicht kommerziell). Reicht der Speicher
-  nicht, wird automatisch das nächstkleinere Modell genommen (`DEPTH_FALLBACK` in app.js). „Weißen Hintergrund transparent“ –
+  nicht, wird automatisch das nächstkleinere Modell genommen (`DEPTH_FALLBACK` in app/ai-steps.js). „Weißen Hintergrund transparent“ –
   mit Freistellen gilt die Maske, sonst wird reines Weiß am Bildrand transparent (nur PNG/SVG, JPG/BMP bleiben weiß).
 - **Wellen:** Richtung (waagrecht/senkrecht), Linienabstand in mm, Wellenhöhe (in % des Abstands,
   100 % = Nachbarwellen berühren sich), Wellendichte dunkel und hell (Wellen je mm; hell 0 = gerade Linie),
@@ -516,7 +516,7 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
 - „Motiv – beste Qualität“ (BiRefNet, ca. 6,7 GB) weicht nur dann auf „Motiv – gut & sparsam“
   (BEN2, ca. 3 GB) aus, wenn trotz aller Freigaben nicht genug Speicher frei wird; reicht auch
   das nicht, auf „Motiv – präzise“ (IS-Net, ca. 0,75 GB). Ein Hinweis nennt das tatsächlich verwendete
-  Modell. Die Kette steht in `SEG_FALLBACK` (src/renderer/app.js).
+  Modell. Die Kette steht in `SEG_FALLBACK` (src/renderer/app/ai-steps.js).
 
 ## KI-Modelle
 
@@ -550,6 +550,8 @@ npm install
 npm start                      # App starten (Electron)
 PIC2LASER_SIMULATE_RAM_MB=8192 npm start   # kleineren Rechner simulieren
 PIC2LASER_GPU_EP=webgpu npm start          # anderen GPU-Beschleuniger erzwingen (Test, z. B. unter Linux)
+npm test                       # Tests (Stickdateien)
+npm run lint                   # ESLint: fehlende Imports, Fehlerquellen
 npm run dist:win | dist:mac | dist         # Installer bauen → dist/
 ```
 
@@ -572,8 +574,8 @@ Main-Prozess (src/main/main.js)
  ├─ resources.js                      RAM/CPU → Leistungsstufe und Grenzen
  ├─ updater.js                        Update-Prüfung (GitHub-Releases), Download, Installation je System
  └─ preload.js                        window.api (contextIsolation + sandbox)
-Renderer (src/renderer/index.html, klassische <script>-Tags, globale Module)
- ├─ app.js            Oberfläche, Zustand, Ablauf eines Durchlaufs, Export, Historie
+Renderer (src/renderer/index.html lädt nur app/main.js als ES-Modul, alles Weitere per import)
+ ├─ app/              Oberfläche, aufgeteilt nach Aufgaben (siehe unten)
  ├─ processing.js     Bildverarbeitung (Anpassungen, Schwellwert, Dithering, Kanten, Umriss)
  ├─ segmentation.js   Masken, Freistellen nach Farbe, Himmel entfernen, Klickpunkte
  ├─ colors.js         Modus Farben: Farbreduktion, Garnpalette, Aufräumen, Ebenenmasken (nur im Worker)
@@ -581,15 +583,46 @@ Renderer (src/renderer/index.html, klassische <script>-Tags, globale Module)
  ├─ restore.js        Altes Foto restaurieren
  ├─ encoders.js       SVG/PNG/JPG/BMP mit mm/DPI
  ├─ embroidery.js     Stickdateien: SVG-Pfade → Füllstich/Steppstich, PES-, DST- und EXP-Ausgabe, Stichvorschau
- └─ pipeline-worker.js  Web Worker: führt processing/encoders/segmentation im Hintergrund aus
+ ├─ pipeline-worker.js  Web Worker: führt processing/encoders/segmentation/colors/sine im Hintergrund aus
+ └─ stitch-worker.js    Web Worker: Stichplanung (Embroidery.plan), damit große Motive die Oberfläche nicht blockieren
 ```
 
-Die Renderer-Module sind IIFEs, die ein globales Objekt anlegen (`Processing`, `AI`,
-`Segmentation`, `Restore`, `Encoders`). `processing.js`, `encoders.js` und `segmentation.js`
-werden sowohl im Fenster als auch im Web Worker geladen (`importScripts`) – dort also kein DOM
-verwenden, nur `OffscreenCanvas`. Die Content-Security-Policy erlaubt nur lokale Skripte.
+Alle Renderer-Dateien sind **ES-Module** (`src/renderer/package.json`: `"type": "module"`). Die
+Bibliotheken exportieren je ein Objekt (`Processing`, `AI`, `Segmentation`, `Restore`, `Encoders`,
+`Embroidery`, `Colors`, `Sine`, `Tour`, `Manual`); Abhängigkeiten stehen als `import` am Dateianfang,
+globale Namen gibt es nicht mehr. Die Worker laufen als Modul-Worker (`new Worker(url, { type: 'module' })`).
+`processing.js`, `encoders.js`, `segmentation.js` und `embroidery.js` laufen auch im Worker – dort also
+kein DOM verwenden, nur `OffscreenCanvas`. Die Tests laden `embroidery.js` per `require()` direkt in Node (braucht Node ≥ 22.12, siehe `engines`).
+Die Content-Security-Policy erlaubt nur lokale Skripte.
 
-## Ablauf eines Durchlaufs (`runProcess` in app.js)
+Die Oberfläche in `src/renderer/app/`:
+
+| Modul | Aufgabe |
+|---|---|
+| `main.js` | Einstieg: bindet alle Teile an und startet die App |
+| `state.js` | `DEFAULTS`, Einstellungen laden/speichern, `ui`-Vorlieben, zentraler `state` |
+| `dom.js` | `$`/`$$`, Dialoge, Busy-Anzeige, `toast` |
+| `settings.js` | Regler (`bindControls`, `setSetting`, `syncControls`), `FORMATTERS`, App-Menü |
+| `stages.js` | einklappbare Bereiche der Seitenleiste |
+| `presets.js`, `presets-builtin.js` | Presets anwenden/speichern; mitgelieferte Presets (`BUILTIN_PRESETS`) |
+| `image-load.js` | Bild laden (Datei, Einfügen, Drag & Drop, SVG-Vorlagen) |
+| `pipeline.js` | Worker-Spuren (`Pipeline`), Entprellen und Gültigkeit der Durchläufe |
+| `process.js` | `planSteps`, `runProcess`, Vektorisieren und Rastern der Ergebnisse |
+| `ai-steps.js` | KI-Schritte: Freistellen, Text, Gesichter, Tiefe, Restaurieren, Vergrößern |
+| `keys.js` | Cache-Schlüssel (`KEYS`) und Zwischenspeicher der KI-Ergebnisse |
+| `progress.js`, `system.js` | Fortschritt/Restzeit (`Run`, `Timing`); Systemprofil und Grenzen |
+| `emb.js`, `emb-dialog.js` | Stickdateien (Stiche planen im Worker: `planStitches`); Dialog je Farbe |
+| `export.js`, `drag.js` | Export, LightBurn; Ergebnis/Original herausziehen |
+| `history.js`, `merge.js`, `color-list.js` | Historie; Vereinigen; Farbliste im Modus Farben |
+| `view.js`, `sliders.js` | Zoom, Vergleich, Klickpunkte; −/+-Knöpfe an den Reglern |
+| `models-ui.js`, `camera.js`, `updates.js` | KI-Modelle und Leistung; Webcam; Updates |
+
+Zustand, der von mehreren Modulen geändert wird, liegt in Objekten (`state`, `ui`, `embDlg`, `Run`).
+Ein exportiertes `let` kann ein anderes Modul nur lesen; zum Ändern exportiert das besitzende Modul eine
+Funktion (z. B. `invalidateDrag()`, `setHistoryShown()`). ESLint (`npm run lint`) meldet Verstöße
+(`no-import-assign`) und fehlende Imports (`no-undef`).
+
+## Ablauf eines Durchlaufs (`runProcess` in app/process.js)
 
 Jede Einstellungsänderung ruft `setSetting` → `scheduleProcess` (120 ms entprellt) → `runProcess`.
 
@@ -619,7 +652,7 @@ laufende KI-Jobs (nur wenn der Prozess rechnet) und Downloads ab.
 
 ## Zustand und Einstellungen
 
-- `DEFAULTS` (Anfang von app.js) enthält alle Einstellungen mit Standardwerten. Sie werden in
+- `DEFAULTS` (app/state.js) enthält alle Einstellungen mit Standardwerten. Sie werden in
   `localStorage` (`pic2laser.settings`) gespeichert, UI-Zustand unter `pic2laser.ui`, ob die
   Einführungstour schon lief unter `pic2laser.tourSeen` (`tour.js`).
 - Bedienelemente in `index.html` mit `data-key="<einstellung>"` werden von `bindControls`
@@ -644,12 +677,12 @@ laufende KI-Jobs (nur wenn der Prozess rechnet) und Downloads ab.
 ## Typische Erweiterungen
 
 **Neue Einstellung**
-1. Standardwert in `DEFAULTS` (app.js).
+1. Standardwert in `DEFAULTS` (app/state.js).
 2. Bedienelement mit `data-key` in `index.html`, ggf. Formatierung in `FORMATTERS`.
 3. Auswerten in `processing.js` (Worker) oder im passenden Schritt von `runProcess`.
 4. Ändert sie ein KI-Ergebnis, muss sie in den Cache-Schlüssel (`KEYS`) und in `planSteps`.
 
-**Neues Preset:** Eintrag in `BUILTIN_PRESETS` (app.js) mit `group`, `name`, `desc` und
+**Neues Preset:** Eintrag in `BUILTIN_PRESETS` (app/presets-builtin.js) mit `group`, `name`, `desc` und
 `settings` (nur die vom Standard abweichenden Werte).
 
 **Neues KI-Modell**

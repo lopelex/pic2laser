@@ -1,5 +1,3 @@
-'use strict';
-
 /*
  * Einführungstour: erklärt Funktionen und Arbeitsablauf Schritt für Schritt und hebt dabei das
  * jeweilige Bedienelement hervor. Läuft automatisch beim ersten Start (danach nie wieder) und lässt
@@ -8,7 +6,7 @@
  * Alle Illustrationen und das Beispielbild sind hier im Code selbst gezeichnet (SVG) – keine fremden
  * Bilder, keine Lizenzfragen. Sie stehen wie der übrige Code unter der Lizenz des Projekts.
  */
-const Tour = (() => {
+export const Tour = (() => {
   const SEEN_KEY = 'pic2laser.tourSeen';
 
   // Farben der App (styles.css) – SVG-Attribute können keine CSS-Variablen auswerten
@@ -509,7 +507,7 @@ const Tour = (() => {
       art: ART.embroidery,
       target: () => {
         const group = $('#emb-group');
-        window.revealInStage?.(group, true); // liegt im Bereich „Ausgabe“ – ggf. erst aufklappen
+        stages.reveal(group, true); // liegt im Bereich „Ausgabe“ – ggf. erst aufklappen
         if (visible(group)) return group;
         return ['fmtPes', 'fmtDst', 'fmtExp'].map((k) => $(`[data-key="${k}"]`)?.closest('label'));
       },
@@ -579,6 +577,7 @@ const Tour = (() => {
   let dlg = null;
   let index = 0;
   let onDemo = null;
+  const stages = { reveal: () => {}, restore: () => {} }; // Bereiche auf-/zuklappen (aus init)
   let raf = 0;
 
   function build() {
@@ -623,7 +622,7 @@ const Tour = (() => {
     if (!step.target) return [];
     const els = [].concat(step.target()).filter(Boolean);
     // Ziele in eingeklappten Bereichen der Seitenleiste (Vorbereitung, Schrift & Konturen, Ausgabe …) aufklappen
-    for (const el of els) window.revealInStage?.(el, true);
+    for (const el of els) stages.reveal(el, true);
     return els.filter(visible);
   }
 
@@ -761,7 +760,7 @@ const Tour = (() => {
   function end() {
     stopScroll();
     markSeen();
-    window.restoreRevealedStages?.(); // von der Tour aufgeklappte Bereiche wieder zuklappen
+    stages.restore(); // von der Tour aufgeklappte Bereiche wieder zuklappen
     if (dlg?.open) dlg.close();
   }
 
@@ -774,12 +773,15 @@ const Tour = (() => {
   }
 
   /**
-   * Beim Programmstart aufrufen. loadDemo(bytes) lädt das Beispielbild.
+   * Beim Programmstart aufrufen. loadDemo(bytes) lädt das Beispielbild; revealInStage(el, temporary) klappt
+   * den Bereich eines Elements auf, restoreRevealedStages() klappt die vorübergehend geöffneten wieder zu.
    * Die Tour startet nur, wenn sie noch nie gezeigt wurde, und gilt ab dem Anzeigen als gesehen –
    * auch wenn das Programm mittendrin beendet wird, erscheint sie beim nächsten Start nicht wieder.
    */
-  function init({ loadDemo } = {}) {
+  function init({ loadDemo, revealInStage, restoreRevealedStages } = {}) {
     onDemo = loadDemo;
+    if (revealInStage) stages.reveal = revealInStage;
+    if (restoreRevealedStages) stages.restore = restoreRevealedStages;
     if (seen()) return;
     // kurz warten, bis das Layout steht; nicht über einen bereits offenen Dialog legen
     setTimeout(() => {
