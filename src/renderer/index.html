@@ -7,7 +7,7 @@
   <title>Pic2Laser</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="history-hidden">
   <header class="topbar">
     <div class="brand">
       <button class="brand-sub version-btn" id="appVersion" title="Nach Updates suchen"></button>
@@ -22,29 +22,48 @@
       <button id="btn-lightburn" aria-label="An LightBurn" class="btn" disabled title="Ergebnis ins offene LightBurn-Projekt einfügen (Strg/Cmd+L). LightBurn muss geöffnet sein."><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v6"/><path d="M9 9h6l-1 4h-4z"/><path d="M12 13v3"/><path d="M5 20h14"/><path d="M8 17.5l-2 1M16 17.5l2 1"/></svg><span class="btn-label">An LightBurn</span></button>
       <button id="btn-export" aria-label="Exportieren" class="btn btn-primary" disabled title="Alle gewählten Formate speichern (Strg/Cmd+E)"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg><span class="btn-label">Exportieren</span></button>
       <button id="btn-toggle-history" aria-label="Historie" class="btn btn-ghost" title="Historie ein-/ausblenden"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span class="btn-label">Historie</span></button>
+      <button id="btn-app-menu" class="btn btn-ghost btn-icon-only" title="Einstellungen: KI-Modelle und Leistung" aria-label="Einstellungen" aria-haspopup="menu" aria-expanded="false"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
       <button id="btn-help" class="btn btn-ghost btn-help" title="Hilfe: Handbuch mit allen Funktionen, Dialogen und Tastenkürzeln (F1) – dort auch die Einführungstour" aria-label="Hilfe öffnen">?</button>
     </div>
   </header>
+
+  <!-- Zahnrad-Menü: selten genutzte App-Einstellungen -->
+  <div class="app-menu" id="app-menu" role="menu" hidden>
+    <button class="menu-item" id="btn-models" role="menuitem" title="KI-Modelle anzeigen, laden und entfernen">
+      <span class="menu-title">KI-Modelle…</span>
+      <span class="menu-sub" id="models-summary"></span>
+      <span class="menu-sub" id="system-info" hidden></span>
+    </button>
+    <button class="menu-item" id="btn-perf" role="menuitem" title="GPU-Beschleunigung und KI-Cache einstellen">
+      <span class="menu-title">Leistung…</span>
+      <span class="menu-sub" id="perf-summary"></span>
+    </button>
+  </div>
 
   <main class="layout">
     <!-- Einstellungen -->
     <aside class="panel settings" id="settings">
       <section class="group presets-group">
         <div class="presets-head">
-          <h3>Presets</h3>
-          <button class="btn btn-small btn-ghost" id="btn-reset" title="Alle Einstellungen auf die Standardwerte zurücksetzen (Exportformate bleiben erhalten)">Einstellungen zurücksetzen</button>
-        </div>
-        <div class="segmented small preset-tab" id="preset-tab" aria-label="Presets für">
-          <button data-value="laser" title="Vorlagen für die Lasergravur (SVG, PNG …)">Lasern</button>
-          <button data-value="emb" title="Vorlagen für Stickdateien (PES) – nach Stoff, Stil und Farbanzahl">Sticken</button>
+          <h3 class="sr-only">Presets</h3>
+          <div class="segmented small preset-tab" id="preset-tab" aria-label="Presets für">
+            <button data-value="laser" title="Vorlagen für die Lasergravur (SVG, PNG …)">Lasern</button>
+            <button data-value="emb" title="Vorlagen für Stickdateien (PES) – nach Stoff, Stil und Farbanzahl">Sticken</button>
+          </div>
+          <div class="preset-tools" id="preset-actions">
+            <button type="button" class="tool-btn" id="btn-preset-new" title="Aktuelle Einstellungen als eigenes Preset speichern" aria-label="Preset speichern"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><path d="M8 3v5h7V3"/><path d="M8 21v-6h8v6"/></svg></button>
+            <button type="button" class="tool-btn" id="btn-preset-delete" title="Eigenes Preset löschen (nur bei eigenen Presets)" aria-label="Preset löschen" disabled><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>
+            <button type="button" class="tool-btn" id="btn-reset" title="Alle Einstellungen auf die Standardwerte zurücksetzen (Exportformate bleiben erhalten)" aria-label="Einstellungen zurücksetzen"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v5h5"/></svg></button>
+            <button type="button" class="tool-btn stages-all" id="btn-stages-all" title="Alle Bereiche aufklappen" aria-label="Alle Bereiche aufklappen"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="sa-open" d="M7 9l5-5 5 5M7 15l5 5 5-5"/><path class="sa-close" d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg></button>
+          </div>
         </div>
         <div class="row">
           <select id="preset-select" title="Preset anwenden"></select>
-          <button class="btn btn-small" id="btn-preset-delete" title="Eigenes Preset löschen" disabled>Löschen</button>
         </div>
-        <div class="row preset-save">
-          <input type="text" id="preset-name" placeholder="Aktuelle Einstellungen speichern als…" maxlength="60" />
+        <div class="row preset-save" id="preset-save" hidden>
+          <input type="text" id="preset-name" placeholder="Name des Presets…" maxlength="60" />
           <button class="btn btn-small" id="btn-preset-save" disabled>Speichern</button>
+          <button class="btn btn-small btn-ghost btn-icon-only" id="btn-preset-cancel" title="Abbrechen (Esc)" aria-label="Abbrechen">✕</button>
         </div>
         <p class="hint" id="preset-hint"></p>
       </section>
@@ -85,159 +104,220 @@
         <p class="hint info" id="mode-hint"></p>
       </section>
 
-      <section class="group">
-        <h3>Freistellen</h3>
-        <label class="field">
-          <span>Methode</span>
-          <select data-key="bgRemove">
-            <option value="none">Aus</option>
-            <optgroup label="Motiv automatisch freistellen (KI)">
-              <option value="ai" title="Mitgeliefert, rechnet in etwa einer Sekunde. Für einfache Motive vor ruhigem Hintergrund.">Motiv – schnell (U²-Net)</option>
-              <option value="isnet">Motiv – präzise (IS-Net) ⤓</option>
-              <option value="ben2" title="Bei sauberen Fotos fast so gut wie BiRefNet, braucht aber nur ca. 3 statt 6,7 GB Arbeitsspeicher und rechnet etwa doppelt so schnell. Schwächer bei alten, verrauschten oder kontrastarmen Fotos.">Motiv – gut &amp; sparsam (BEN2) ⤓</option>
-              <option value="birefnet">Motiv – beste Qualität (BiRefNet) ⤓</option>
-              <option value="modnet">Motiv – Porträt &amp; Haare (MODNet) ⤓</option>
-            </optgroup>
-            <optgroup label="Objekt anklicken (KI)">
-              <option value="sam">Objekt anklicken – schnell (MobileSAM)</option>
-              <option value="sam2" title="Genauere Objektgrenzen als MobileSAM (z. B. bei Haaren, feinen Teilen und ähnlichen Farben von Motiv und Hintergrund). Einmaliger Download ca. 180 MB, braucht ca. 0,9 GB Arbeitsspeicher; das erste Erkennen je Bild dauert einige Sekunden.">Objekt anklicken – genau (SAM 2.1) ⤓</option>
-            </optgroup>
-            <optgroup label="Himmel entfernen">
-              <option value="sky" title="Entfernt den Himmel (blau, Wolken, Dunst) vom oberen Bildrand aus – Landschaft, Fahrzeuge und Gebäude bleiben vollständig erhalten. Ohne KI, sofort.">Himmel entfernen – schnell (ohne KI)</option>
-              <option value="skyai" title="Wie „Himmel entfernen – schnell“, zusätzlich schützt KI (BEN2) das Hauptmotiv: Helle, weiße oder bläuliche Teile von Fahrzeugen, Gebäuden oder Personen werden nie als Himmel entfernt. Einmaliger Download ca. 131 MB, braucht ca. 3 GB Arbeitsspeicher.">Himmel entfernen – Motiv geschützt (BEN2) ⤓</option>
-            </optgroup>
-            <optgroup label="Weitere">
-              <option value="color">Nach Farbe (ohne KI)</option>
-            </optgroup>
-          </select>
-        </label>
-        <label class="check" data-bg="ai isnet birefnet ben2 modnet sam sam2 color sky skyai"><input type="checkbox" id="bg-hide" /> Entfernten Hintergrund ausblenden (statt rot schraffieren)</label>
-        <div data-bg="sam sam2">
-          <p class="hint info"><b>Linksklick</b> ins Original markiert das Motiv, <b>Rechtsklick</b> (oder Alt+Klick) schließt Bereiche aus. Klick auf einen Punkt entfernt ihn wieder.</p>
-          <button class="btn btn-small" id="btn-clear-sam">Punkte zurücksetzen</button>
+      <!-- Reihenfolge wie die Verarbeitung: erst das Bild vorbereiten (Restaurieren, Vergrößern, Freistellen,
+           Bildanpassung, Gesichter), dann der Modus, Vektorisierung und Formen, zuletzt Schrift & Konturen und Ausgabe -->
+      <div class="stage" id="stage-prep" data-stage="prep">
+        <div class="stage-bar">
+          <button type="button" class="stage-head" aria-expanded="true" aria-controls="stage-prep-body">
+            <span class="stage-chev" aria-hidden="true"></span>
+            <span class="stage-title">Vorbereitung</span>
+            <span class="stage-dot" hidden title="Hier ist etwas eingeschaltet oder verändert"></span>
+            <span class="stage-sum"></span>
+          </button>
         </div>
-        <div data-bg="ai isnet birefnet ben2 modnet sam sam2">
-          <label class="slider">
-            <span>Maskenschwelle <output data-for="maskThreshold"></output></span>
-            <input type="range" data-key="maskThreshold" min="0.05" max="0.95" step="0.01" />
-          </label>
-          <p class="hint info">Höher = engere Maske, niedriger = mehr vom Motiv bleibt erhalten. ⤓ = Modell wird beim ersten Gebrauch geladen.</p>
-        </div>
-        <div data-bg="color sky skyai">
-          <label class="slider">
-            <span>Farbtoleranz <output data-for="bgTolerance"></output></span>
-            <input type="range" data-key="bgTolerance" min="1" max="100" step="1" />
-          </label>
-          <label class="check" data-bg="color"><input type="checkbox" data-key="bgBorder" /> Hintergrund vom Bildrand aus entfernen</label>
-          <p class="hint info" data-bg="color">Klicke ins <b>Original</b>, um weitere Hintergrundbereiche zu entfernen. Klick auf einen Punkt entfernt ihn wieder.</p>
-          <p class="hint info" data-bg="sky skyai">Der Himmel wird vom oberen Bildrand aus entfernt und folgt dem Farbverlauf bis zum Horizont. Bleibt Himmel stehen (z. B. zwischen Ästen oder hinter Scheiben), dort ins <b>Original</b> klicken oder die Toleranz erhöhen; verschwindet zu viel, die Toleranz senken.</p>
-          <button class="btn btn-small" id="btn-clear-seeds">Klickpunkte zurücksetzen</button>
-        </div>
-        <div data-bg="ai isnet birefnet ben2 modnet sam sam2 color sky skyai">
-          <h4>Maske verfeinern</h4>
-          <label class="slider" title="Verschiebt die Schnittkante: Plus lässt einen Rand um das Motiv stehen, Minus schneidet Reste des Hintergrunds (z. B. Lichtsäume) weg.">
-            <span>Kante verschieben <output data-for="maskShiftMm"></output></span>
-            <input type="range" data-key="maskShiftMm" min="-3" max="3" step="0.1" />
-          </label>
-          <label class="slider" title="Rundet Zacken, Treppenstufen und kleine Ausbuchtungen der Kante ab – ergibt ruhigere Umrisse beim Vektorisieren und Gravieren. Sehr feine Details (Haare, Finger) können dabei verschwinden.">
-            <span>Kante glätten <output data-for="maskSmoothMm"></output></span>
-            <input type="range" data-key="maskSmoothMm" min="0" max="3" step="0.1" />
-          </label>
-          <label class="slider" title="Entfernt lose Flecken, die fälschlich zum Motiv gezählt wurden und kleiner als dieser Anteil der Bildfläche sind.">
-            <span>Flecken entfernen <output data-for="maskSpeckPct"></output></span>
-            <input type="range" data-key="maskSpeckPct" min="0" max="5" step="0.1" />
-          </label>
-          <label class="slider" title="Füllt Lücken im Motiv (z. B. ausgestanzte helle Stellen), die kleiner als dieser Anteil der Bildfläche sind. Hintergrund, der den Bildrand berührt, bleibt immer entfernt.">
-            <span>Löcher füllen <output data-for="maskHolePct"></output></span>
-            <input type="range" data-key="maskHolePct" min="0" max="5" step="0.1" />
-          </label>
-          <label class="check" title="Behält nur das größte zusammenhängende Motiv – alles andere wird entfernt."><input type="checkbox" data-key="maskLargest" /> Nur das größte Motiv behalten</label>
-          <p class="hint info">Größen in mm beziehen sich auf die Ausgabegröße, Flecken und Löcher auf die Bildfläche.</p>
-        </div>
-      </section>
+        <div class="stage-body" id="stage-prep-body">
 
-      <section class="group">
-        <h3>Altes Foto restaurieren</h3>
-        <label class="check"><input type="checkbox" data-key="restoreOn" /> Altes Foto restaurieren</label>
-        <div data-show="restoreOn">
-          <label class="check"><input type="checkbox" data-key="restoreDenoise" /> Rauschen &amp; Körnung entfernen</label>
-          <label class="check"><input type="checkbox" data-key="restoreScratches" /> Kratzer &amp; Staub entfernen</label>
-          <div data-show="restoreScratches">
-            <label class="slider">
-              <span>Empfindlichkeit <output data-for="scratchSensitivity"></output></span>
-              <input type="range" data-key="scratchSensitivity" min="1" max="100" step="1" />
+        <section class="group compact" data-sum="Restaurieren">
+          <h3>Altes Foto restaurieren</h3>
+          <label class="check"><input type="checkbox" data-key="restoreOn" /> Altes Foto restaurieren</label>
+          <div data-show="restoreOn">
+            <label class="check"><input type="checkbox" data-key="restoreDenoise" /> Rauschen &amp; Körnung entfernen</label>
+            <label class="check"><input type="checkbox" data-key="restoreScratches" /> Kratzer &amp; Staub entfernen</label>
+            <div data-show="restoreScratches">
+              <label class="slider">
+                <span>Empfindlichkeit <output data-for="scratchSensitivity"></output></span>
+                <input type="range" data-key="scratchSensitivity" min="1" max="100" step="1" />
+              </label>
+              <label class="field" title="Augen, Brauen, Nase und Mund werden nie als Kratzer aufgefüllt. „Genau“ findet sie pixelgenau per Face Parsing statt sie aus 5 Gesichtspunkten zu schätzen.">
+                <span>Gesichtsschutz</span>
+                <select data-key="scratchProtect">
+                  <option value="points">Geschätzt (5 Gesichtspunkte)</option>
+                  <option value="parse">Genau (Face Parsing) ⤓ · NC</option>
+                </select>
+              </label>
+              <p class="hint nc" data-if="scratchProtect:parse">Face Parsing ist auf CelebAMask-HQ trainiert – nur für nicht-kommerzielle Zwecke.</p>
+            </div>
+            <label class="check"><input type="checkbox" data-key="restoreFaces" /> Gesichter restaurieren</label>
+            <div data-show="restoreFaces">
+              <label class="field">
+                <span>Modell</span>
+                <select data-key="faceRestoreModel">
+                  <option value="restoreformer">RestoreFormer++</option>
+                  <option value="codeformer" title="Mit Regler „Treue zum Original“: wählbar zwischen stärker restauriert und näher an der Person. Einmaliger Download ca. 380 MB, braucht ca. 1,6 GB Arbeitsspeicher. Lizenz S-Lab 1.0 (nicht kommerziell).">CodeFormer ⤓ · NC</option>
+                </select>
+              </label>
+              <label class="slider" data-if="faceRestoreModel:codeformer" title="Niedrig = stärker restauriert (KI ergänzt mehr Details), hoch = näher am Original (Person bleibt besser erkennbar).">
+                <span>Treue zum Original <output data-for="faceFidelity"></output></span>
+                <input type="range" data-key="faceFidelity" min="0" max="1" step="0.05" />
+              </label>
+              <p class="hint nc" data-if="faceRestoreModel:codeformer">CodeFormer steht unter der S-Lab License 1.0 – nur für nicht-kommerzielle Zwecke.</p>
+              <label class="slider">
+                <span>Stärke <output data-for="faceRestoreStrength"></output></span>
+                <input type="range" data-key="faceRestoreStrength" min="0.1" max="1" step="0.05" />
+              </label>
+              <p class="hint info">Bei sehr unscharfen Gesichtern muss die KI Details neu erzeugen (z.&nbsp;B. Blickrichtung) – dann Ergebnis prüfen. Unter 100&nbsp;% können Doppelkonturen entstehen.</p>
+            </div>
+            <label class="field">
+              <span>Reihenfolge</span>
+              <select data-key="restoreOrder">
+                <option value="before">Vor dem Freistellen (ganzes Bild)</option>
+                <option value="after">Nach dem Freistellen (nur Motiv)</option>
+              </select>
             </label>
-            <label class="field" title="Augen, Brauen, Nase und Mund werden nie als Kratzer aufgefüllt. „Genau“ findet sie pixelgenau per Face Parsing statt sie aus 5 Gesichtspunkten zu schätzen.">
-              <span>Gesichtsschutz</span>
-              <select data-key="scratchProtect">
-                <option value="points">Geschätzt (5 Gesichtspunkte)</option>
+            <p class="hint info">Für alte, verrauschte oder beschädigte Fotos. Läuft auf max. 1280 px – vor allen anderen Schritten oder, mit „Nach dem Freistellen“, erst nach dem Freistellen nur für Gesichter und Kratzer im Motiv. Die Modelle (zusammen ca. 430 MB) werden beim ersten Gebrauch geladen.</p>
+            <p class="hint status" id="restore-info"></p>
+          </div>
+        </section>
+
+        <section class="group compact" data-sum="KI-Vergrößerung">
+          <h3>KI-Verbesserung</h3>
+          <label class="check"><input type="checkbox" data-key="upscale" /> KI-Vergrößerung 4× (Real-ESRGAN)</label>
+          <p class="hint info">Für kleine oder unscharfe Bilder: ergibt glattere Kanten und mehr Details. Dauert je nach Bildgröße einige Sekunden.</p>
+        </section>
+
+        <section class="group">
+          <h3>Freistellen</h3>
+          <label class="field">
+            <span>Methode</span>
+            <select data-key="bgRemove">
+              <option value="none">Aus</option>
+              <optgroup label="Motiv automatisch freistellen (KI)">
+                <option value="ai" title="Mitgeliefert, rechnet in etwa einer Sekunde. Für einfache Motive vor ruhigem Hintergrund.">Motiv – schnell (U²-Net)</option>
+                <option value="isnet">Motiv – präzise (IS-Net) ⤓</option>
+                <option value="ben2" title="Bei sauberen Fotos fast so gut wie BiRefNet, braucht aber nur ca. 3 statt 6,7 GB Arbeitsspeicher und rechnet etwa doppelt so schnell. Schwächer bei alten, verrauschten oder kontrastarmen Fotos.">Motiv – gut &amp; sparsam (BEN2) ⤓</option>
+                <option value="birefnet">Motiv – beste Qualität (BiRefNet) ⤓</option>
+                <option value="modnet">Motiv – Porträt &amp; Haare (MODNet) ⤓</option>
+              </optgroup>
+              <optgroup label="Objekt anklicken (KI)">
+                <option value="sam">Objekt anklicken – schnell (MobileSAM)</option>
+                <option value="sam2" title="Genauere Objektgrenzen als MobileSAM (z. B. bei Haaren, feinen Teilen und ähnlichen Farben von Motiv und Hintergrund). Einmaliger Download ca. 180 MB, braucht ca. 0,9 GB Arbeitsspeicher; das erste Erkennen je Bild dauert einige Sekunden.">Objekt anklicken – genau (SAM 2.1) ⤓</option>
+              </optgroup>
+              <optgroup label="Himmel entfernen">
+                <option value="sky" title="Entfernt den Himmel (blau, Wolken, Dunst) vom oberen Bildrand aus – Landschaft, Fahrzeuge und Gebäude bleiben vollständig erhalten. Ohne KI, sofort.">Himmel entfernen – schnell (ohne KI)</option>
+                <option value="skyai" title="Wie „Himmel entfernen – schnell“, zusätzlich schützt KI (BEN2) das Hauptmotiv: Helle, weiße oder bläuliche Teile von Fahrzeugen, Gebäuden oder Personen werden nie als Himmel entfernt. Einmaliger Download ca. 131 MB, braucht ca. 3 GB Arbeitsspeicher.">Himmel entfernen – Motiv geschützt (BEN2) ⤓</option>
+              </optgroup>
+              <optgroup label="Weitere">
+                <option value="color">Nach Farbe (ohne KI)</option>
+              </optgroup>
+            </select>
+          </label>
+          <label class="check" data-bg="ai isnet birefnet ben2 modnet sam sam2 color sky skyai"><input type="checkbox" id="bg-hide" /> Entfernten Hintergrund ausblenden (statt rot schraffieren)</label>
+          <div data-bg="sam sam2">
+            <p class="hint info"><b>Linksklick</b> ins Original markiert das Motiv, <b>Rechtsklick</b> (oder Alt+Klick) schließt Bereiche aus. Klick auf einen Punkt entfernt ihn wieder.</p>
+            <button class="btn btn-small" id="btn-clear-sam">Punkte zurücksetzen</button>
+          </div>
+          <div data-bg="ai isnet birefnet ben2 modnet sam sam2">
+            <label class="slider">
+              <span>Maskenschwelle <output data-for="maskThreshold"></output></span>
+              <input type="range" data-key="maskThreshold" min="0.05" max="0.95" step="0.01" />
+            </label>
+            <p class="hint info">Höher = engere Maske, niedriger = mehr vom Motiv bleibt erhalten. ⤓ = Modell wird beim ersten Gebrauch geladen.</p>
+          </div>
+          <div data-bg="color sky skyai">
+            <label class="slider">
+              <span>Farbtoleranz <output data-for="bgTolerance"></output></span>
+              <input type="range" data-key="bgTolerance" min="1" max="100" step="1" />
+            </label>
+            <label class="check" data-bg="color"><input type="checkbox" data-key="bgBorder" /> Hintergrund vom Bildrand aus entfernen</label>
+            <p class="hint info" data-bg="color">Klicke ins <b>Original</b>, um weitere Hintergrundbereiche zu entfernen. Klick auf einen Punkt entfernt ihn wieder.</p>
+            <p class="hint info" data-bg="sky skyai">Der Himmel wird vom oberen Bildrand aus entfernt und folgt dem Farbverlauf bis zum Horizont. Bleibt Himmel stehen (z. B. zwischen Ästen oder hinter Scheiben), dort ins <b>Original</b> klicken oder die Toleranz erhöhen; verschwindet zu viel, die Toleranz senken.</p>
+            <button class="btn btn-small" id="btn-clear-seeds">Klickpunkte zurücksetzen</button>
+          </div>
+          <div data-bg="ai isnet birefnet ben2 modnet sam sam2 color sky skyai">
+            <h4>Maske verfeinern</h4>
+            <label class="slider" title="Verschiebt die Schnittkante: Plus lässt einen Rand um das Motiv stehen, Minus schneidet Reste des Hintergrunds (z. B. Lichtsäume) weg.">
+              <span>Kante verschieben <output data-for="maskShiftMm"></output></span>
+              <input type="range" data-key="maskShiftMm" min="-3" max="3" step="0.1" />
+            </label>
+            <label class="slider" title="Rundet Zacken, Treppenstufen und kleine Ausbuchtungen der Kante ab – ergibt ruhigere Umrisse beim Vektorisieren und Gravieren. Sehr feine Details (Haare, Finger) können dabei verschwinden.">
+              <span>Kante glätten <output data-for="maskSmoothMm"></output></span>
+              <input type="range" data-key="maskSmoothMm" min="0" max="3" step="0.1" />
+            </label>
+            <label class="slider" title="Entfernt lose Flecken, die fälschlich zum Motiv gezählt wurden und kleiner als dieser Anteil der Bildfläche sind.">
+              <span>Flecken entfernen <output data-for="maskSpeckPct"></output></span>
+              <input type="range" data-key="maskSpeckPct" min="0" max="5" step="0.1" />
+            </label>
+            <label class="slider" title="Füllt Lücken im Motiv (z. B. ausgestanzte helle Stellen), die kleiner als dieser Anteil der Bildfläche sind. Hintergrund, der den Bildrand berührt, bleibt immer entfernt.">
+              <span>Löcher füllen <output data-for="maskHolePct"></output></span>
+              <input type="range" data-key="maskHolePct" min="0" max="5" step="0.1" />
+            </label>
+            <label class="check" title="Behält nur das größte zusammenhängende Motiv – alles andere wird entfernt."><input type="checkbox" data-key="maskLargest" /> Nur das größte Motiv behalten</label>
+            <p class="hint info">Größen in mm beziehen sich auf die Ausgabegröße, Flecken und Löcher auf die Bildfläche.</p>
+          </div>
+        </section>
+
+        <section class="group">
+          <h3>Bildanpassung</h3>
+          <label class="slider">
+            <span>Helligkeit <output data-for="brightness"></output></span>
+            <input type="range" data-key="brightness" min="-100" max="100" step="1" />
+          </label>
+          <label class="slider">
+            <span>Kontrast <output data-for="contrast"></output></span>
+            <input type="range" data-key="contrast" min="-100" max="100" step="1" />
+          </label>
+          <label class="slider">
+            <span>Gamma <output data-for="gamma"></output></span>
+            <input type="range" data-key="gamma" min="0.2" max="3" step="0.05" />
+          </label>
+          <label class="slider">
+            <span>Weichzeichnen <output data-for="blur"></output></span>
+            <input type="range" data-key="blur" min="0" max="10" step="0.5" />
+          </label>
+          <label class="slider">
+            <span>Schärfen <output data-for="sharpen"></output></span>
+            <input type="range" data-key="sharpen" min="0" max="3" step="0.1" />
+          </label>
+          <label class="check"><input type="checkbox" data-key="invert" /> Invertieren</label>
+        </section>
+
+        <section class="group compact" data-sum="Gesichter" data-mode="vector edges dither sine color">
+          <h3>Gesichter</h3>
+          <label class="check"><input type="checkbox" data-key="faceBoost" /> Gesichtszüge hervorheben</label>
+          <div data-show="faceBoost">
+            <label class="field" title="„Genau“ zerlegt jedes Gesicht per Face Parsing in Haut, Augen, Nase und Lippen – Mund, Nase, Kinn und Wangen werden dann genau dort verstärkt, auch bei geneigtem oder seitlich gedrehtem Kopf.">
+              <span>Merkmale finden</span>
+              <select data-key="faceLocate">
+                <option value="box">Geschätzt (aus dem Gesichtsrahmen)</option>
                 <option value="parse">Genau (Face Parsing) ⤓ · NC</option>
               </select>
             </label>
-            <p class="hint nc" data-if="scratchProtect:parse">Face Parsing ist auf CelebAMask-HQ trainiert – nur für nicht-kommerzielle Zwecke.</p>
-          </div>
-          <label class="check"><input type="checkbox" data-key="restoreFaces" /> Gesichter restaurieren</label>
-          <div data-show="restoreFaces">
+            <p class="hint nc" data-if="faceLocate:parse">Face Parsing ist auf CelebAMask-HQ trainiert – nur für nicht-kommerzielle Zwecke.</p>
             <label class="field">
-              <span>Modell</span>
-              <select data-key="faceRestoreModel">
-                <option value="restoreformer">RestoreFormer++</option>
-                <option value="codeformer" title="Mit Regler „Treue zum Original“: wählbar zwischen stärker restauriert und näher an der Person. Einmaliger Download ca. 380 MB, braucht ca. 1,6 GB Arbeitsspeicher. Lizenz S-Lab 1.0 (nicht kommerziell).">CodeFormer ⤓ · NC</option>
+              <span>Reihenfolge</span>
+              <select data-key="faceOrder">
+                <option value="before">Vor dem Freistellen (ganzes Bild)</option>
+                <option value="after">Nach dem Freistellen (nur Motiv)</option>
               </select>
             </label>
-            <label class="slider" data-if="faceRestoreModel:codeformer" title="Niedrig = stärker restauriert (KI ergänzt mehr Details), hoch = näher am Original (Person bleibt besser erkennbar).">
-              <span>Treue zum Original <output data-for="faceFidelity"></output></span>
-              <input type="range" data-key="faceFidelity" min="0" max="1" step="0.05" />
-            </label>
-            <p class="hint nc" data-if="faceRestoreModel:codeformer">CodeFormer steht unter der S-Lab License 1.0 – nur für nicht-kommerzielle Zwecke.</p>
             <label class="slider">
-              <span>Stärke <output data-for="faceRestoreStrength"></output></span>
-              <input type="range" data-key="faceRestoreStrength" min="0.1" max="1" step="0.05" />
+              <span>Stärke <output data-for="faceStrength"></output></span>
+              <input type="range" data-key="faceStrength" min="0.2" max="2" step="0.1" />
             </label>
-            <p class="hint info">Bei sehr unscharfen Gesichtern muss die KI Details neu erzeugen (z.&nbsp;B. Blickrichtung) – dann Ergebnis prüfen. Unter 100&nbsp;% können Doppelkonturen entstehen.</p>
+            <label class="slider">
+              <span>Mund <output data-for="mouthStrength"></output></span>
+              <input type="range" data-key="mouthStrength" min="0" max="2" step="0.1" />
+            </label>
+            <label class="slider">
+              <span>Nase <output data-for="noseStrength"></output></span>
+              <input type="range" data-key="noseStrength" min="0" max="2" step="0.1" />
+            </label>
+            <label class="slider">
+              <span>Kinn <output data-for="chinStrength"></output></span>
+              <input type="range" data-key="chinStrength" min="0" max="2" step="0.1" />
+            </label>
+            <label class="slider">
+              <span>Wangen <output data-for="cheekStrength"></output></span>
+              <input type="range" data-key="cheekStrength" min="0" max="2" step="0.1" />
+            </label>
+            <p class="hint info">Erkennt Gesichter per KI und betont Augen, Brauen, Nase und Mund. „Mund“, „Nase“, „Kinn“ und „Wangen“ verstärken diese Bereiche zusätzlich (0 = aus). Im Modus <b>Linien</b> wird jedes Gesicht zusätzlich in hoher Auflösung nachgezeichnet, im Modus <b>Farben</b> wirkt die Betonung auf die Helligkeit (der Farbton bleibt).</p>
+            <p class="hint status" id="face-info"></p>
           </div>
-          <label class="field">
-            <span>Reihenfolge</span>
-            <select data-key="restoreOrder">
-              <option value="before">Vor dem Freistellen (ganzes Bild)</option>
-              <option value="after">Nach dem Freistellen (nur Motiv)</option>
-            </select>
-          </label>
-          <p class="hint info">Für alte, verrauschte oder beschädigte Fotos. Läuft auf max. 1280 px – vor allen anderen Schritten oder, mit „Nach dem Freistellen“, erst nach dem Freistellen nur für Gesichter und Kratzer im Motiv. Die Modelle (zusammen ca. 430 MB) werden beim ersten Gebrauch geladen.</p>
-          <p class="hint status" id="restore-info"></p>
+        </section>
         </div>
-      </section>
+      </div>
 
-      <section class="group">
-        <h3>KI-Verbesserung</h3>
-        <label class="check"><input type="checkbox" data-key="upscale" /> KI-Vergrößerung 4× (Real-ESRGAN)</label>
-        <p class="hint info">Für kleine oder unscharfe Bilder: ergibt glattere Kanten und mehr Details. Dauert je nach Bildgröße einige Sekunden.</p>
-      </section>
-
-      <section class="group">
-        <h3>Bildanpassung</h3>
-        <label class="slider">
-          <span>Helligkeit <output data-for="brightness"></output></span>
-          <input type="range" data-key="brightness" min="-100" max="100" step="1" />
-        </label>
-        <label class="slider">
-          <span>Kontrast <output data-for="contrast"></output></span>
-          <input type="range" data-key="contrast" min="-100" max="100" step="1" />
-        </label>
-        <label class="slider">
-          <span>Gamma <output data-for="gamma"></output></span>
-          <input type="range" data-key="gamma" min="0.2" max="3" step="0.05" />
-        </label>
-        <label class="slider">
-          <span>Weichzeichnen <output data-for="blur"></output></span>
-          <input type="range" data-key="blur" min="0" max="10" step="0.5" />
-        </label>
-        <label class="slider">
-          <span>Schärfen <output data-for="sharpen"></output></span>
-          <input type="range" data-key="sharpen" min="0" max="3" step="0.1" />
-        </label>
-        <label class="check"><input type="checkbox" data-key="invert" /> Invertieren</label>
-      </section>
+      <!-- Einstellungen des gewählten Modus -->
 
       <section class="group" data-mode="edges">
         <h3>Linien</h3>
@@ -387,74 +467,6 @@
         <p class="hint info">Hell = nah/erhaben, dunkel = fern/tief. In LightBurn als Bild mit „3D-Slicing“ bzw. Graustufen gravieren. Kontrast/Gamma steuern die Tiefenwirkung, Weichzeichnen glättet die Oberfläche.</p>
       </section>
 
-      <section class="group" data-mode="vector edges color">
-        <h3>Vektorisierung</h3>
-        <label class="slider" data-mode="vector">
-          <span>Schwellwert <output data-for="threshold"></output></span>
-          <div class="row">
-            <input type="range" data-key="threshold" min="1" max="254" step="1" />
-            <button class="btn btn-small" id="btn-auto-threshold" title="Optimalen Schwellwert berechnen (Otsu)">Auto</button>
-          </div>
-        </label>
-        <label class="slider">
-          <span>Flecken entfernen <output data-for="turdSize"></output></span>
-          <input type="range" data-key="turdSize" min="0" max="200" step="1" />
-        </label>
-        <label class="slider">
-          <span>Ecken glätten <output data-for="alphaMax"></output></span>
-          <input type="range" data-key="alphaMax" min="0" max="1.33" step="0.01" />
-        </label>
-        <label class="slider">
-          <span>Kurven-Toleranz <output data-for="optTolerance"></output></span>
-          <input type="range" data-key="optTolerance" min="0.05" max="1.5" step="0.05" />
-        </label>
-        <label class="slider">
-          <span>Arbeitsauflösung <output data-for="workRes"></output></span>
-          <input type="range" data-key="workRes" min="400" max="4000" step="100" />
-        </label>
-      </section>
-
-      <section class="group" data-mode="vector edges color">
-        <h3>Formen verbessern</h3>
-        <div data-mode="vector edges"><div data-show="textClean">
-          <label class="field" title="Gilt für alle Verbesserungen dieses Abschnitts, nur zusammen mit „Schrift &amp; Logos“">
-            <span>Reihenfolge zu „Schrift &amp; Logos“</span>
-            <select data-key="shapeOrder">
-              <option value="after">Nach der Schrift-/Logoerkennung (auch auf Schrift)</option>
-              <option value="before">Vor der Schrift-/Logoerkennung (Schrift bleibt unverändert)</option>
-            </select>
-          </label>
-          <p class="hint info">„Nach“: Glätten, Begradigen und Ruhige Linien gelten auch für die erkannte Schrift. „Vor“: Die Schriftbereiche (samt einbezogener Logo-Elemente) bleiben so, wie „Schrift &amp; Logos“ sie zeichnet. Im Modus Linien mit „Ruhige Linien“ meist „Vor“ wählen – sonst wird gefüllte Schrift zu Strichen.</p>
-        </div></div>
-        <div data-mode="vector">
-          <label class="check" title="Kleine Bilder per KI (Real-ESRGAN) vergrößern und Treppenstufen vor dem Schwellwert glätten"><input type="checkbox" data-key="smoothContours" /> Glatte Konturen (KI)</label>
-          <p class="hint info">Für kleine oder pixelige Vorlagen: Das Bild wird per KI vergrößert (bei Bildern unter 2048 px), die Treppenstufen der Pixel werden vor dem Schwellwert verwischt. Ergibt runde, ruhige Umrisse statt Zacken.</p>
-        </div>
-        <div data-mode="edges">
-          <label class="check"><input type="checkbox" data-key="lineClean" /> Ruhige Linien</label>
-          <div data-show="lineClean">
-            <label class="slider">
-              <span>Linien glätten <output data-for="lineSmoothMm"></output></span>
-              <input type="range" data-key="lineSmoothMm" min="0" max="2" step="0.05" />
-            </label>
-            <label class="slider">
-              <span>Kurze Striche entfernen <output data-for="lineMinMm"></output></span>
-              <input type="range" data-key="lineMinMm" min="0" max="5" step="0.1" />
-            </label>
-            <p class="hint info">Zeichnet jede Linie entlang ihrer Mitte neu: geglättet, mit gleichmäßiger Strichbreite, ohne Krümel, kurze Ausläufer und zittrige Kanten. Kürzere Striche als „Kurze Striche entfernen“ entfallen.</p>
-          </div>
-        </div>
-        <label class="check"><input type="checkbox" data-key="shapeFit" /> Formen begradigen (Geraden, Kreise, rechte Winkel)</label>
-        <div data-show="shapeFit">
-          <label class="slider">
-            <span>Toleranz <output data-for="shapeTolMm"></output></span>
-            <input type="range" data-key="shapeTolMm" min="0.02" max="0.6" step="0.01" />
-          </label>
-          <label class="check"><input type="checkbox" data-key="shapeSnap" /> Winkel einrasten (0°/45°/90°, rechte Winkel)</label>
-          <p class="hint info">Für Logos und Schilder: Kanten, die innerhalb der Toleranz gerade bzw. rund sind, werden zu exakten Geraden, Kreisbögen, Kreisen und Ellipsen; Ecken werden scharf. Feine, unregelmäßige Details bleiben unverändert. Höhere Toleranz = stärker begradigt, aber ungenauer.</p>
-        </div>
-      </section>
-
       <section class="group" data-mode="dither">
         <h3>Dithering</h3>
         <label class="field">
@@ -478,222 +490,279 @@
         </label>
       </section>
 
-      <section class="group" data-mode="vector edges dither color">
-        <h3>Schrift &amp; Logos</h3>
-        <label class="check"><input type="checkbox" data-key="textClean" /> Schrift erkennen und sauber darstellen</label>
-        <div data-show="textClean">
-          <label class="field">
-            <span>Modell</span>
-            <select data-key="textModel">
-              <option value="text">Standard (PP-OCRv4, mitgeliefert)</option>
-              <option value="text_v5">Genauer (PP-OCRv5 mobil, 5 MB)</option>
-              <option value="text_v5_server">Beste Qualität (PP-OCRv5 Server, 88 MB)</option>
-            </select>
-          </label>
-          <p class="hint" data-if="textModel:text_v5_server">Deutlich langsamer (etwa 7-mal) und braucht ca. 1,4 GB Arbeitsspeicher.</p>
-          <label class="field">
-            <span>Erkennung</span>
-            <select data-key="textOrder">
-              <option value="before">Vor dem Freistellen (ganzes Bild)</option>
-              <option value="after">Nach dem Freistellen (nur Motiv)</option>
-            </select>
-          </label>
-          <label class="slider">
-            <span>Logos einbeziehen <output data-for="textPad"></output></span>
-            <input type="range" data-key="textPad" min="0" max="4" step="0.5" />
+      <div class="stage" id="stage-vectorize" data-stage="vectorize">
+        <div class="stage-bar">
+          <button type="button" class="stage-head" aria-expanded="true" aria-controls="stage-vectorize-body">
+            <span class="stage-chev" aria-hidden="true"></span>
+            <span class="stage-title">Vektorisierung</span>
+            <span class="stage-dot" hidden title="Hier ist etwas eingeschaltet oder verändert"></span>
+            <span class="stage-sum"></span>
+          </button>
+        </div>
+        <div class="stage-body" id="stage-vectorize-body">
+        <section class="group solo" data-mode="vector edges color">
+          <h3>Vektorisierung</h3>
+          <label class="slider" data-mode="vector">
+            <span>Schwellwert <output data-for="threshold"></output></span>
+            <div class="row">
+              <input type="range" data-key="threshold" min="1" max="254" step="1" />
+              <button class="btn btn-small" id="btn-auto-threshold" title="Optimalen Schwellwert berechnen (Otsu)">Auto</button>
+            </div>
           </label>
           <label class="slider">
-            <span>Schriftstärke <output data-for="textBold"></output></span>
-            <input type="range" data-key="textBold" min="-40" max="40" step="1" />
+            <span>Flecken entfernen <output data-for="turdSize"></output></span>
+            <input type="range" data-key="turdSize" min="0" max="200" step="1" />
           </label>
-          <details class="advanced">
-            <summary>Erweitert</summary>
-            <label class="slider" title="Höher = findet auch blasse oder kleine Schrift, aber mehr Fehltreffer. Niedriger = nur deutliche Schrift.">
-              <span>Empfindlichkeit <output data-for="textSens"></output></span>
-              <input type="range" data-key="textSens" min="0" max="100" step="5" />
-            </label>
-            <label class="field" title="Längste Bildseite, auf der gesucht wird. Höher findet kleinere Schrift, dauert aber länger.">
-              <span>Auflösung</span>
-              <select data-key="textRes">
-                <option value="640">640 px (schnell, große Schrift)</option>
-                <option value="960">960 px</option>
-                <option value="1280">1280 px (Standard)</option>
-                <option value="1920">1920 px</option>
-                <option value="2560">2560 px (kleine Schrift, langsam)</option>
+          <label class="slider">
+            <span>Ecken glätten <output data-for="alphaMax"></output></span>
+            <input type="range" data-key="alphaMax" min="0" max="1.33" step="0.01" />
+          </label>
+          <label class="slider">
+            <span>Kurven-Toleranz <output data-for="optTolerance"></output></span>
+            <input type="range" data-key="optTolerance" min="0.05" max="1.5" step="0.05" />
+          </label>
+          <label class="slider">
+            <span>Arbeitsauflösung <output data-for="workRes"></output></span>
+            <input type="range" data-key="workRes" min="400" max="4000" step="100" />
+          </label>
+        </section>
+        </div>
+      </div>
+
+      <div class="stage" id="stage-shapes" data-stage="shapes">
+        <div class="stage-bar">
+          <button type="button" class="stage-head" aria-expanded="true" aria-controls="stage-shapes-body">
+            <span class="stage-chev" aria-hidden="true"></span>
+            <span class="stage-title">Formen verbessern</span>
+            <span class="stage-dot" hidden title="Hier ist etwas eingeschaltet oder verändert"></span>
+            <span class="stage-sum"></span>
+          </button>
+        </div>
+        <div class="stage-body" id="stage-shapes-body">
+        <section class="group solo" data-mode="vector edges color">
+          <h3>Formen verbessern</h3>
+          <div data-mode="vector edges"><div data-show="textClean">
+            <label class="field" title="Gilt für alle Verbesserungen dieses Abschnitts, nur zusammen mit „Schrift &amp; Logos“">
+              <span>Reihenfolge zu „Schrift &amp; Logos“</span>
+              <select data-key="shapeOrder">
+                <option value="after">Nach der Schrift-/Logoerkennung (auch auf Schrift)</option>
+                <option value="before">Vor der Schrift-/Logoerkennung (Schrift bleibt unverändert)</option>
               </select>
             </label>
-            <label class="check" title="Sucht zusätzlich in doppelter Auflösung und führt die Treffer zusammen. Findet große und kleine Schrift im selben Bild, dauert etwa 5-mal so lange.">
-              <input type="checkbox" data-key="textMulti" /> Mehrere Größen prüfen
+            <p class="hint info">„Nach“: Glätten, Begradigen und Ruhige Linien gelten auch für die erkannte Schrift. „Vor“: Die Schriftbereiche (samt einbezogener Logo-Elemente) bleiben so, wie „Schrift &amp; Logos“ sie zeichnet. Im Modus Linien mit „Ruhige Linien“ meist „Vor“ wählen – sonst wird gefüllte Schrift zu Strichen.</p>
+          </div></div>
+          <div data-mode="vector">
+            <label class="check" title="Kleine Bilder per KI (Real-ESRGAN) vergrößern und Treppenstufen vor dem Schwellwert glätten"><input type="checkbox" data-key="smoothContours" /> Glatte Konturen (KI)</label>
+            <p class="hint info">Für kleine oder pixelige Vorlagen: Das Bild wird per KI vergrößert (bei Bildern unter 2048 px), die Treppenstufen der Pixel werden vor dem Schwellwert verwischt. Ergibt runde, ruhige Umrisse statt Zacken.</p>
+          </div>
+          <div data-mode="edges">
+            <label class="check"><input type="checkbox" data-key="lineClean" /> Ruhige Linien</label>
+            <div data-show="lineClean">
+              <label class="slider">
+                <span>Linien glätten <output data-for="lineSmoothMm"></output></span>
+                <input type="range" data-key="lineSmoothMm" min="0" max="2" step="0.05" />
+              </label>
+              <label class="slider">
+                <span>Kurze Striche entfernen <output data-for="lineMinMm"></output></span>
+                <input type="range" data-key="lineMinMm" min="0" max="5" step="0.1" />
+              </label>
+              <p class="hint info">Zeichnet jede Linie entlang ihrer Mitte neu: geglättet, mit gleichmäßiger Strichbreite, ohne Krümel, kurze Ausläufer und zittrige Kanten. Kürzere Striche als „Kurze Striche entfernen“ entfallen.</p>
+            </div>
+          </div>
+          <label class="check"><input type="checkbox" data-key="shapeFit" /> Formen begradigen (Geraden, Kreise, rechte Winkel)</label>
+          <div data-show="shapeFit">
+            <label class="slider">
+              <span>Toleranz <output data-for="shapeTolMm"></output></span>
+              <input type="range" data-key="shapeTolMm" min="0.02" max="0.6" step="0.01" />
             </label>
-            <label class="slider" title="Wie großzügig der Bereich um die erkannten Buchstaben gezogen wird.">
-              <span>Rahmen um die Schrift <output data-for="textUnclip"></output></span>
-              <input type="range" data-key="textUnclip" min="1" max="3" step="0.1" />
-            </label>
-            <label class="slider" title="Bis zu welchem Abstand nahe Wörter und Zeilen zu einem Block zusammengefasst werden.">
-              <span>Zeilen zusammenfassen <output data-for="textMerge"></output></span>
-              <input type="range" data-key="textMerge" min="0" max="2" step="0.1" />
-            </label>
-            <label class="slider" title="Kleinere Bereiche werden nicht als Schrift behandelt (gegen Krümel und Muster).">
-              <span>Kleinste Schrifthöhe <output data-for="textMinPct"></output></span>
-              <input type="range" data-key="textMinPct" min="0" max="5" step="0.25" />
-            </label>
-            <label class="slider" title="Höhere Zeilen gelten als Fehltreffer. Lange, flache Schriftzüge (z. B. in einem Logo-Banner) werden immer erkannt.">
-              <span>Größte Zeilenhöhe <output data-for="textMaxPct"></output></span>
-              <input type="range" data-key="textMaxPct" min="10" max="100" step="5" />
-            </label>
-            <label class="check" title="Das Modell hält Augen und Nase manchmal für Schrift. Abschalten, wenn Schrift nah an einem Gesicht verloren geht.">
-              <input type="checkbox" data-key="textFaces" /> Gesichter ausschließen
-            </label>
-          </details>
-          <p class="hint info">Erkennt Schriftzüge per KI und stellt sie scharf und gefüllt dar statt gerastert oder nachgezeichnet. „Logos einbeziehen“ übernimmt Grafikelemente, die direkt an die Schrift grenzen (z.&nbsp;B. ein Logo-Symbol). „Nach dem Freistellen“ sucht Schrift nur im freigestellten Motiv und ignoriert Schrift im Hintergrund. Die Modelle PP-OCRv5 erkennen genauer und werden beim ersten Gebrauch geladen. Unter „Erweitert“ lässt sich die Erkennung feiner einstellen.</p>
-          <p class="hint status" id="text-info"></p>
+            <label class="check"><input type="checkbox" data-key="shapeSnap" /> Winkel einrasten (0°/45°/90°, rechte Winkel)</label>
+            <p class="hint info">Für Logos und Schilder: Kanten, die innerhalb der Toleranz gerade bzw. rund sind, werden zu exakten Geraden, Kreisbögen, Kreisen und Ellipsen; Ecken werden scharf. Feine, unregelmäßige Details bleiben unverändert. Höhere Toleranz = stärker begradigt, aber ungenauer.</p>
+          </div>
+        </section>
         </div>
-      </section>
+      </div>
 
-      <section class="group" data-mode="vector edges dither sine color">
-        <h3>Gesichter</h3>
-        <label class="check"><input type="checkbox" data-key="faceBoost" /> Gesichtszüge hervorheben</label>
-        <div data-show="faceBoost">
-          <label class="field" title="„Genau“ zerlegt jedes Gesicht per Face Parsing in Haut, Augen, Nase und Lippen – Mund, Nase, Kinn und Wangen werden dann genau dort verstärkt, auch bei geneigtem oder seitlich gedrehtem Kopf.">
-            <span>Merkmale finden</span>
-            <select data-key="faceLocate">
-              <option value="box">Geschätzt (aus dem Gesichtsrahmen)</option>
-              <option value="parse">Genau (Face Parsing) ⤓ · NC</option>
+      <!-- Wirkt auf das Ergebnis des Modus; eingeklappt zeigt die Kopfzeile, was eingeschaltet ist -->
+
+      <div class="stage" id="stage-extras" data-stage="extras">
+        <div class="stage-bar">
+          <button type="button" class="stage-head" aria-expanded="true" aria-controls="stage-extras-body">
+            <span class="stage-chev" aria-hidden="true"></span>
+            <span class="stage-title">Schrift &amp; Konturen</span>
+            <span class="stage-dot" hidden title="Hier ist etwas eingeschaltet oder verändert"></span>
+            <span class="stage-sum"></span>
+          </button>
+        </div>
+        <div class="stage-body" id="stage-extras-body">
+        <section class="group compact" data-sum="Schrift" data-mode="vector edges dither color">
+          <h3>Schrift &amp; Logos</h3>
+          <label class="check"><input type="checkbox" data-key="textClean" /> Schrift &amp; Logos sauber darstellen</label>
+          <div data-show="textClean">
+            <label class="field">
+              <span>Modell</span>
+              <select data-key="textModel">
+                <option value="text">Standard (PP-OCRv4, mitgeliefert)</option>
+                <option value="text_v5">Genauer (PP-OCRv5 mobil, 5 MB)</option>
+                <option value="text_v5_server">Beste Qualität (PP-OCRv5 Server, 88 MB)</option>
+              </select>
+            </label>
+            <p class="hint" data-if="textModel:text_v5_server">Deutlich langsamer (etwa 7-mal) und braucht ca. 1,4 GB Arbeitsspeicher.</p>
+            <label class="field">
+              <span>Erkennung</span>
+              <select data-key="textOrder">
+                <option value="before">Vor dem Freistellen (ganzes Bild)</option>
+                <option value="after">Nach dem Freistellen (nur Motiv)</option>
+              </select>
+            </label>
+            <label class="slider">
+              <span>Logos einbeziehen <output data-for="textPad"></output></span>
+              <input type="range" data-key="textPad" min="0" max="4" step="0.5" />
+            </label>
+            <label class="slider">
+              <span>Schriftstärke <output data-for="textBold"></output></span>
+              <input type="range" data-key="textBold" min="-40" max="40" step="1" />
+            </label>
+            <details class="advanced">
+              <summary>Erweitert</summary>
+              <label class="slider" title="Höher = findet auch blasse oder kleine Schrift, aber mehr Fehltreffer. Niedriger = nur deutliche Schrift.">
+                <span>Empfindlichkeit <output data-for="textSens"></output></span>
+                <input type="range" data-key="textSens" min="0" max="100" step="5" />
+              </label>
+              <label class="field" title="Längste Bildseite, auf der gesucht wird. Höher findet kleinere Schrift, dauert aber länger.">
+                <span>Auflösung</span>
+                <select data-key="textRes">
+                  <option value="640">640 px (schnell, große Schrift)</option>
+                  <option value="960">960 px</option>
+                  <option value="1280">1280 px (Standard)</option>
+                  <option value="1920">1920 px</option>
+                  <option value="2560">2560 px (kleine Schrift, langsam)</option>
+                </select>
+              </label>
+              <label class="check" title="Sucht zusätzlich in doppelter Auflösung und führt die Treffer zusammen. Findet große und kleine Schrift im selben Bild, dauert etwa 5-mal so lange.">
+                <input type="checkbox" data-key="textMulti" /> Mehrere Größen prüfen
+              </label>
+              <label class="slider" title="Wie großzügig der Bereich um die erkannten Buchstaben gezogen wird.">
+                <span>Rahmen um die Schrift <output data-for="textUnclip"></output></span>
+                <input type="range" data-key="textUnclip" min="1" max="3" step="0.1" />
+              </label>
+              <label class="slider" title="Bis zu welchem Abstand nahe Wörter und Zeilen zu einem Block zusammengefasst werden.">
+                <span>Zeilen zusammenfassen <output data-for="textMerge"></output></span>
+                <input type="range" data-key="textMerge" min="0" max="2" step="0.1" />
+              </label>
+              <label class="slider" title="Kleinere Bereiche werden nicht als Schrift behandelt (gegen Krümel und Muster).">
+                <span>Kleinste Schrifthöhe <output data-for="textMinPct"></output></span>
+                <input type="range" data-key="textMinPct" min="0" max="5" step="0.25" />
+              </label>
+              <label class="slider" title="Höhere Zeilen gelten als Fehltreffer. Lange, flache Schriftzüge (z. B. in einem Logo-Banner) werden immer erkannt.">
+                <span>Größte Zeilenhöhe <output data-for="textMaxPct"></output></span>
+                <input type="range" data-key="textMaxPct" min="10" max="100" step="5" />
+              </label>
+              <label class="check" title="Das Modell hält Augen und Nase manchmal für Schrift. Abschalten, wenn Schrift nah an einem Gesicht verloren geht.">
+                <input type="checkbox" data-key="textFaces" /> Gesichter ausschließen
+              </label>
+            </details>
+            <p class="hint info">Erkennt Schriftzüge per KI und stellt sie scharf und gefüllt dar statt gerastert oder nachgezeichnet. „Logos einbeziehen“ übernimmt Grafikelemente, die direkt an die Schrift grenzen (z.&nbsp;B. ein Logo-Symbol). „Nach dem Freistellen“ sucht Schrift nur im freigestellten Motiv und ignoriert Schrift im Hintergrund. Die Modelle PP-OCRv5 erkennen genauer und werden beim ersten Gebrauch geladen. Unter „Erweitert“ lässt sich die Erkennung feiner einstellen.</p>
+            <p class="hint status" id="text-info"></p>
+          </div>
+        </section>
+
+        <section class="group compact" data-sum="Motivkontur" data-mode="vector edges dither sine color">
+          <h3>Motivkontur</h3>
+          <label class="check"><input type="checkbox" data-key="subjectLine" /> Motivkontur: dünne Linie zum Hintergrund</label>
+          <div data-show="subjectLine">
+            <label class="slider">
+              <span>Linienstärke <output data-for="subjectLineMm"></output></span>
+              <input type="range" data-key="subjectLineMm" min="0.1" max="2" step="0.05" />
+            </label>
+            <p class="hint info">Setzt das Motiv dort ab, wo es mit dem Hintergrund verschwimmt (z.&nbsp;B. helle Haut vor hellem Hintergrund). Nutzt die Freistell-Maske – ist Freistellen aus, wird die Kontur per KI ermittelt und der Hintergrund bleibt erhalten. Im Modus <b>Farben</b> wird sie eine eigene schwarze Ebene „Motivkontur“, bei <b>Wellen</b> eine gefüllte Fläche zusätzlich zu den Wellenlinien.</p>
+          </div>
+        </section>
+
+        <section class="group compact" data-sum="Umrisslinie">
+          <h3>Umrisslinie</h3>
+          <label class="check"><input type="checkbox" data-key="outline" /> Umrisslinie um das Motiv zeichnen</label>
+          <div data-show="outline">
+            <label class="slider">
+              <span>Abstand <output data-for="outlineOffsetMm"></output></span>
+              <input type="range" data-key="outlineOffsetMm" min="0" max="20" step="0.1" />
+            </label>
+            <label class="slider">
+              <span>Lücken schließen <output data-for="outlineCloseMm"></output></span>
+              <input type="range" data-key="outlineCloseMm" min="0" max="15" step="0.1" />
+            </label>
+            <label class="check"><input type="checkbox" data-key="outlineOnly" /> Nur Umrisslinie (ohne Gravur)</label>
+            <p class="hint info">Im SVG rote Linie = eigene Ebene in LightBurn, z.&nbsp;B. zum Ausschneiden. In exportierten Bildern (PNG/JPG/BMP) als schwarze Linie enthalten – gleiche Größe und Lage wie das SVG.</p>
+          </div>
+        </section>
+        </div>
+      </div>
+
+      <div class="stage" id="stage-output" data-stage="output">
+        <div class="stage-bar">
+          <button type="button" class="stage-head" aria-expanded="true" aria-controls="stage-output-body">
+            <span class="stage-chev" aria-hidden="true"></span>
+            <span class="stage-title">Ausgabe</span>
+            <span class="stage-dot" hidden title="Hier ist etwas eingeschaltet oder verändert"></span>
+            <span class="stage-sum"></span>
+          </button>
+        </div>
+        <div class="stage-body" id="stage-output-body">
+        <section class="group">
+          <h3>Ausgabegröße</h3>
+          <div class="row two">
+            <label class="field">
+              <span>Breite (mm)</span>
+              <input type="number" data-key="widthMm" min="1" max="2000" step="0.1" />
+            </label>
+            <label class="field">
+              <span>Höhe (mm)</span>
+              <input type="number" id="heightMm" min="1" max="2000" step="0.1" />
+            </label>
+          </div>
+          <label class="check"><input type="checkbox" data-key="transparent" /> Weiß als transparent (PNG/SVG)</label>
+        </section>
+
+        <section class="group">
+          <h3>Exportformate</h3>
+          <div class="formats">
+            <label class="check"><input type="checkbox" data-key="fmtSvg" /> SVG</label>
+            <label class="check"><input type="checkbox" data-key="fmtPng" /> PNG</label>
+            <label class="check"><input type="checkbox" data-key="fmtJpg" /> JPG</label>
+            <label class="check"><input type="checkbox" data-key="fmtBmp" /> BMP</label>
+            <label class="check" title="Stickdatei für Brother-, Babylock- und Bernette-Maschinen (Modi Fläche, Linien, Wellen, Farben)"><input type="checkbox" data-key="fmtPes" /> PES (Sticken)</label>
+            <label class="check" title="Stickdatei im Tajima-Format, liest fast jede Stickmaschine – ohne Farben (Modi Fläche, Linien, Wellen, Farben)"><input type="checkbox" data-key="fmtDst" /> DST (Sticken)</label>
+            <label class="check" title="Stickdatei im Melco-Format – direkt für Melco DesignShop und Melco-Maschinen. Dazu eine INF-Datei mit den Farben (DesignShop ab Version 12). Modi Fläche, Linien, Wellen, Farben"><input type="checkbox" data-key="fmtExp" /> EXP (Sticken, Melco)</label>
+          </div>
+        </section>
+
+        <section class="group" id="emb-group" data-mode="vector edges sine color">
+          <h3>Stickdatei</h3>
+          <label class="field" title="Bestimmt die Grundwerte der Automatik: Dichte, Stichlänge, Zugausgleich und Unterlage">
+            <span>Stoff</span>
+            <select data-key="embFabric">
+              <option value="woven">Webware (Baumwolle, Twill, Jeans)</option>
+              <option value="knit">Strick / Jersey (T-Shirt)</option>
+              <option value="pique">Piqué (Polo-Shirt)</option>
+              <option value="fleece">Fleece / Sweat</option>
+              <option value="pile">Frottee / Handtuch</option>
+              <option value="leather">Leder / Kunstleder</option>
             </select>
           </label>
-          <p class="hint nc" data-if="faceLocate:parse">Face Parsing ist auf CelebAMask-HQ trainiert – nur für nicht-kommerzielle Zwecke.</p>
-          <label class="field">
-            <span>Reihenfolge</span>
-            <select data-key="faceOrder">
-              <option value="before">Vor dem Freistellen (ganzes Bild)</option>
-              <option value="after">Nach dem Freistellen (nur Motiv)</option>
-            </select>
+          <label class="slider" title="Sprünge ab dieser Länge werden vernäht und abgeschnitten, kürzere als Sprungstich ausgeführt">
+            <span>Faden schneiden ab <output data-for="embTrimMm"></output></span>
+            <input type="range" data-key="embTrimMm" min="1" max="10" step="0.5" />
           </label>
-          <label class="slider">
-            <span>Stärke <output data-for="faceStrength"></output></span>
-            <input type="range" data-key="faceStrength" min="0.2" max="2" step="0.1" />
-          </label>
-          <label class="slider">
-            <span>Mund <output data-for="mouthStrength"></output></span>
-            <input type="range" data-key="mouthStrength" min="0" max="2" step="0.1" />
-          </label>
-          <label class="slider">
-            <span>Nase <output data-for="noseStrength"></output></span>
-            <input type="range" data-key="noseStrength" min="0" max="2" step="0.1" />
-          </label>
-          <label class="slider">
-            <span>Kinn <output data-for="chinStrength"></output></span>
-            <input type="range" data-key="chinStrength" min="0" max="2" step="0.1" />
-          </label>
-          <label class="slider">
-            <span>Wangen <output data-for="cheekStrength"></output></span>
-            <input type="range" data-key="cheekStrength" min="0" max="2" step="0.1" />
-          </label>
-          <p class="hint info">Erkennt Gesichter per KI und betont Augen, Brauen, Nase und Mund. „Mund“, „Nase“, „Kinn“ und „Wangen“ verstärken diese Bereiche zusätzlich (0 = aus). Im Modus <b>Linien</b> wird jedes Gesicht zusätzlich in hoher Auflösung nachgezeichnet, im Modus <b>Farben</b> wirkt die Betonung auf die Helligkeit (der Farbton bleibt).</p>
-          <p class="hint status" id="face-info"></p>
+          <div class="row">
+            <span class="hint grow" id="emb-manual-info"></span>
+            <button class="btn btn-small" id="btn-emb-dialog" title="Stichart, Winkel, Dichte, Unterlage und Zugausgleich je Farbe – mit Stichvorschau">Je Farbe einstellen…</button>
+          </div>
+          <label class="check" title="Zeigt rechts die geplanten Stiche in Fadenfarbe statt der Flächen"><input type="checkbox" data-key="embPreview" /> Stiche in der Vorschau zeigen</label>
+          <p class="hint emb-info" id="emb-info"></p>
+          <p class="hint info">Die Stickparameter stellt die Automatik je Farbe ein: Grundwerte vom Stoff, Stichwinkel mit den wenigsten Sprüngen (und anders als die Farbe darunter), schmale Stellen unter 0,35&nbsp;mm als Kontur im Steppstich, weniger Unterlage bei schmalen Flächen. Unter „Je Farbe einstellen…“ lässt sich jede Farbe von Hand anpassen. Reihenfolge wie in der Farbliste (unten → oben), je Fläche erst Unterlage, dann Deckstich; Wege innerhalb einer Fläche werden mitgestickt, längere Sprünge vernäht und abgeschnitten. Im Modus <b>Wellen</b> werden die Wellenlinien im Steppstich oder Dreifachstich gestickt (Stichlängen und Genauigkeit unter „Je Farbe einstellen…“). <b>PES</b> speichert je Farbe das nächstliegende Brother-Garn (mit der Farbpalette „Brother-Garne“ stimmt es genau), <b>DST</b> und <b>EXP</b> keine Farben – dort die Garne an der Maschine in derselben Reihenfolge zuordnen. Zu <b>EXP</b> entsteht eine <b>INF</b>-Datei mit den genauen Farben (gilt auch für eine DST mit gleichem Namen).</p>
+          <p class="hint info"><b>Melco DesignShop:</b> „EXP (Sticken, Melco)“ wählen und die Datei in DesignShop über Datei → Öffnen laden – die INF-Datei daneben liefert ab DesignShop 12 die Farben (beide im selben Ordner lassen). Sie kommt als Stichdatei an (keine bearbeitbaren Objekte); als OFM gespeichert zeigt auch Melco OS die Farben. DesignShop liest auch DST und PES. Melco-Maschinen (Melco OS, z.&nbsp;B. EMT16X) laden EXP oder DST direkt; für die Fadenschnitte in DST „Jump Count For Trim“ auf 3 lassen.</p>
+        </section>
         </div>
-      </section>
-
-      <section class="group" data-mode="vector edges dither sine color">
-        <h3>Motivkontur</h3>
-        <label class="check"><input type="checkbox" data-key="subjectLine" /> Dünne Linie zwischen Motiv und Hintergrund</label>
-        <div data-show="subjectLine">
-          <label class="slider">
-            <span>Linienstärke <output data-for="subjectLineMm"></output></span>
-            <input type="range" data-key="subjectLineMm" min="0.1" max="2" step="0.05" />
-          </label>
-          <p class="hint info">Setzt das Motiv dort ab, wo es mit dem Hintergrund verschwimmt (z.&nbsp;B. helle Haut vor hellem Hintergrund). Nutzt die Freistell-Maske – ist Freistellen aus, wird die Kontur per KI ermittelt und der Hintergrund bleibt erhalten. Im Modus <b>Farben</b> wird sie eine eigene schwarze Ebene „Motivkontur“, bei <b>Wellen</b> eine gefüllte Fläche zusätzlich zu den Wellenlinien.</p>
-        </div>
-      </section>
-
-      <section class="group">
-        <h3>Umrisslinie</h3>
-        <label class="check"><input type="checkbox" data-key="outline" /> Randkontur um das Motiv zeichnen</label>
-        <div data-show="outline">
-          <label class="slider">
-            <span>Abstand <output data-for="outlineOffsetMm"></output></span>
-            <input type="range" data-key="outlineOffsetMm" min="0" max="20" step="0.1" />
-          </label>
-          <label class="slider">
-            <span>Lücken schließen <output data-for="outlineCloseMm"></output></span>
-            <input type="range" data-key="outlineCloseMm" min="0" max="15" step="0.1" />
-          </label>
-          <label class="check"><input type="checkbox" data-key="outlineOnly" /> Nur Umrisslinie (ohne Gravur)</label>
-          <p class="hint info">Im SVG rote Linie = eigene Ebene in LightBurn, z.&nbsp;B. zum Ausschneiden. In exportierten Bildern (PNG/JPG/BMP) als schwarze Linie enthalten – gleiche Größe und Lage wie das SVG.</p>
-        </div>
-      </section>
-
-      <section class="group">
-        <h3>Ausgabegröße</h3>
-        <div class="row two">
-          <label class="field">
-            <span>Breite (mm)</span>
-            <input type="number" data-key="widthMm" min="1" max="2000" step="0.1" />
-          </label>
-          <label class="field">
-            <span>Höhe (mm)</span>
-            <input type="number" id="heightMm" min="1" max="2000" step="0.1" />
-          </label>
-        </div>
-        <label class="check"><input type="checkbox" data-key="transparent" /> Weiß als transparent (PNG/SVG)</label>
-      </section>
-
-      <section class="group">
-        <h3>Exportformate</h3>
-        <div class="formats">
-          <label class="check"><input type="checkbox" data-key="fmtSvg" /> SVG</label>
-          <label class="check"><input type="checkbox" data-key="fmtPng" /> PNG</label>
-          <label class="check"><input type="checkbox" data-key="fmtJpg" /> JPG</label>
-          <label class="check"><input type="checkbox" data-key="fmtBmp" /> BMP</label>
-          <label class="check" title="Stickdatei für Brother-, Babylock- und Bernette-Maschinen (Modi Fläche, Linien, Wellen, Farben)"><input type="checkbox" data-key="fmtPes" /> PES (Sticken)</label>
-          <label class="check" title="Stickdatei im Tajima-Format, liest fast jede Stickmaschine – ohne Farben (Modi Fläche, Linien, Wellen, Farben)"><input type="checkbox" data-key="fmtDst" /> DST (Sticken)</label>
-          <label class="check" title="Stickdatei im Melco-Format – direkt für Melco DesignShop und Melco-Maschinen. Dazu eine INF-Datei mit den Farben (DesignShop ab Version 12). Modi Fläche, Linien, Wellen, Farben"><input type="checkbox" data-key="fmtExp" /> EXP (Sticken, Melco)</label>
-        </div>
-      </section>
-
-      <section class="group" id="emb-group" data-mode="vector edges sine color">
-        <h3>Stickdatei</h3>
-        <label class="field" title="Bestimmt die Grundwerte der Automatik: Dichte, Stichlänge, Zugausgleich und Unterlage">
-          <span>Stoff</span>
-          <select data-key="embFabric">
-            <option value="woven">Webware (Baumwolle, Twill, Jeans)</option>
-            <option value="knit">Strick / Jersey (T-Shirt)</option>
-            <option value="pique">Piqué (Polo-Shirt)</option>
-            <option value="fleece">Fleece / Sweat</option>
-            <option value="pile">Frottee / Handtuch</option>
-            <option value="leather">Leder / Kunstleder</option>
-          </select>
-        </label>
-        <label class="slider" title="Sprünge ab dieser Länge werden vernäht und abgeschnitten, kürzere als Sprungstich ausgeführt">
-          <span>Faden schneiden ab <output data-for="embTrimMm"></output></span>
-          <input type="range" data-key="embTrimMm" min="1" max="10" step="0.5" />
-        </label>
-        <div class="row">
-          <span class="hint grow" id="emb-manual-info"></span>
-          <button class="btn btn-small" id="btn-emb-dialog" title="Stichart, Winkel, Dichte, Unterlage und Zugausgleich je Farbe – mit Stichvorschau">Je Farbe einstellen…</button>
-        </div>
-        <label class="check" title="Zeigt rechts die geplanten Stiche in Fadenfarbe statt der Flächen"><input type="checkbox" data-key="embPreview" /> Stiche in der Vorschau zeigen</label>
-        <p class="hint emb-info" id="emb-info"></p>
-        <p class="hint info">Die Stickparameter stellt die Automatik je Farbe ein: Grundwerte vom Stoff, Stichwinkel mit den wenigsten Sprüngen (und anders als die Farbe darunter), schmale Stellen unter 0,35&nbsp;mm als Kontur im Steppstich, weniger Unterlage bei schmalen Flächen. Unter „Je Farbe einstellen…“ lässt sich jede Farbe von Hand anpassen. Reihenfolge wie in der Farbliste (unten → oben), je Fläche erst Unterlage, dann Deckstich; Wege innerhalb einer Fläche werden mitgestickt, längere Sprünge vernäht und abgeschnitten. Im Modus <b>Wellen</b> werden die Wellenlinien im Steppstich oder Dreifachstich gestickt (Stichlängen und Genauigkeit unter „Je Farbe einstellen…“). <b>PES</b> speichert je Farbe das nächstliegende Brother-Garn (mit der Farbpalette „Brother-Garne“ stimmt es genau), <b>DST</b> und <b>EXP</b> keine Farben – dort die Garne an der Maschine in derselben Reihenfolge zuordnen. Zu <b>EXP</b> entsteht eine <b>INF</b>-Datei mit den genauen Farben (gilt auch für eine DST mit gleichem Namen).</p>
-        <p class="hint info"><b>Melco DesignShop:</b> „EXP (Sticken, Melco)“ wählen und die Datei in DesignShop über Datei → Öffnen laden – die INF-Datei daneben liefert ab DesignShop 12 die Farben (beide im selben Ordner lassen). Sie kommt als Stichdatei an (keine bearbeitbaren Objekte); als OFM gespeichert zeigt auch Melco OS die Farben. DesignShop liest auch DST und PES. Melco-Maschinen (Melco OS, z.&nbsp;B. EMT16X) laden EXP oder DST direkt; für die Fadenschnitte in DST „Jump Count For Trim“ auf 3 lassen.</p>
-      </section>
-
-      <section class="group">
-        <h3>KI-Modelle</h3>
-        <div class="row">
-          <span class="hint grow" id="models-summary"></span>
-          <button class="btn btn-small" id="btn-models" title="KI-Modelle anzeigen, laden und entfernen">Verwalten…</button>
-        </div>
-        <p class="hint" id="system-info"></p>
-      </section>
-
-      <section class="group">
-        <h3>Leistung</h3>
-        <div class="row">
-          <span class="hint grow" id="perf-summary"></span>
-          <button class="btn btn-small" id="btn-perf" title="GPU-Beschleunigung und KI-Cache einstellen">Einstellungen…</button>
-        </div>
-      </section>
+      </div>
 
       </div>
     </aside>
@@ -742,6 +811,8 @@
 
     <!-- Historie -->
     <aside class="panel history" id="history">
+      <!-- Kopf mit Suche und Sortierung bleibt fest oben, nur die Liste scrollt (wie die Presets links) -->
+      <div class="history-top">
       <div class="history-head">
         <h3>Historie</h3>
         <button class="btn btn-small btn-ghost" id="btn-clear-history" title="Gesamte Historie löschen">Leeren</button>
@@ -755,8 +826,11 @@
           <option value="name-desc">Name Z–A</option>
         </select>
       </div>
-      <ul class="history-list" id="history-list"></ul>
-      <p class="hint" id="history-empty">Noch keine Umwandlungen gespeichert. Exportierte Bilder landen automatisch hier.</p>
+      </div>
+      <div class="history-scroll" id="history-scroll">
+        <ul class="history-list" id="history-list"></ul>
+        <p class="hint" id="history-empty">Noch keine Umwandlungen gespeichert. Exportierte Bilder landen automatisch hier.</p>
+      </div>
     </aside>
   </main>
 

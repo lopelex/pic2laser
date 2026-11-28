@@ -435,8 +435,10 @@ const Tour = (() => {
       title: 'Presets – der schnelle Start',
       target: () => $('.presets-group'),
       html: `<p>Presets stellen alle Regler für typische Aufgaben auf einmal ein – die Liste zeigt die Vorlagen für
-        den gewählten Bereich (<b>Lasern</b> oder <b>Sticken</b>). Eigene Einstellungen speicherst du unter einem Namen und rufst sie später wieder auf.
-        <b>Einstellungen zurücksetzen</b> bringt alles auf den Standard.</p>`,
+        den gewählten Bereich (<b>Lasern</b> oder <b>Sticken</b>). Die Icon-Knöpfe rechts daneben:
+        <b>Preset speichern</b> (Diskette) legt eigene Einstellungen unter einem Namen ab, der <b>Papierkorb</b>
+        löscht ein eigenes Preset, <b>Zurücksetzen</b>
+        (Pfeil) bringt alles auf den Standard, <b>⇕</b> klappt alle Bereiche auf oder zu.</p>`,
     },
     {
       title: '2 · Modus wählen',
@@ -470,16 +472,22 @@ const Tour = (() => {
       target: () => groupByTitle('Freistellen'),
       html: `<p>Entfernt den Hintergrund – automatisch per KI, durch Anklicken des Objekts, nach Farbe oder speziell
         den Himmel. Der entfernte Bereich wird in der Vorschau rot schraffiert. Mit <b>Maske verfeinern</b>
-        verschiebst und glättest du die Schnittkante.</p>`,
+        verschiebst und glättest du die Schnittkante.</p>
+        <p>Freistellen liegt im Bereich <b>Vorbereitung</b> – zusammen mit Restaurieren, KI-Vergrößerung,
+        Bildanpassung und Gesichtern. Eingeklappt zeigt seine Kopfzeile, was davon eingeschaltet ist.</p>`,
     },
     {
       title: '3 · Feinschliff',
       art: ART.tune,
       target: () => $('#settings-scroll'),
-      html: `<p>Darunter folgen die Einstellungen zum gewählten Modus: Bildanpassung, Vektorisierung, Formen verbessern,
-        Gesichter, Schrift &amp; Logos, alte Fotos restaurieren … Jede Änderung wird sofort neu berechnet.</p>
-        <p><b>Doppelklick</b> auf einen Regler setzt ihn zurück, das kleine <b>i</b> neben einer Überschrift blendet
-        Erklärungen ein.</p>`,
+      html: `<p>Die Einstellungen stehen in der Reihenfolge, in der das Bild verarbeitet wird: <b>Vorbereitung</b>
+        (Restaurieren, Vergrößern, Freistellen, Bildanpassung, Gesichter), die Regler des Modus,
+        <b>Vektorisierung</b> und <b>Formen verbessern</b>, dann <b>Schrift &amp; Konturen</b> und <b>Ausgabe</b>.
+        Ein Klick auf eine Kopfzeile klappt den Bereich auf oder zu, der Icon-Knopf ⇕ oben rechts klappt
+        <b>alle</b> auf oder zu.
+        Eingeklappt zeigt die Kopfzeile, was eingestellt ist; ein <b>Punkt</b> markiert Abweichungen vom Standard.
+        Jede Änderung wird sofort neu berechnet.</p>
+        <p><b>Doppelklick</b> auf einen Regler setzt ihn zurück, das kleine <b>i</b> blendet Erklärungen ein.</p>`,
     },
     {
       title: 'Vorschau',
@@ -501,6 +509,7 @@ const Tour = (() => {
       art: ART.embroidery,
       target: () => {
         const group = $('#emb-group');
+        window.revealInStage?.(group, true); // liegt im Bereich „Ausgabe“ – ggf. erst aufklappen
         if (visible(group)) return group;
         return ['fmtPes', 'fmtDst', 'fmtExp'].map((k) => $(`[data-key="${k}"]`)?.closest('label'));
       },
@@ -545,15 +554,16 @@ const Tour = (() => {
       target: () => (visible($('#history')) ? $('#history') : $('#btn-toggle-history')),
       html: `<p>Exportierte Bilder landen automatisch in der Historie – mit allen Einstellungen. Ein Klick lädt sie
         wieder, mit <b>⊕</b> legst du einen Eintrag über das aktuelle Ergebnis (Vereinigen).
-        <b>Historie</b> oben rechts blendet die Liste ein und aus.</p>`,
+        <b>Historie</b> oben rechts blendet die Liste ein und aus; solange sie leer ist, bleibt sie eingeklappt.</p>`,
     },
     {
       title: 'KI-Modelle',
       art: ART.ai,
-      target: () => groupByTitle('KI-Modelle'),
+      target: () => $('#btn-app-menu'),
       html: `<p>Alle KI-Funktionen rechnen <b>lokal und offline</b> – deine Bilder verlassen den Rechner nicht.
-        Größere Modelle (mit ⤓ markiert) werden beim ersten Gebrauch geladen und lassen sich unter
-        <b>Verwalten…</b> wieder entfernen. Modelle mit <b>NC</b> sind nur für nicht-kommerzielle Zwecke erlaubt.</p>`,
+        Größere Modelle (mit ⤓ markiert) werden beim ersten Gebrauch geladen und lassen sich über das
+        <b>Zahnrad</b> oben rechts unter <b>KI-Modelle…</b> wieder entfernen; dort findest du auch
+        <b>Leistung…</b> (GPU und Cache). Modelle mit <b>NC</b> sind nur für nicht-kommerzielle Zwecke erlaubt.</p>`,
     },
     {
       title: 'Bereit!',
@@ -611,7 +621,10 @@ const Tour = (() => {
 
   function targets(step) {
     if (!step.target) return [];
-    return [].concat(step.target()).filter(visible);
+    const els = [].concat(step.target()).filter(Boolean);
+    // Ziele in eingeklappten Bereichen der Seitenleiste (Vorbereitung, Schrift & Konturen, Ausgabe …) aufklappen
+    for (const el of els) window.revealInStage?.(el, true);
+    return els.filter(visible);
   }
 
   function go(i) {
@@ -748,6 +761,7 @@ const Tour = (() => {
   function end() {
     stopScroll();
     markSeen();
+    window.restoreRevealedStages?.(); // von der Tour aufgeklappte Bereiche wieder zuklappen
     if (dlg?.open) dlg.close();
   }
 

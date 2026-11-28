@@ -67,15 +67,20 @@ Beim ersten Start erklärt eine **Einführungstour** diesen Ablauf. Dieses Handb
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ v…            [Fortschritt]   Bild öffnen… Kamera… In Historie speichern    │
-│                               An LightBurn  Exportieren  Historie  ?        │
+│                               An LightBurn  Exportieren  Historie  ⚙  ?     │
 ├──────────────┬──────────────────────────────────────────┬──────────────────┤
 │ Presets      │  Geteilt | Original | Ergebnis   − + Einp. │ Historie         │
-│ (fest oben)  │                                           │ Suchen…          │
-│──────────────│   Original            Ergebnis            │ Einträge …       │
+│ (fest oben)  │                                           │ (eingeklappt,    │
+│──────────────│   Original            Ergebnis            │  solange leer)   │
 │ Modus        │                                           │                  │
-│ Freistellen  │                                           │                  │
-│ …            │                                           │                  │
-│ (scrollt)    │  Statuszeile: px, mm, DPI, Größe, Zeit    │                  │
+│ ▸ Vorbereitg.│                                           │                  │
+│ Regler des   │                                           │                  │
+│  Modus       │                                           │                  │
+│ ▾ Vektoris.  │                                           │                  │
+│ ▾ Formen     │                                           │                  │
+│ ▾ Schrift &  │                                           │                  │
+│   Konturen   │                                           │                  │
+│ ▾ Ausgabe    │  Statuszeile: px, mm, DPI, Größe, Zeit    │                  │
 └──────────────┴──────────────────────────────────────────┴──────────────────┘
 ```
 
@@ -91,7 +96,8 @@ Beim ersten Start erklärt eine **Einführungstour** diesen Ablauf. Dieses Handb
 | **In Historie speichern** | legt das aktuelle Ergebnis mit allen Einstellungen in der Historie ab, ohne zu exportieren (Strg/Cmd+S). |
 | **An LightBurn** | fügt das Ergebnis ins offene LightBurn-Projekt ein (Strg/Cmd+L). |
 | **Exportieren** | speichert alle gewählten Formate (Strg/Cmd+E). |
-| **Historie** | blendet die Historie-Spalte ein und aus. |
+| **Historie** | blendet die Historie-Spalte ein und aus. Solange die Historie leer ist, bleibt die Spalte eingeklappt; der erste Eintrag blendet sie ein. |
+| **⚙ (Zahnrad)** | Menü mit **KI-Modelle…** (Modelle laden und entfernen) und **Leistung…** (GPU und Cache), jeweils mit kurzem Stand. |
 | **?** | Hilfe: öffnet dieses Handbuch (wie F1); darin „Tour starten“ für die Einführungstour. |
 
 Die Knöpfe tragen ein Icon vor der Beschriftung. In schmalen Fenstern (unter ca. 1100 px) bleiben nur die
@@ -99,9 +105,32 @@ Icons, die Beschriftung steht dann im Tooltip; **Exportieren** bleibt immer besc
 
 ### Seitenleiste (links)
 
-Oben fest der Bereich **Presets**, darunter scrollen alle Einstellungen. Abschnitte, die zum gewählten
-Modus nicht passen, sind ausgeblendet. Längere Erklärungen sind eingeklappt – das kleine **i** neben einer
-Überschrift blendet sie ein (der Zustand wird gemerkt). **Doppelklick auf einen Regler** setzt ihn auf den
+Oben fest der Bereich **Presets** – Umschalter **Lasern | Sticken**, rechts daneben vier Icon-Knöpfe
+(**Preset speichern**, **Preset löschen**, **Zurücksetzen**, **Alle auf-/zuklappen ⇕**), darunter die Preset-Auswahl. Darunter scrollen die Einstellungen – in der Reihenfolge, in der das Bild
+verarbeitet wird:
+
+1. **Modus** – bestimmt, welche Abschnitte darunter erscheinen.
+2. **Vorbereitung** – wirkt auf das Bild, bevor der Modus es umwandelt: Altes Foto restaurieren →
+   KI-Vergrößerung → Freistellen → Bildanpassung → Gesichtszüge hervorheben. („Restaurieren“ kann über
+   „Reihenfolge“ auch erst nach dem Freistellen laufen.) Bei **Linien (KI)** und **Relief** wirken
+   Bildanpassung und Gesichter auf die von der KI erzeugte Strichzeichnung bzw. Tiefenkarte.
+3. Die Regler des gewählten Modus (Linien, Wellen, Farben, Relief, Dithering).
+4. **Vektorisierung** und **Formen verbessern** (Fläche, Linien, Farben) – wie aus dem Schwarz-Weiß-Bild
+   Vektorpfade werden; eingeklappt zeigt die Kopfzeile geänderte Werte (z. B. „Flecken 10 px“) bzw. die
+   eingeschalteten Verbesserungen.
+5. **Schrift & Konturen** – wirkt auf das Ergebnis des Modus: Schrift & Logos sauber darstellen,
+   Motivkontur und Umrisslinie, je als eine Checkbox; die zugehörigen Regler erscheinen, sobald sie
+   eingeschaltet ist. Ob „Formen verbessern“ auch für die Schrift gilt, legt „Reihenfolge zu „Schrift &
+   Logos““ im Bereich **Formen verbessern** fest.
+6. **Ausgabe** – Ausgabegröße, Exportformate und (mit PES/DST/EXP) Stickdatei.
+
+Ein Klick auf die Kopfzeile eines Bereichs klappt ihn auf oder zu (der Zustand wird gemerkt; Vorbereitung ist
+anfangs eingeklappt). Der Icon-Knopf **⇕** oben rechts (scrollt nicht mit) klappt
+**alle** Bereiche auf bzw. ein. Eingeklappt zeigt die Kopfzeile, was darin eingeschaltet ist – z. B. „Freistellen (BEN2) · Bildanpassung“ –, ein **orangefarbener Punkt** markiert, dass
+dort etwas vom Standard abweicht. Bei „Ausgabe“ stehen Größe und Formate in der Kopfzeile.
+
+Abschnitte, die zum gewählten Modus nicht passen, sind ausgeblendet. Längere Erklärungen sind eingeklappt –
+das kleine **i** neben einer Überschrift bzw. Checkbox blendet sie ein (der Zustand wird gemerkt). **Doppelklick auf einen Regler** setzt ihn auf den
 Standardwert zurück. Ein **⤓** hinter einer Auswahl bedeutet: Das KI-Modell wird beim ersten Gebrauch
 geladen. **NC** kennzeichnet Modelle, die nur nicht-kommerziell genutzt werden dürfen.
 
@@ -121,6 +150,8 @@ geladen. **NC** kennzeichnet Modelle, die nur nicht-kommerziell genutzt werden d
 ### Historie (rechts)
 
 Alle exportierten oder gespeicherten Umwandlungen – siehe [Abschnitt 9](#9-historie-und-vereinigen).
+Solange die Historie leer ist, ist die Spalte eingeklappt und die Vorschau entsprechend breiter.
+Überschrift, **Leeren**, Suche und Sortierung stehen fest oben; nur die Liste darunter scrollt.
 
 ---
 
@@ -140,7 +171,7 @@ Alle exportierten oder gespeicherten Umwandlungen – siehe [Abschnitt 9](#9-his
 
 ## 4. Lasern und Sticken umschalten – Presets
 
-Über der Preset-Liste wählt der Umschalter **Lasern | Sticken**, für welche Aufgabe die Vorlagen gezeigt
+Oben in der Seitenleiste wählt der Umschalter **Lasern | Sticken**, für welche Aufgabe die Vorlagen gezeigt
 werden. Die App startet immer mit **Lasern**; „Sticken“ gilt bis zum Beenden.
 
 | | Lasern | Sticken |
@@ -151,17 +182,32 @@ werden. Die App startet immer mit **Lasern**; „Sticken“ gilt bis zum Beenden
 
 - **Preset wählen:** Auswahlliste – stellt alle Regler für die Aufgabe ein; jede Vorlage hat eine kurze
   Beschreibung. Die **Exportformate** bleiben dabei erhalten (Ausnahme: Stick-Vorlagen setzen PES).
-- **Eigene Presets:** Namen eingeben, **Speichern**. Ein gleichnamiges Preset wird überschrieben.
-  **Löschen** entfernt ein eigenes Preset. Eigene Presets erscheinen unter *Sticken*, wenn PES, DST oder EXP
-  gewählt ist und der Modus eine Stickdatei liefert, sonst unter *Lasern*.
-- **Einstellungen zurücksetzen:** alles auf Standard, die Exportformate bleiben.
+- **Eigene Presets:** Der Icon-Knopf **Preset speichern** (Diskette, rechts neben Lasern | Sticken) blendet
+  unter der Auswahl ein Namensfeld ein – Namen eingeben, **Speichern** (oder Enter; ✕, Esc oder ein zweiter
+  Klick auf die Diskette bricht ab). Ein gleichnamiges Preset wird überschrieben.
+  Der **Papierkorb** rechts neben der Diskette löscht das gewählte eigene Preset (bei Vorlagen ausgegraut).
+  Ein eigenes Preset erscheint in der Liste, in der es gespeichert wurde (*Lasern* oder *Sticken*). Presets
+  aus älteren Versionen stehen unter *Sticken*, wenn PES, DST oder EXP gewählt ist und der Modus eine
+  Stickdatei liefert, sonst unter *Lasern*.
+- **Zurücksetzen** (Icon-Knopf mit kreisförmigem Pfeil): alle Einstellungen auf Standard, die Exportformate
+  bleiben.
 - Nach Änderungen an einem gewählten Preset erscheint ein Hinweis darunter.
 
 ---
 
 ## 5. Einstellungen für beide Bereiche
 
-Diese Abschnitte gelten beim Lasern wie beim Sticken (sofern der Modus sie anbietet).
+Diese Abschnitte gelten beim Lasern wie beim Sticken (sofern der Modus sie anbietet). Sie stehen hier in
+derselben Reihenfolge wie in der Seitenleiste – und wie das Bild verarbeitet wird:
+
+| Bereich in der Seitenleiste | Abschnitte |
+|---|---|
+| (immer offen) | Modus |
+| **Vorbereitung** | Altes Foto restaurieren, KI-Verbesserung, Freistellen, Bildanpassung, Gesichter |
+| (immer offen) | Regler des Modus, z. B. Linien – die übrigen Modi stehen in [Abschnitt 6](#6-lasern) |
+| **Vektorisierung**, **Formen verbessern** | je ein eigener Bereich |
+| **Schrift & Konturen** | Schrift & Logos, Motivkontur, Umrisslinie |
+| **Ausgabe** | Ausgabegröße, Exportformate, Stickdatei (siehe [Abschnitt 7](#7-sticken)) |
 
 ### Modus
 
@@ -175,6 +221,22 @@ Diese Abschnitte gelten beim Lasern wie beim Sticken (sofern der Modus sie anbie
 | **Relief** | 3D-Reliefgravur in Holz | Graustufen-Tiefenkarte | ✓ | – |
 
 Unter den Modus-Knöpfen steht ein Hinweis, wofür der Modus gedacht ist und wie er in LightBurn graviert wird.
+
+### Altes Foto restaurieren
+
+Häkchen **Altes Foto restaurieren**, dann:
+
+- **Rauschen & Körnung entfernen** (SCUNet).
+- **Kratzer & Staub entfernen** mit **Empfindlichkeit** und **Gesichtsschutz** *Geschätzt* (5 Gesichtspunkte)
+  oder *Genau* (Face Parsing, NC) – Augen, Brauen, Nase und Mund werden nie aufgefüllt.
+- **Gesichter restaurieren** – Modell *RestoreFormer++* oder *CodeFormer* (NC, mit Regler **Treue zum
+  Original**), Regler **Stärke**.
+- **Reihenfolge:** vor dem Freistellen oder danach (dann wird aus dem unbearbeiteten Original freigestellt).
+- Darunter steht, was gemacht wurde; das Original zeigt das restaurierte Bild.
+
+### KI-Verbesserung
+
+- **KI-Vergrößerung 4× (Real-ESRGAN)** für kleine oder unscharfe Bilder.
 
 ### Freistellen (Hintergrund entfernen)
 
@@ -208,26 +270,20 @@ Unter den Modus-Knöpfen steht ein Hinweis, wofür der Modus gedacht ist und wie
   - *Löcher füllen* (0…5 %): Lücken im Motiv; Hintergrund am Rand bleibt weg.
   - *Nur das größte Motiv behalten.*
 
-### Altes Foto restaurieren
-
-Häkchen **Altes Foto restaurieren**, dann:
-
-- **Rauschen & Körnung entfernen** (SCUNet).
-- **Kratzer & Staub entfernen** mit **Empfindlichkeit** und **Gesichtsschutz** *Geschätzt* (5 Gesichtspunkte)
-  oder *Genau* (Face Parsing, NC) – Augen, Brauen, Nase und Mund werden nie aufgefüllt.
-- **Gesichter restaurieren** – Modell *RestoreFormer++* oder *CodeFormer* (NC, mit Regler **Treue zum
-  Original**), Regler **Stärke**.
-- **Reihenfolge:** vor dem Freistellen oder danach (dann wird aus dem unbearbeiteten Original freigestellt).
-- Darunter steht, was gemacht wurde; das Original zeigt das restaurierte Bild.
-
-### KI-Verbesserung
-
-- **KI-Vergrößerung 4× (Real-ESRGAN)** für kleine oder unscharfe Bilder.
-
 ### Bildanpassung
 
 **Helligkeit, Kontrast, Gamma, Weichzeichnen, Schärfen, Invertieren.** Im Modus Farben wirken sie auf die
-Farben (je Kanal).
+Farben (je Kanal). Bei **Linien (KI-Strichzeichnung)** und **Relief** wirken sie auf das, was die KI erzeugt
+hat (Strichzeichnung bzw. Tiefenkarte) – beim Relief steuern Kontrast und Gamma so die Tiefenwirkung.
+
+### Gesichter (alle außer Relief)
+
+- **Gesichtszüge hervorheben** – Augen, Brauen und Gesicht kontrastreicher (wirkt nach der Bildanpassung,
+  vor der Umwandlung im Modus); im Modus Linien wird jedes
+  Gesicht zusätzlich fein nachgezeichnet.
+- **Reihenfolge** (vor/nach dem Freistellen), **Merkmale finden** *Geschätzt* oder *Genau* (Face Parsing, NC),
+  eigene Regler für **Mund, Nase, Kinn, Wangen** (0 = aus).
+- Erkannte Gesichter werden im Original orange gestrichelt markiert (nur als Hinweis, nicht im Ergebnis).
 
 ### Linien (Modus Linien)
 
@@ -249,11 +305,13 @@ Farben (je Kanal).
 - **Glatte Konturen (KI)** (Fläche) – runde, ruhige Umrisse statt Treppenstufen bei kleinen Vorlagen.
 - **Ruhige Linien** (Linien) – Linien auf gleichmäßige Breite, **Linien glätten** und **Kurze Striche
   entfernen** (mm).
-- **Reihenfolge zu „Schrift & Logos“** – Verbesserungen auch auf erkannte Schrift anwenden oder nicht.
+- **Reihenfolge zu „Schrift & Logos“** (nur sichtbar, wenn „Schrift & Logos“ eingeschaltet ist) –
+  Verbesserungen auch auf erkannte Schrift anwenden oder nicht.
 
 ### Schrift & Logos (Fläche, Linien, Foto, Farben)
 
-- **Schrift erkennen und sauber darstellen** – Buchstaben scharf und gefüllt statt gerastert.
+- **Schrift & Logos sauber darstellen** – erkennt Schrift per KI und zeigt die Buchstaben scharf und gefüllt
+  statt gerastert.
 - **Modell**: *Standard* (PP-OCRv4), *Genauer* (PP-OCRv5 mobil) oder *Beste Qualität* (PP-OCRv5 Server –
   langsam, braucht viel Arbeitsspeicher). Die PP-OCRv5-Modelle werden beim ersten Gebrauch geladen.
 - **Erkennung** vor oder nach dem Freistellen, **Logos einbeziehen**, **Schriftstärke**.
@@ -264,22 +322,14 @@ Farben (je Kanal).
 - Im Modus Farben wird jeder Schriftzug zu einer sauberen, einfarbigen Fläche; Glätten und Kleinstflächen lassen ihn unverändert.
 - Erkannte Bereiche werden im Original blau markiert.
 
-### Gesichter (alle außer Relief)
-
-- **Gesichtszüge hervorheben** – Augen, Brauen und Gesicht kontrastreicher; im Modus Linien wird jedes
-  Gesicht zusätzlich fein nachgezeichnet.
-- **Reihenfolge** (vor/nach dem Freistellen), **Merkmale finden** *Geschätzt* oder *Genau* (Face Parsing, NC),
-  eigene Regler für **Mund, Nase, Kinn, Wangen** (0 = aus).
-- Erkannte Gesichter werden im Original orange gestrichelt markiert (nur als Hinweis, nicht im Ergebnis).
-
 ### Motivkontur (alle außer Relief)
 
-**Dünne Linie zwischen Motiv und Hintergrund** mit **Linienstärke** in mm – hilft, wo Motiv und Hintergrund
+**Motivkontur: dünne Linie zum Hintergrund** mit **Linienstärke** in mm – hilft, wo Motiv und Hintergrund
 ineinander verschwimmen. Im Modus Farben als eigene schwarze Ebene, beim Sticken als Steppstich.
 
 ### Umrisslinie
 
-**Randkontur um das Motiv zeichnen** mit **Abstand** (mm), **Lücken schließen** und **Nur Umrisslinie (ohne
+**Umrisslinie um das Motiv zeichnen** mit **Abstand** (mm), **Lücken schließen** und **Nur Umrisslinie (ohne
 Gravur)**. Im SVG als rote Linie (eigene Ebene in LightBurn, z. B. zum Ausschneiden), in Rasterbildern
 schwarz, in Stickdateien als schwarzer Steppstich.
 
@@ -292,7 +342,8 @@ schwarz, in Stickdateien als schwarzer Steppstich.
 
 ### KI-Modelle und Leistung
 
-Status der Modelle und des Rechners, Knöpfe **Verwalten…** und **Einstellungen…** – siehe
+Stehen nicht in der Seitenleiste, sondern im Menü hinter dem **Zahnrad (⚙)** oben rechts: **KI-Modelle…**
+und **Leistung…**, jeweils mit kurzem Stand (installierte Modelle, GPU und Cache) – siehe
 [Dialoge](#10-dialoge).
 
 ---
@@ -517,7 +568,7 @@ besser. Statt einer Datei erscheint ein Hinweis bei Foto/Relief, leerem Ergebnis
 
 ### KI-Modelle
 
-Öffnen über **KI-Modelle → Verwalten…**.
+Öffnen über **⚙ → KI-Modelle…** oben rechts.
 
 - Alle Modelle nach Gruppen (Freistellen, Linien, Restaurieren, Relief …) mit Größe, Lizenz und
   Speicherbedarf. ✓ = installiert.
@@ -528,7 +579,7 @@ besser. Statt einer Datei erscheint ein Hinweis bei Foto/Relief, leerem Ergebnis
 
 ### Leistung
 
-Öffnen über **Leistung → Einstellungen…**.
+Öffnen über **⚙ → Leistung…** oben rechts.
 
 - **Grafikkarte (GPU) für KI nutzen** – Windows DirectML, Mac CoreML, Linux WebGPU (experimentell,
   standardmäßig aus). Darunter, welche Modelle auf der GPU liefen; Modelle, die auf der GPU scheitern,
@@ -636,7 +687,9 @@ offen, gelten dessen eigene Tasten (siehe unten).
 |---|---|---|
 | **Doppelklick auf einen Regler** | Standardwert | setzt den Regler auf den Ausgangswert zurück |
 | **Doppelklick auf „Überblenden“** | 100 % | beim Vereinigen mit einem Historie-Eintrag |
-| **Enter** im Feld „Aktuelle Einstellungen speichern als…“ | Preset speichern | wie der Knopf „Speichern“ |
+| **Enter** im Namensfeld nach Klick auf „Preset speichern“ (Diskette) | Preset speichern | wie der Knopf „Speichern“; **Esc** bricht ab |
+| **Klick auf die Kopfzeile** eines Bereichs (Vorbereitung, Vektorisierung, Formen verbessern, Schrift & Konturen, Ausgabe) | Bereich auf-/zuklappen | der Zustand wird gemerkt |
+| **Klick auf ⇕** oben rechts im Preset-Kopf | alle Bereiche auf- bzw. einklappen | |
 | **Klick auf i** neben einer Überschrift | Erklärungen ein-/ausblenden | der Zustand wird gemerkt |
 
 ### In Dialogen

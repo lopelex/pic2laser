@@ -248,8 +248,9 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   - Unter *Sticken* sind die Modi Foto und Relief ausgegraut (sie liefern keine Stickdatei); steht der
     Modus beim Umschalten auf Foto oder Relief, wechselt er auf Fläche. Wird ein solcher Modus z. B. aus
     der Historie geladen, springt die Liste zurück auf *Lasern*.
-  - Eigene Presets erscheinen unter *Sticken*, wenn PES, DST oder EXP gewählt ist und der Modus eine Stickdatei
-    liefert, sonst unter *Lasern*.
+  - Eigene Presets erscheinen in der Liste, in der sie gespeichert wurden (`use` in `presets.json`). Ältere
+    Presets ohne diese Angabe: unter *Sticken*, wenn PES, DST oder EXP gewählt ist und der Modus eine
+    Stickdatei liefert, sonst unter *Lasern*.
 - **Stickerei-Vorlagen** (Farbflächen auf Brother-Garne, PES-Export, Stoff und Motivbreite):
   T-Shirt/Jersey (90 mm, Überlappung 0,4 mm), Polo/Piqué (80 mm, kleinste Fläche 3 mm²),
   Fleece/Sweatshirt (100 mm), Handtuch/Frottee (100 mm, kleinste Fläche 4 mm², stärker geglättet),
@@ -273,8 +274,10 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   Porträt als Tuschezeichnung oder Bleistiftskizze, freigestelltes Relief als transparentes PNG
   und Relief mit maximalen Details (Depth Anything V2 Large, nicht kommerziell),
   Himmel entfernen als Fotogravur oder Strichzeichnung.
-- **Eigene Presets** speichern, überschreiben und löschen. Der Preset-Bereich bleibt oben immer
-  sichtbar; nach Änderungen erscheint ein Hinweis.
+- **Eigene Presets** speichern (Icon-Knopf Diskette blendet das Namensfeld ein), überschreiben und
+  löschen (Papierkorb). Der kompakte Preset-Bereich – Lasern | Sticken, Icon-Knöpfe Speichern, Löschen,
+  Zurücksetzen und Alle auf-/zuklappen, darunter die Auswahl – bleibt oben
+  immer sichtbar; nach Änderungen erscheint ein Hinweis.
 
 ## Export & Weitergabe
 
@@ -453,14 +456,23 @@ Gesichter und Kratzer im Motiv werden bearbeitet.
   und Downloads; das letzte Ergebnis bleibt erhalten.
 - **Übersichtliche Seitenleiste:** Längere Erklärungen sind eingeklappt und lassen sich je Abschnitt
   über das ⓘ in der Überschrift einblenden (Zustand wird gemerkt). Statusmeldungen bleiben sichtbar.
-- **KI-Modelle verwalten** (Bereich „KI-Modelle“ → „Verwalten…“): Dialog mit allen Modellen nach
+  Reihenfolge wie die Verarbeitung: Modus, dann **Vorbereitung** (Restaurieren, KI-Vergrößerung,
+  Freistellen, Bildanpassung, Gesichtszüge; anfangs zu), die Regler des Modus, **Vektorisierung** und
+  **Formen verbessern** (Kopfzeile zeigt geänderte Werte), **Schrift & Konturen** (Schrift & Logos,
+  Motivkontur, Umrisslinie als kompakte Checkboxen; wirken auf das Ergebnis) und **Ausgabe**
+  (Größe, Formate, Stickdatei). Alle sind einklappbar. Eingeklappt zeigt die Kopfzeile, was eingeschaltet ist, ein Punkt
+  markiert Abweichungen vom Standard; der Zustand je Bereich wird gemerkt. Ein Icon-Knopf im festen Preset-Kopf
+  klappt alle Bereiche auf bzw. ein. Die Tour klappt Bereiche
+  bei Bedarf auf. KI-Modelle und Leistung liegen im Zahnrad-Menü oben rechts; die Historie-Spalte
+  bleibt eingeklappt, solange sie leer ist.
+- **KI-Modelle verwalten** (Zahnrad ⚙ oben rechts → „KI-Modelle…“): Dialog mit allen Modellen nach
   Gruppen, Größe, Lizenz und RAM-Bedarf; Modelle laden oder entfernen.
 - **Zwischenspeicher:** KI-Ergebnisse werden pro Bild gemerkt – Umschalten geht sofort.
-- **Festplatten-Cache** (Bereich „Leistung“ → „Einstellungen…“, abschaltbar): jedes KI-Ergebnis wird mit einem
+- **Festplatten-Cache** (Zahnrad ⚙ oben rechts → „Leistung…“, abschaltbar): jedes KI-Ergebnis wird mit einem
   Fingerabdruck der Eingabe gespeichert (max. 2 GB, älteste Einträge fliegen zuerst raus).
   Ein erneut geöffnetes Bild oder ein Historie-Eintrag muss nicht neu berechnet werden, auch
   nach einem Neustart. „Cache leeren“ löscht ihn.
-- **GPU-Beschleunigung** (Bereich „Leistung“ → „Einstellungen…“, Standard an außer unter Linux): Windows → DirectML, Mac mit
+- **GPU-Beschleunigung** (Zahnrad ⚙ oben rechts → „Leistung…“, Standard an außer unter Linux): Windows → DirectML, Mac mit
   Apple-Chip → CoreML. Scheitert ein Modell auf der GPU, rechnet es automatisch auf der CPU
   weiter und wird dafür dauerhaft vorgemerkt (Einschalten der GPU setzt das zurück).
   **Absturzschutz:** Stürzt der KI-Prozess während einer GPU-Berechnung ab, wird sie sofort auf
