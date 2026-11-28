@@ -1,25 +1,16 @@
 'use strict';
 
 /**
- * Hilfen für die Tests der Stickdateien: lädt embroidery.js (Browser-Skript) in Node, baut die
+ * Hilfen für die Tests der Stickdateien: lädt embroidery.js (ES-Modul der Oberfläche) in Node, baut die
  * Prüfmotive und liest PES, DST und EXP mit eigenen, vom Schreiber unabhängigen Lesern wieder ein.
  */
-const fs = require('fs');
 const path = require('path');
-const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 
-function loadEmbroidery() {
-  const ctx = { console };
-  vm.createContext(ctx);
-  const src = fs.readFileSync(path.join(ROOT, 'src/renderer/embroidery.js'), 'utf8');
-  vm.runInContext(`${src};this.Embroidery = Embroidery;`, ctx, { filename: 'embroidery.js' });
-  return ctx.Embroidery;
-}
-
-const E = loadEmbroidery();
+// embroidery.js ist ein ES-Modul der Oberfläche; Node lädt es per require() (src/renderer/package.json: type module)
+const { Embroidery: E } = require(path.join(ROOT, 'src/renderer/embroidery.js'));
 const { STITCH, JUMP, TRIM, COLOR, END } = E.CMD;
 
 /* ---------------- Prüfmotive (Pfade in mm) ---------------- */

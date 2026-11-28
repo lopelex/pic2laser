@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * Stickdateien aus den Vektorflächen (Modi Fläche, Linien und Farben).
  *
@@ -18,7 +16,7 @@
  *  - INF: Farben zu EXP/DST (gleicher Dateiname), liest z. B. Melco DesignShop ab Version 12
  * Koordinaten in den Dateien: 0,1 mm, Mitte des Motivs = Nullpunkt.
  */
-const Embroidery = (() => {
+export const Embroidery = (() => {
   const STITCH = 0, JUMP = 1, TRIM = 2, COLOR = 3, END = 4;
   const MAX_UNCUT_MM = 24; // längster Sprung ohne Schnitt: in DST 2 Sprünge à 12,1 mm
 
@@ -1638,4 +1636,3 @@ const Embroidery = (() => {
   };
 })();
 
-if (typeof module !== 'undefined') module.exports = Embroidery;

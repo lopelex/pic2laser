@@ -1,11 +1,12 @@
-'use strict';
-
 /**
  * Freistellen: erzeugt eine Maske (OffscreenCanvas, Alphakanal = Motiv) in Analyseauflösung.
  *  - KI-Methoden: rohe Maske aus ai.js, hier mit weicher Schwelle aufbereitet
  *  - "color": Hintergrund per Farbähnlichkeit vom Bildrand und/oder von Klickpunkten aus füllen
  */
-const Segmentation = (() => {
+
+import { Processing } from './processing.js';
+
+export const Segmentation = (() => {
   const MAX_SIDE = 2048;
 
   function analysisSize(bitmap) {

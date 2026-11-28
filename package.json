@@ -14,9 +14,13 @@
     "release": "build/release.sh",
     "build:wasm": "node build/build-wasm.js",
     "test": "node --test test/",
-    "test:fixtures": "node test/make-fixtures.js"
+    "test:fixtures": "node test/make-fixtures.js",
+    "lint": "eslint ."
   },
   "license": "GPL-2.0-or-later",
+  "engines": {
+    "node": ">=22.12"
+  },
   "build": {
     "appId": "de.pic2laser.app",
     "productName": "Pic2Laser",
@@ -110,8 +114,11 @@
     "potrace": "^2.1.8"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "electron": "^45.4.1",
-    "electron-builder": "^26.18.0"
+    "electron-builder": "^26.18.0",
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0"
   },
   "allowScripts": {
     "electron@45.4.1": true,

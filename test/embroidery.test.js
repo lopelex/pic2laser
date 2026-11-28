@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { E, CMD, MOTIFS, FIXTURES, motifFiles, motifPattern, normalize, readDst, readExp, readInf, readPes } = require('./embroidery-helpers');
+const { E, CMD, MOTIFS, FIXTURES, motifFiles, normalize, readDst, readExp, readInf, readPes } = require('./embroidery-helpers');
 
 const { STITCH, JUMP, TRIM, COLOR, END } = CMD;
 const KEYS = Object.keys(MOTIFS);

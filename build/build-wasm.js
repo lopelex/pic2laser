@@ -20,6 +20,6 @@ for (const m of MODULES) {
   const wasm = fs.readFileSync(path.join(dir, 'target', 'wasm32-unknown-unknown', 'release', `${m.name}.wasm`));
   const out = path.join(root, 'src', 'renderer', 'wasm', `${m.name}-wasm.js`);
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, `// Erzeugt von build/build-wasm.js aus wasm/${m.name} – nicht von Hand ändern.\nself.${m.global} = '${wasm.toString('base64')}';\n`);
+  fs.writeFileSync(out, `// Erzeugt von build/build-wasm.js aus wasm/${m.name} – nicht von Hand ändern.\nexport const ${m.global} = '${wasm.toString('base64')}';\n`);
   console.log(`${path.relative(root, out)}: ${(wasm.length / 1024).toFixed(1)} KB WASM`);
 }

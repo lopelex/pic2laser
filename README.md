@@ -195,6 +195,7 @@ Pic2Laser selbst ist Open Source (GPL-2.0-or-later, siehe [Lizenz](#lizenz)). F�
 - `src/main/updater.js` – Update-Prüfung über GitHub-Releases (Start + alle 24 h), Download mit Prüfsumme, Installation je System
 - `src/main/preload.js` – sichere IPC-Brücke (`window.api`)
 - `src/renderer/pipeline-worker.js` – Web Worker für die rechenintensive Bildverarbeitung
+- `src/renderer/stitch-worker.js` – Web Worker für die Stichplanung der Stickdateien
 - `src/renderer/processing.js` – Bildverarbeitung (Anpassungen, Schwellwert, Dithering, Kanten, Umriss)
 - `src/renderer/ai.js` – Vor-/Nachverarbeitung für alle KI-Modelle
 - `src/renderer/segmentation.js` – Freistellen (Masken, Farbmaske, Klickpunkte)
@@ -203,7 +204,7 @@ Pic2Laser selbst ist Open Source (GPL-2.0-or-later, siehe [Lizenz](#lizenz)). F�
 - `wasm/sine/` – Rust-Quelltext der Sinuswellen (→ `src/renderer/wasm/sine-wasm.js`, eingebettet als Base64)
 - `src/renderer/encoders.js` – SVG-, PNG-, JPG- und BMP-Ausgabe mit DPI-Angaben
 - `src/renderer/embroidery.js` – Stickdateien: Füll- und Steppstich aus den Vektorpfaden, PES-, DST- und EXP-Ausgabe
-- `src/renderer/app.js` – Oberfläche, Presets, Vorschau, Zoom, Export, Historie
+- `src/renderer/app/` – Oberfläche als ES-Module (Einstieg `main.js`; Einstellungen, Presets, Durchlauf, KI-Schritte, Export, Historie …, Übersicht in FUNCTION.md)
 - `src/renderer/index.html`, `styles.css` – Oberfläche
 - `models/` – mitgelieferte ONNX-Modelle
 - `test/` – Tests der Stickdateien (`npm test`), Referenzdateien und Checkliste in `test/fixtures/`

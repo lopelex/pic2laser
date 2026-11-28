@@ -1,14 +1,13 @@
-'use strict';
-
-/* global AI */
-
 /**
  * Alte Fotos restaurieren:
  *  - Rauschen & Körnung entfernen (SCUNet, kachelweise)
  *  - Kratzer & Staub finden (klassische Bildanalyse) und auffüllen (LaMa)
  *  - Gesichter restaurieren (YuNet-Gesichtspunkte → Ausrichtung → RestoreFormer++)
  */
-const Restore = (() => {
+
+import { AI } from './ai.js';
+
+export const Restore = (() => {
   // Arbeitsgröße und Kachelgröße – werden je nach Arbeitsspeicher des Rechners angepasst (configure)
   let MAX_SIDE = 1280;
 

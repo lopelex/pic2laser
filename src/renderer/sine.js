@@ -1,13 +1,12 @@
-'use strict';
-
-/* global SINE_WASM_B64 */
-
 /**
  * Modus „Wellen“: Sinuswellen-Schattierung (nach img2laser von Kyle Larsen, MIT).
  * Die Rechnung läuft in WebAssembly (Rust, Quelltext in wasm/sine); diese Datei lädt das
  * Modul (eingebettet in wasm/sine-wasm.js) und rechnet Einstellungen in Pixel um.
  */
-const Sine = (() => {
+
+import { SINE_WASM_B64 } from './wasm/sine-wasm.js';
+
+export const Sine = (() => {
   let inst = null;
 
   function wasm() {

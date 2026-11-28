@@ -1,5 +1,3 @@
-'use strict';
-
 /*
  * Handbuch-Dialog (F1): zeigt HANDBUCH.md aus dem App-Verzeichnis. Kleiner eigener Markdown-Renderer für
  * genau das, was das Handbuch nutzt (Überschriften, Absätze, verschachtelte Listen, Tabellen, Codeblöcke,
@@ -7,7 +5,7 @@
  * innerhalb des Dialogs; Verweise auf andere Dateien werden als Text gezeigt.
  * Links ein Inhaltsverzeichnis (folgt beim Scrollen mit), oben eine Suche mit Treffer-Navigation.
  */
-const Manual = (() => {
+export const Manual = (() => {
   const $ = (sel) => document.querySelector(sel);
   let html = null; // gerendertes Handbuch (ohne Suchmarkierungen)
   let hits = [];
