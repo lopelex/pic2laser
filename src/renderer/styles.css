@@ -153,6 +153,9 @@ input[type=range] {
 .step-btn + .step-btn { order: 2; }
 .step-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
 .step-btn:disabled { opacity: .4; cursor: default; }
+.row > .slider-row { flex: 1; min-width: 0; }
+.auto-btn { flex: none; width: 22px; height: 22px; padding: 0; margin-left: -2px; color: #c9cdd5; }
+.auto-btn:hover { color: var(--accent); }
 input[type=number], input[type=search], select {
   width: 100%;
   background: var(--bg);
