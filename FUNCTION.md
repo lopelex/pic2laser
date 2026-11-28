@@ -41,7 +41,7 @@ Alle KI-Funktionen laufen lokal und offline.
 
 - **Bildanpassung:** Helligkeit, Kontrast, Gamma, Weichzeichnen, Schärfen, Invertieren.
   Doppelklick auf einen Regler setzt ihn zurück.
-- **Vektorisierung:** Schwellwert (inkl. „Auto“/Otsu), Flecken entfernen, Ecken glätten,
+- **Vektorisierung:** Schwellwert (inkl. Automatik per Zauberstab-Knopf/Otsu), Flecken entfernen, Ecken glätten,
   Kurven-Toleranz, Arbeitsauflösung.
 - **Linien:** Modell, Detailgrad, Linienschwelle, Linien verstärken (KI) bzw. Empfindlichkeit und
   Linienstärke in mm (Canny). Modelle der KI-Strichzeichnung:
