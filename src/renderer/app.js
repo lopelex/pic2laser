@@ -347,6 +347,7 @@ function syncControls() {
   $('#mode-hint').textContent = MODE_HINTS[s.mode];
   refreshInfoToggles();
   updateHeightField();
+  refreshStages();
 }
 
 /*
@@ -376,24 +377,214 @@ function bindInfoToggles() {
       btn.setAttribute('aria-expanded', String(on));
     };
     apply(open.has(id));
+    btn.group = group;
     btn.addEventListener('click', () => {
       const on = !group.classList.contains('info-open');
       apply(on);
+      if (on) revealInStage(group);
       const ids = [...loadInfoOpen()].filter((x) => x !== id);
       if (on) ids.push(id);
       try { localStorage.setItem(INFO_KEY, JSON.stringify(ids)); } catch { /* nur Komfort */ }
     });
-    h3.classList.add('has-info');
-    h3.append(btn);
+    // Kompakte Abschnitte (nur eine Checkbox, Überschrift unsichtbar): ⓘ hinter die Checkbox
+    // Einziger Abschnitt eines Bereichs (Überschrift = Kopfzeile des Bereichs): ⓘ in die Kopfzeile
+    const host = group.classList.contains('compact') ? group.querySelector(':scope > label.check')
+      : group.classList.contains('solo') ? group.closest('.stage')?.querySelector('.stage-bar') : null;
+    if (host) host.append(btn);
+    else {
+      h3.classList.add('has-info');
+      h3.append(btn);
+    }
   }
 }
 
 /** ⓘ nur zeigen, wenn im Abschnitt gerade eine Erklärung sichtbar wäre (abhängig von Modus/Optionen). */
 function refreshInfoToggles() {
   for (const btn of $$('.info-btn')) {
-    const group = btn.closest('.group');
+    const group = btn.group || btn.closest('.group');
     btn.hidden = ![...group.querySelectorAll('.hint.info')].some((h) => h.textContent.trim() && !h.closest('[hidden]'));
   }
+}
+
+/*
+ * Einklappbare Bereiche der Seitenleiste (Vorbereitung, Vektorisierung, Formen verbessern, Schrift & Konturen, Ausgabe). Eingeklappt zeigt die Kopfzeile,
+ * was darin eingeschaltet ist; ein Punkt markiert Bereiche, in denen etwas vom Standard abweicht.
+ * Der Zustand je Bereich bleibt gespeichert.
+ */
+const STAGE_DEFAULT_COLLAPSED = { vectorize: false, shapes: false, prep: true, extras: false, output: false };
+// Kurznamen für die Kopfzeilen von „Vektorisierung“ und „Formen verbessern“
+const VECTORIZE_NAMES = { threshold: 'Schwellwert', turdSize: 'Flecken', alphaMax: 'Ecken', optTolerance: 'Kurven', workRes: 'Auflösung' };
+const SHAPE_NAMES = { smoothContours: 'Glatte Konturen', lineClean: 'Ruhige Linien', shapeFit: 'Formen begradigen' };
+const BG_SHORT = {
+  ai: 'U²-Net', isnet: 'IS-Net', ben2: 'BEN2', birefnet: 'BiRefNet', modnet: 'MODNet',
+  sam: 'MobileSAM', sam2: 'SAM 2.1', sky: 'Himmel', skyai: 'Himmel (BEN2)', color: 'nach Farbe',
+};
+const ADJUST_KEYS = ['brightness', 'contrast', 'gamma', 'blur', 'sharpen', 'invert'];
+const FORMAT_KEYS = [['fmtSvg', 'SVG'], ['fmtPng', 'PNG'], ['fmtJpg', 'JPG'], ['fmtBmp', 'BMP'], ['fmtPes', 'PES'], ['fmtDst', 'DST'], ['fmtExp', 'EXP']];
+
+function stageCollapsed(id) {
+  const c = ui.stages || {};
+  return id in c ? !!c[id] : !!STAGE_DEFAULT_COLLAPSED[id];
+}
+
+function setStageCollapsed(stage, collapsed, remember = true) {
+  stage.classList.toggle('collapsed', collapsed);
+  stage.querySelector('.stage-head').setAttribute('aria-expanded', String(!collapsed));
+  if (remember) {
+    ui.stages = { ...(ui.stages || {}), [stage.dataset.stage]: collapsed };
+    saveUi();
+  }
+}
+
+/** Öffnet den Bereich, in dem ein Element liegt (z. B. für die Tour). */
+const tempOpenStages = new Set(); // von der Tour nur vorübergehend aufgeklappt
+
+function revealInStage(el, temporary = false) {
+  const stage = el?.closest?.('.stage');
+  if (!stage || !stage.classList.contains('collapsed')) return;
+  setStageCollapsed(stage, false, !temporary);
+  if (temporary) tempOpenStages.add(stage);
+  refreshStagesAll();
+}
+
+/** Nach der Tour: Bereiche, die sie aufgeklappt hat, wieder zuklappen (sofern nicht inzwischen von Hand bedient). */
+function restoreRevealedStages() {
+  for (const stage of tempOpenStages) {
+    if (stageCollapsed(stage.dataset.stage)) setStageCollapsed(stage, true, false);
+  }
+  tempOpenStages.clear();
+  refreshStagesAll();
+}
+window.revealInStage = revealInStage;
+window.restoreRevealedStages = restoreRevealedStages;
+
+function bindStages() {
+  for (const stage of $$('.stage')) {
+    setStageCollapsed(stage, stageCollapsed(stage.dataset.stage), false);
+    stage.querySelector('.stage-head').addEventListener('click', () => {
+      tempOpenStages.delete(stage);
+      setStageCollapsed(stage, !stage.classList.contains('collapsed'));
+      refreshStagesAll();
+    });
+  }
+  // Knopf in der Modus-Überschrift: alle sichtbaren Bereiche auf- bzw. zuklappen
+  $('#btn-stages-all').addEventListener('click', () => {
+    const stages = $$('.stage').filter((s) => !s.hidden);
+    const expand = stages.some((s) => s.classList.contains('collapsed'));
+    for (const s of stages) setStageCollapsed(s, !expand);
+    tempOpenStages.clear();
+    refreshStagesAll();
+  });
+}
+
+/** Symbol und Tooltip des Knopfs „Alle auf-/zuklappen“ passend zum Zustand. */
+function refreshStagesAll() {
+  const btn = $('#btn-stages-all');
+  const expand = $$('.stage').some((s) => !s.hidden && s.classList.contains('collapsed'));
+  const label = expand ? 'Alle Bereiche aufklappen' : 'Alle Bereiche einklappen';
+  btn.classList.toggle('expand', expand);
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
+
+const shown = (el) => !!el && !el.closest('[hidden]');
+
+/** Kurzfassung je Bereich: aktive Punkte – leer, wenn nichts eingeschaltet ist. */
+function stageActive(id) {
+  const s = state.settings;
+  const parts = [];
+  if (id === 'output') {
+    const h = $('#heightMm').value;
+    parts.push(`${String(round1(s.widthMm)).replace('.', ',')}${h ? ` × ${String(h).replace('.', ',')}` : ''} mm`);
+    const fmts = FORMAT_KEYS.filter(([k]) => s[k] && !$(`[data-key="${k}"]`)?.disabled).map(([, n]) => n);
+    parts.push(fmts.length ? fmts.join(', ') : 'kein Format');
+    return parts;
+  }
+  if (id === 'vectorize') {
+    for (const [k, name] of Object.entries(VECTORIZE_NAMES)) {
+      const out = $(`#stage-vectorize output[data-for="${k}"]`);
+      if (shown(out) && s[k] !== DEFAULTS[k]) parts.push(`${name} ${out.textContent}`);
+    }
+    return parts;
+  }
+  if (id === 'shapes') {
+    for (const [k, name] of Object.entries(SHAPE_NAMES)) {
+      const cb = $(`#stage-shapes [data-key="${k}"]`);
+      if (shown(cb) && cb.checked) parts.push(name);
+    }
+    return parts;
+  }
+  // In der Reihenfolge der Abschnitte (= Verarbeitungsreihenfolge). Kompakte Abschnitte: Hauptschalter
+  // (erste Checkbox) an und Abschnitt im Modus sichtbar
+  for (const g of $$(`#stage-${id} .stage-body > .group`)) {
+    if (g.hidden) continue;
+    const title = g.querySelector('h3')?.firstChild?.textContent.trim();
+    if (g.classList.contains('compact')) {
+      if (g.querySelector(':scope > label.check input[type=checkbox]')?.checked) parts.push(g.dataset.sum);
+    } else if (title === 'Freistellen') {
+      if (s.bgRemove !== 'none') parts.push(`Freistellen (${BG_SHORT[s.bgRemove] || s.bgRemove})`);
+    } else if (title === 'Bildanpassung') {
+      if (ADJUST_KEYS.some((k) => s[k] !== DEFAULTS[k])) parts.push('Bildanpassung');
+    }
+  }
+  return parts;
+}
+
+/** Inhalt eines Bereichs (für die Kopfzeile, wenn nichts eingeschaltet ist). */
+function stageContents(stage) {
+  if (stage.dataset.stage === 'vectorize') return ['Standardwerte'];
+  if (stage.dataset.stage === 'shapes') {
+    return Object.entries(SHAPE_NAMES).filter(([k]) => shown($(`#stage-shapes [data-key="${k}"]`))).map(([, n]) => n);
+  }
+  return [...stage.querySelectorAll('.stage-body > .group')]
+    .filter((g) => !g.hidden)
+    .map((g) => g.dataset.sum || g.querySelector('h3')?.firstChild?.textContent.trim())
+    .filter(Boolean);
+}
+
+function refreshStages() {
+  for (const stage of $$('.stage')) {
+    const id = stage.dataset.stage;
+    stage.hidden = ![...stage.querySelectorAll('.stage-body > .group')].some((g) => !g.hidden);
+    const active = stageActive(id);
+    const sum = stage.querySelector('.stage-sum');
+    stage.querySelector('.stage-dot').hidden = id === 'output' || !active.length;
+    const on = id === 'output' || active.length > 0;
+    sum.textContent = (on ? active : stageContents(stage)).join(' · ');
+    sum.classList.toggle('on', on);
+    sum.title = sum.textContent;
+  }
+  refreshStagesAll();
+}
+
+/** Zahnrad oben rechts: KI-Modelle und Leistung. */
+function bindAppMenu() {
+  const btn = $('#btn-app-menu');
+  const menu = $('#app-menu');
+  const place = () => {
+    const r = btn.getBoundingClientRect();
+    menu.style.top = `${r.bottom + 6}px`;
+    menu.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+  };
+  const open = (on) => {
+    menu.hidden = !on;
+    btn.setAttribute('aria-expanded', String(on));
+    btn.classList.toggle('active', on);
+    if (on) { place(); menu.querySelector('.menu-item')?.focus(); }
+  };
+  btn.addEventListener('click', (e) => { e.stopPropagation(); open(menu.hidden); });
+  for (const item of menu.querySelectorAll('.menu-item')) item.addEventListener('click', () => open(false));
+  document.addEventListener('pointerdown', (e) => {
+    if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) open(false);
+  });
+  window.addEventListener('keydown', (e) => {
+    if (menu.hidden || e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    open(false);
+    btn.focus();
+  }, true);
+  window.addEventListener('resize', () => { if (!menu.hidden) place(); });
 }
 
 function updateHeightField() {
@@ -1016,10 +1207,14 @@ async function refreshPresets() {
 /**
  * Wofür ein Preset gedacht ist: 'laser', 'emb' (Sticken) oder 'both' (in beiden Listen).
  * Mitgelieferte: Gruppen „Stickerei …“ zum Sticken, sonst Lasern, außer use ist gesetzt.
- * Eigene: Sticken, wenn PES/DST/EXP gewählt sind und der Modus eine Stickdatei liefert.
+ * Eigene: die Liste, in der sie gespeichert wurden (use); ältere ohne use: Sticken, wenn PES/DST/EXP
+ * gewählt sind und der Modus eine Stickdatei liefert, sonst Lasern.
  */
 function presetUse(p, kind) {
   if (kind === 'user') {
+    // Eigene Presets erscheinen in der Liste, in der sie gespeichert wurden; ältere Presets ohne diese
+    // Angabe werden wie bisher nach ihrem Inhalt einsortiert (Stickformat + Stickmodus = Sticken)
+    if (p.use === 'emb' || p.use === 'laser') return p.use;
     const s = p.settings || {};
     return (s.fmtPes || s.fmtDst || s.fmtExp) && EMB_MODES.includes(s.mode) ? 'emb' : 'laser';
   }
@@ -1071,19 +1266,31 @@ function updatePresetHint() {
   hint.textContent = parts.join(' ');
 }
 
+/** Rückfrage beim Überschreiben – nennt es, wenn das Preset dabei in die andere Liste wechselt. */
+function presetOverwriteText(name) {
+  const old = state.presets.find((p) => p.name.toLowerCase() === name.toLowerCase());
+  const tabName = { laser: 'Lasern', emb: 'Sticken' };
+  const from = old && presetUse(old, 'user');
+  const to = presetTab();
+  return from && from !== to
+    ? `Preset „${old.name}“ gibt es bereits unter „${tabName[from]}“. Überschreiben? Es steht danach unter „${tabName[to]}“.`
+    : `Preset „${name}“ existiert bereits. Überschreiben?`;
+}
+
 async function savePreset() {
   const input = $('#preset-name');
   const name = input.value.trim();
   if (!name) return;
   if (state.presets.some((p) => p.name.toLowerCase() === name.toLowerCase())
-      && !confirm(`Preset „${name}“ existiert bereits. Überschreiben?`)) return;
+      && !confirm(presetOverwriteText(name))) return;
   try {
     const settings = presetSettingsFromCurrent();
-    state.presets = await window.api.presets.save({ name, settings });
+    state.presets = await window.api.presets.save({ name, settings, use: presetTab() });
     const saved = state.presets.find((p) => p.name.toLowerCase() === name.toLowerCase());
     state.activePreset = { key: `user:${saved.name}`, settings };
     input.value = '';
     $('#btn-preset-save').disabled = true;
+    showPresetSave(false);
     renderPresets();
     toast(`Preset „${saved.name}“ gespeichert`);
   } catch (err) {
@@ -1091,7 +1298,17 @@ async function savePreset() {
   }
 }
 
+/** Namensfeld zum Speichern eines Presets ein- bzw. ausblenden (statt dauerhaft sichtbar). */
+function showPresetSave(on) {
+  $('#preset-save').hidden = !on;
+  $('#btn-preset-new').setAttribute('aria-expanded', String(on));
+  if (on) $('#preset-name').focus();
+  else { $('#preset-name').value = ''; $('#btn-preset-save').disabled = true; }
+}
+
 function bindPresets() {
+  $('#btn-preset-new').addEventListener('click', () => showPresetSave($('#preset-save').hidden));
+  $('#btn-preset-cancel').addEventListener('click', () => showPresetSave(false));
   for (const b of $$('#preset-tab button')) {
     b.addEventListener('click', () => {
       if (presetTab() === b.dataset.value) return;
@@ -1118,6 +1335,7 @@ function bindPresets() {
   });
   $('#preset-name').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') savePreset();
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); showPresetSave(false); }
   });
   $('#btn-preset-save').addEventListener('click', savePreset);
   $('#btn-preset-delete').addEventListener('click', async () => {
@@ -4108,12 +4326,32 @@ function renameInput(e) {
   return input;
 }
 
+/*
+ * Historie-Spalte: solange sie leer ist, eingeklappt (mehr Platz für die Vorschau); der erste Eintrag blendet
+ * sie ein. Der Knopf „Historie“ übersteuert das, bis die Historie das nächste Mal von leer auf den ersten
+ * Eintrag wechselt – dann gilt wieder die Automatik (der neue Eintrag soll sichtbar werden).
+ */
+let historyShown = null; // null = automatisch, sonst Wahl über den Knopf
+let historyHadItems = null;
+
+function syncHistoryVisibility() {
+  const has = state.history.length > 0;
+  if (historyHadItems === false && has) historyShown = null; // erster Eintrag: wieder automatisch → einblenden
+  historyHadItems = has;
+  const show = historyShown ?? has;
+  if (document.body.classList.contains('history-hidden') === show) {
+    document.body.classList.toggle('history-hidden', !show);
+    requestAnimationFrame(renderMarkers);
+  }
+}
+
 function renderHistory() {
   const list = $('#history-list');
   const q = $('#history-search').value.trim().toLowerCase();
   const items = sortHistory(state.history).filter((e) => !q || (e.name || '').toLowerCase().includes(q) || (e.originalName || '').toLowerCase().includes(q));
   list.replaceChildren();
   $('#history-empty').hidden = state.history.length > 0;
+  syncHistoryVisibility();
 
   for (const e of items) {
     const li = document.createElement('li');
@@ -4869,7 +5107,9 @@ function bindView() {
   }
 
   $('#btn-toggle-history').addEventListener('click', () => {
-    document.body.classList.toggle('history-hidden');
+    historyShown = document.body.classList.contains('history-hidden');
+    document.body.classList.toggle('history-hidden', !historyShown);
+    requestAnimationFrame(renderMarkers);
   });
   $('#history-search').addEventListener('input', renderHistory);
   const sortSel = $('#history-sort');
@@ -5234,6 +5474,8 @@ new MutationObserver((muts) => {
 /* ------------------------------------------------------------------ */
 
 bindInfoToggles();
+bindStages();
+bindAppMenu();
 bindModelsDialog();
 bindDialogs();
 bindEmbDialog();

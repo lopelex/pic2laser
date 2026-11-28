@@ -289,7 +289,9 @@ ipcMain.handle('presets-save', async (_e, preset) => {
   if (!name) throw new Error('Name fehlt');
   if (!preset.settings || typeof preset.settings !== 'object') throw new Error('Einstellungen fehlen');
   const list = (await readPresets()).filter((p) => p.name.toLowerCase() !== name.toLowerCase());
-  list.push({ name, settings: preset.settings, updated: Date.now() });
+  // use: Liste, in der das Preset gespeichert wurde („Lasern“ oder „Sticken“) – dort erscheint es auch
+  const use = preset.use === 'emb' || preset.use === 'laser' ? preset.use : undefined;
+  list.push({ name, settings: preset.settings, ...(use ? { use } : {}), updated: Date.now() });
   list.sort((a, b) => a.name.localeCompare(b.name, 'de'));
   await writePresets(list);
   return list;
