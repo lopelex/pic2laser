@@ -5,6 +5,32 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.23.0 – 28.11.2026
+
+### Neu
+- **Übersichtlichere Seitenleiste in Verarbeitungsreihenfolge:** Modus → **Vorbereitung** (Restaurieren,
+  KI-Vergrößerung, Freistellen, Bildanpassung, Gesichter) → Regler des Modus → **Vektorisierung** →
+  **Formen verbessern** → **Schrift & Konturen** (Schrift & Logos, Motivkontur, Umrisslinie) → **Ausgabe**.
+  Die Einstellungen stehen jetzt in der Reihenfolge, in der das Bild tatsächlich verarbeitet wird.
+- **Einklappbare Bereiche:** Ein Klick auf die Kopfzeile klappt einen Bereich auf oder zu, der Zustand wird
+  gemerkt. Eingeklappt zeigt die Kopfzeile, was darin eingeschaltet oder geändert ist (z. B. „Freistellen
+  (BEN2) · Bildanpassung“ oder „Flecken 10 px“), ein orangefarbener Punkt markiert Abweichungen vom Standard.
+  Ein Knopf oben klappt alle Bereiche auf einmal auf oder zu.
+- **Kompakter Preset-Kopf:** Lasern | Sticken und daneben Icon-Knöpfe für Preset speichern, Preset löschen,
+  Zurücksetzen und Alle auf-/zuklappen. Das Namensfeld erscheint erst beim Speichern. Der Kopf scrollt nicht mit.
+- **Zahnrad-Menü oben rechts** mit **KI-Modelle…** und **Leistung…** (vorher unten in der Seitenleiste).
+- **Historie:** eingeklappt, solange sie leer ist (mehr Platz für die Vorschau); der erste Eintrag blendet sie
+  ein. Überschrift, Suche und Sortierung stehen fest, nur die Liste scrollt.
+- Einführungstour und Handbuch zeigen die neue Anordnung; die Tour klappt Bereiche bei Bedarf auf und
+  danach wieder zu.
+
+### Behoben
+- **Eigene Presets** erscheinen jetzt in der Liste, in der sie gespeichert wurden. Vorher landete ein unter
+  „Sticken“ gespeichertes Preset ohne Stickformat (PES/DST/EXP) in der Lasern-Liste und schien verloren.
+  Presets aus älteren Versionen bleiben, wo sie waren.
+
+---
+
 ## 1.22.0 – 27.11.2026
 
 ### Neu
