@@ -5,6 +5,14 @@ Alle Änderungen an Pic2Laser, neueste Version zuerst. Ausführliche Beschreibun
 
 ---
 
+## 1.23.1 – 28.11.2026
+
+### Behoben
+- **Schwellwert-Regler:** Seit 1.23.0 war er schmaler als die anderen Regler, und das **+** stand mitten in
+  der Zeile. Jetzt ist er wieder so breit wie alle anderen.
+- Der Knopf **„Auto“** für den automatischen Schwellwert (Otsu) ist jetzt ein kleines **Zauberstab-Icon**
+  ganz rechts hinter dem +.
+
 ## 1.23.0 – 28.11.2026
 
 ### Neu
